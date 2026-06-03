@@ -1,7 +1,7 @@
-use std::path::{Path, PathBuf};
+use crate::config::SkillSpec;
 use std::fs;
 use std::os::unix::fs::symlink;
-use crate::config::SkillSpec;
+use std::path::{Path, PathBuf};
 
 pub fn get_global_agent_skills_dir(agent: &str) -> Option<PathBuf> {
     let home = dirs::home_dir()?;
@@ -38,9 +38,15 @@ pub fn resolve_registry_path(name: &str) -> Option<PathBuf> {
             return Some(fallback);
         }
     }
-    
+
     let home = dirs::home_dir()?;
-    Some(home.join(".cache").join("skm").join("registries").join(name).join("skills"))
+    Some(
+        home.join(".cache")
+            .join("skm")
+            .join("registries")
+            .join(name)
+            .join("skills"),
+    )
 }
 
 pub fn link_skill(
@@ -78,7 +84,7 @@ pub fn link_skill(
 
         if let Some(base_dir) = target_base {
             let skill_target = base_dir.join(&skill.name);
-            
+
             // Ensure parent directory of skill_target exists
             if let Some(parent) = skill_target.parent() {
                 fs::create_dir_all(parent)?;
@@ -102,6 +108,7 @@ pub fn link_skill(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn unlink_skill(
     skill: &SkillSpec,
     project_root: &Path,

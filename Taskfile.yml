@@ -1,0 +1,25 @@
+version: '3'
+
+tasks:
+  check:
+    desc: Run formatting and compilation checks
+    cmds:
+      - cargo fmt -- --check
+      - cargo clippy -- -D warnings
+      - cargo check
+
+  fix:
+    desc: Auto-format code and apply clippy fixes
+    cmds:
+      - cargo fmt
+      - cargo clippy --fix --allow-dirty --allow-no-vcs
+
+  test:
+    desc: Run unit and integration tests
+    cmds:
+      - cargo test
+
+  build:
+    desc: Build optimized release binary
+    cmds:
+      - cargo build --release

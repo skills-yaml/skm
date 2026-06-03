@@ -38,8 +38,11 @@ impl SkillsConfig {
 
     pub fn default_init(project_name: &str) -> Self {
         let mut registries = HashMap::new();
-        registries.insert("default".to_string(), "git@github.com:skills-yaml/skills-registry.git".to_string());
-        
+        registries.insert(
+            "default".to_string(),
+            "git@github.com:skills-yaml/skills-registry.git".to_string(),
+        );
+
         SkillsConfig {
             name: project_name.to_string(),
             version: Some("0.1.0".to_string()),
@@ -51,14 +54,12 @@ impl SkillsConfig {
                 "grok".to_string(),
                 "hermes".to_string(),
             ],
-            skills: vec![
-                SkillSpec {
-                    name: "software-development/symphony-spec-writing".to_string(),
-                    version: Some("latest".to_string()),
-                    source: Some("default".to_string()),
-                    path: None,
-                }
-            ],
+            skills: vec![SkillSpec {
+                name: "software-development/symphony-spec-writing".to_string(),
+                version: Some("latest".to_string()),
+                source: Some("default".to_string()),
+                path: None,
+            }],
         }
     }
 }

@@ -2,7 +2,7 @@ mod config;
 mod linker;
 
 use clap::{Parser, Subcommand};
-use config::{SkillsConfig, SkillSpec};
+use config::{SkillSpec, SkillsConfig};
 use std::env;
 use std::path::Path;
 
@@ -58,7 +58,7 @@ enum Commands {
 
 fn main() {
     let cli = Cli::parse();
-    
+
     if let Err(e) = run(cli.command) {
         eprintln!("Error: {}", e);
         std::process::exit(1);
@@ -83,12 +83,15 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             });
             let default_config = SkillsConfig::default_init(&project_name);
             default_config.save_to_file(&config_path)?;
-            println!("Initialized default skills.yaml for project '{}'", project_name);
+            println!(
+                "Initialized default skills.yaml for project '{}'",
+                project_name
+            );
         }
         Commands::Install { global } => {
             let config = load_config(&config_path)?;
             ensure_registries_cached(&config)?;
-            
+
             println!("Installing skills for agents: {:?}", config.agents);
             for skill in &config.skills {
                 linker::link_skill(skill, &current_dir, &config.agents, global)?;
@@ -102,7 +105,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             global,
         } => {
             let mut config = load_config(&config_path)?;
-            
+
             // Check if skill already exists
             if config.skills.iter().any(|s| s.name == skill_name) {
                 return Err(format!("Skill '{}' already exists in skills.yaml", skill_name).into());
@@ -125,18 +128,18 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
         Commands::List { global } => {
             let config = load_config(&config_path)?;
             println!("Listing skills for project '{}':", config.name);
-            
+
             for skill in &config.skills {
                 let mut status = "OK".to_string();
                 let mut linked_agents = Vec::new();
-                
+
                 for agent in &config.agents {
                     let target_base = if global {
                         linker::get_global_agent_skills_dir(agent)
                     } else {
                         linker::get_project_agent_skills_dir(agent, &current_dir)
                     };
-                    
+
                     if let Some(base) = target_base {
                         let path = base.join(&skill.name);
                         if path.exists() || path.is_symlink() {
@@ -144,33 +147,38 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 }
-                
+
                 if linked_agents.is_empty() {
                     status = "MISSING/NOT LINKED".to_string();
                 } else if linked_agents.len() < config.agents.len() {
                     status = format!("PARTIALLY LINKED ({:?})", linked_agents);
                 }
-                
+
                 println!(" - {} (Status: {})", skill.name, status);
             }
         }
         Commands::Check { global } => {
             let config = load_config(&config_path)?;
             let mut all_ok = true;
-            
+
             for skill in &config.skills {
                 // Verify source path
                 let source_dir = if let Some(ref local_path) = skill.path {
                     current_dir.join(local_path)
                 } else {
                     let registry_name = skill.source.as_deref().unwrap_or("default");
-                    let reg_path = linker::resolve_registry_path(registry_name)
-                        .ok_or_else(|| format!("Could not resolve path for registry: {}", registry_name))?;
+                    let reg_path =
+                        linker::resolve_registry_path(registry_name).ok_or_else(|| {
+                            format!("Could not resolve path for registry: {}", registry_name)
+                        })?;
                     reg_path.join(&skill.name)
                 };
 
                 if !source_dir.exists() {
-                    println!("[FAIL] Skill '{}' source directory not found: {:?}", skill.name, source_dir);
+                    println!(
+                        "[FAIL] Skill '{}' source directory not found: {:?}",
+                        skill.name, source_dir
+                    );
                     all_ok = false;
                     continue;
                 }
@@ -182,11 +190,14 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                     } else {
                         linker::get_project_agent_skills_dir(agent, &current_dir)
                     };
-                    
+
                     if let Some(base) = target_base {
                         let path = base.join(&skill.name);
                         if !path.exists() && !path.is_symlink() {
-                            println!("[FAIL] Missing link for agent '{}' to skill '{}'", agent, skill.name);
+                            println!(
+                                "[FAIL] Missing link for agent '{}' to skill '{}'",
+                                agent, skill.name
+                            );
                             all_ok = false;
                         }
                     }
@@ -216,21 +227,21 @@ fn ensure_registries_cached(config: &SkillsConfig) -> Result<(), Box<dyn std::er
         for (name, url) in registries {
             let path = linker::resolve_registry_path(name)
                 .ok_or_else(|| format!("Could not resolve path for registry: {}", name))?;
-            
+
             if path.exists() {
                 continue;
             }
-            
+
             // Get parent directory to clone into
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            
+
             println!("Cloning registry '{}' from '{}'...", name, url);
             let output = std::process::Command::new("git")
-                .args(&["clone", url, path.to_str().unwrap()])
+                .args(["clone", url, path.to_str().unwrap()])
                 .output()?;
-            
+
             if !output.status.success() {
                 let err = String::from_utf8_lossy(&output.stderr);
                 return Err(format!("Failed to clone registry '{}': {}", name, err).into());
