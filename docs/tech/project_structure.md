@@ -1,11 +1,12 @@
 # Project Structure
 
-The `skills-yaml` project is organized as a standard Rust binary crate.
+The `skm` project is organized as a standard Rust binary crate.
 
 ```txt
 Cargo.toml       # Dependency declarations and build configurations
 Cargo.lock       # Pinning of compiled dependencies
-skills.yaml      # Self-referential config for skm developers
+Taskfile.yml     # Local check, fix, test, and build task entrypoints
+AGENTS.md        # Contributor and agent workflow rules
 
 docs/
   specs/         # Functional requirements and guidelines
@@ -15,5 +16,9 @@ docs/
 src/
   main.rs        # Command line arguments routing and subcommand logic
   config.rs      # Data structs, YAML serialization/deserialization for skills.yaml
-  linker.rs      # Core logic for resolving target locations and symlinking skills
+  linker.rs      # Path validation, target resolution, symlink checks, and linking
 ```
+
+There is no checked-in `skills.yaml` manifest by default. Developers can create one in a target project with `skm init`.
+
+Generated build artifacts live under `target/` and scratch work lives under `scratch/`; neither is part of the source ownership model.

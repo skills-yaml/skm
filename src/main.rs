@@ -90,6 +90,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Install { global } => {
             let config = load_config(&config_path)?;
+            validate_config(&config)?;
             ensure_registries_cached(&config)?;
 
             println!("Installing skills for agents: {:?}", config.agents);
@@ -105,6 +106,8 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             global,
         } => {
             let mut config = load_config(&config_path)?;
+            validate_config(&config)?;
+            linker::validate_skill_name(&skill_name)?;
 
             // Check if skill already exists
             if config.skills.iter().any(|s| s.name == skill_name) {
@@ -127,28 +130,34 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::List { global } => {
             let config = load_config(&config_path)?;
+            validate_config(&config)?;
             println!("Listing skills for project '{}':", config.name);
 
             for skill in &config.skills {
                 let mut status = "OK".to_string();
                 let mut linked_agents = Vec::new();
+                let mut bad_links = Vec::new();
+                let source_dir = linker::resolve_skill_source_dir(skill, &current_dir)?;
+                let source_exists = source_dir.exists();
 
                 for agent in &config.agents {
-                    let target_base = if global {
-                        linker::get_global_agent_skills_dir(agent)
-                    } else {
-                        linker::get_project_agent_skills_dir(agent, &current_dir)
-                    };
-
-                    if let Some(base) = target_base {
-                        let path = base.join(&skill.name);
-                        if path.exists() || path.is_symlink() {
-                            linked_agents.push(agent.as_str());
-                        }
+                    let base = linker::get_agent_skills_dir(agent, &current_dir, global)?;
+                    let path = linker::get_skill_target_path(&base, &skill.name)?;
+                    if path.is_symlink()
+                        && source_exists
+                        && linker::symlink_points_to(&path, &source_dir)?
+                    {
+                        linked_agents.push(agent.as_str());
+                    } else if path.exists() || path.is_symlink() {
+                        bad_links.push(agent.as_str());
                     }
                 }
 
-                if linked_agents.is_empty() {
+                if !source_exists {
+                    status = "SOURCE MISSING".to_string();
+                } else if !bad_links.is_empty() {
+                    status = format!("BAD LINK ({:?})", bad_links);
+                } else if linked_agents.is_empty() {
                     status = "MISSING/NOT LINKED".to_string();
                 } else if linked_agents.len() < config.agents.len() {
                     status = format!("PARTIALLY LINKED ({:?})", linked_agents);
@@ -159,20 +168,12 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Check { global } => {
             let config = load_config(&config_path)?;
+            validate_config(&config)?;
             let mut all_ok = true;
 
             for skill in &config.skills {
                 // Verify source path
-                let source_dir = if let Some(ref local_path) = skill.path {
-                    current_dir.join(local_path)
-                } else {
-                    let registry_name = skill.source.as_deref().unwrap_or("default");
-                    let reg_path =
-                        linker::resolve_registry_path(registry_name).ok_or_else(|| {
-                            format!("Could not resolve path for registry: {}", registry_name)
-                        })?;
-                    reg_path.join(&skill.name)
-                };
+                let source_dir = linker::resolve_skill_source_dir(skill, &current_dir)?;
 
                 if !source_dir.exists() {
                     println!(
@@ -183,23 +184,31 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                     continue;
                 }
 
+                if !source_dir.join("SKILL.md").exists() {
+                    println!("[FAIL] Skill '{}' missing SKILL.md", skill.name);
+                    all_ok = false;
+                    continue;
+                }
+
                 // Verify links
                 for agent in &config.agents {
-                    let target_base = if global {
-                        linker::get_global_agent_skills_dir(agent)
-                    } else {
-                        linker::get_project_agent_skills_dir(agent, &current_dir)
-                    };
+                    let base = linker::get_agent_skills_dir(agent, &current_dir, global)?;
+                    let path = linker::get_skill_target_path(&base, &skill.name)?;
+                    if !path.is_symlink() {
+                        println!(
+                            "[FAIL] Missing symlink for agent '{}' to skill '{}'",
+                            agent, skill.name
+                        );
+                        all_ok = false;
+                        continue;
+                    }
 
-                    if let Some(base) = target_base {
-                        let path = base.join(&skill.name);
-                        if !path.exists() && !path.is_symlink() {
-                            println!(
-                                "[FAIL] Missing link for agent '{}' to skill '{}'",
-                                agent, skill.name
-                            );
-                            all_ok = false;
-                        }
+                    if !linker::symlink_points_to(&path, &source_dir)? {
+                        println!(
+                            "[FAIL] Link for agent '{}' to skill '{}' points at the wrong target",
+                            agent, skill.name
+                        );
+                        all_ok = false;
                     }
                 }
             }
@@ -220,6 +229,16 @@ fn load_config(path: &Path) -> Result<SkillsConfig, Box<dyn std::error::Error>> 
         return Err("skills.yaml file not found. Run 'skm init' to create one.".into());
     }
     SkillsConfig::load_from_file(path)
+}
+
+fn validate_config(config: &SkillsConfig) -> Result<(), Box<dyn std::error::Error>> {
+    linker::validate_agents(&config.agents)?;
+
+    for skill in &config.skills {
+        linker::validate_skill_name(&skill.name)?;
+    }
+
+    Ok(())
 }
 
 fn ensure_registries_cached(config: &SkillsConfig) -> Result<(), Box<dyn std::error::Error>> {

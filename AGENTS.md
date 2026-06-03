@@ -1,4 +1,4 @@
-# Project Guidelines (skills-yaml / skm)
+# Project Guidelines (skm)
 
 These instructions apply to AI coding agents and contributors working in this repository.
 
@@ -18,8 +18,9 @@ Ship focused, safe, and test-backed CLI improvements in Rust that follow clean c
 
 - `src/main.rs`: Command line parsing, subcommands mapping, execution orchestration.
 - `src/config.rs`: YAML serialization, deserialization, default settings schema for `skills.yaml`.
-- `src/linker.rs`: Path resolving and symlinking logic to target agent directories.
-- `tests/`: Integration tests.
+- `src/linker.rs`: Path validation, registry resolving, symlink validation, and linking logic.
+- `docs/`: Product, process, CI, and project structure documentation.
+- `Taskfile.yml`: Local validation, formatting, testing, and build entrypoints.
 
 Respect boundaries. Keep modules modular and avoid mixing concerns.
 
@@ -30,6 +31,7 @@ Use Taskfile entrypoints only.
 - Root validation: `task check` (enforces formatting, warnings-free Clippy build, and compilation check)
 - Root tests: `task test`
 - Build command: `task build`
+- Auto-format and apply available clippy fixes: `task fix`
 
 ## Workflow
 
@@ -45,12 +47,15 @@ Use Taskfile entrypoints only.
 - Rust code must format correctly under `cargo fmt`.
 - Clippy checks must pass without warnings (`-D warnings` is enforced).
 - Command line arguments must be documented clearly in `Clap` derive parameters to auto-generate help.
+- Skill names and registry names must be validated before filesystem operations.
+- Linking must not overwrite real files or directories; replacing existing symlinks is allowed.
+- `skm check` must verify symlinks point to the expected skill source.
 - Do not check in active personal configurations/links.
 
 ## Testing Rules
 
-- Add or update tests for every logic change (e.g. config parsing validation, linking logic).
-- Mock directories or use temporary directories (`std::env::temp_dir()`) to test file system and linking actions to prevent breaking real user directories.
+- Add or update tests for every logic change (e.g. config parsing validation, path validation, linking logic).
+- Use temporary directories (`std::env::temp_dir()`) to test file system and linking actions to prevent touching real user directories.
 - Keep tests deterministic.
 
 ## Must / Must Not

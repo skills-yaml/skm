@@ -4,7 +4,7 @@
 
 The project follows a structured development workflow:
 
-1. **Feature Specification**: Large feature additions must have specifications in `docs/specs/feature`
+1. **Feature Specification**: Large feature additions must have specifications in `docs/specs/feature`.
 2. **Branch Strategy**:
    - `main`: Stable, production-ready code.
    - Feature branches: `feat/<name>` or `feature/<name>`
@@ -18,7 +18,7 @@ The project follows a structured development workflow:
 The CI/CD pipeline triggers on pull requests and merges to `main`. It follows the standard Rust validation flow:
 
 1. **Check Phase**:
-   - Run `task check` to verify formatting (`cargo fmt`), clippy warnings/errors (`cargo clippy`), and compiler checks (`cargo check`).
+   - Run `task check` to verify formatting (`cargo fmt -- --check`), clippy warnings/errors (`cargo clippy -- -D warnings`), and compiler checks (`cargo check`).
 
 2. **Test & Build Phase**:
    - Run `task test` to execute all cargo tests.
@@ -29,6 +29,7 @@ The CI/CD pipeline triggers on pull requests and merges to `main`. It follows th
 - **Formatting**: Consistent formatting enforced by `cargo fmt`.
 - **Linting**: No warnings or errors allowed by `cargo clippy` (enforced via `-D warnings` in checking).
 - **Testing**: Unit and integration tests required under `tests/` or inline modules for logic changes.
+- **Filesystem safety**: Path validation and non-destructive symlink behavior must be covered by tests when changed.
 
 ## Commits
 

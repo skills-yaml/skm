@@ -28,7 +28,7 @@ This document defines the **user experience, output formatting, and terminal UI 
 
 ## 3. Colors and formatting
 
-* **No raw ANSI escape codes**: Avoid hardcoding ANSI escape sequences. Use a styling library (like `anstyle`, already compiled in Cargo dependencies) if coloring is needed.
+* **No raw ANSI escape codes**: Avoid hardcoding ANSI escape sequences. Add a styling dependency only when color or rich formatting is explicitly required.
 * **Colors for status**:
   * Green: Successful operations or `[SUCCESS]`.
   * Red: Warnings, failures, or `[FAIL]`.

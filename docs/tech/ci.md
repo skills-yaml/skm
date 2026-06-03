@@ -2,7 +2,7 @@
 
 ## Scope
 
-This document defines CI/CD pipeline rules for the `skills-yaml` project. These rules apply to any automated workflows (like GitHub Actions) that lint, format, check, test, and package the `skm` tool.
+This document defines CI/CD pipeline rules for the `skm` project. These rules apply to any automated workflows (like GitHub Actions) that lint, format, check, test, and package the `skm` tool.
 
 ## Pipeline Integration
 
@@ -11,6 +11,7 @@ CI workflows must align with our local task automation setup:
 1. **Invoke Taskfiles**: The CI pipeline must call tasks defined in `Taskfile.yml` rather than invoking tools (like rustfmt, clippy, cargo) directly.
 2. **Authoritative Check**: `task check` must be the entrypoint for formatting and static analysis checks. Any failure must block the build.
 3. **Deterministic Verification**: `task test` must run to execute unit and integration tests.
+4. **Release Build**: `task build` should run before publishing release artifacts.
 
 ## Recommended GitHub Actions Workflow
 
@@ -44,12 +45,15 @@ jobs:
 
       - name: Run tests
         run: task test
+
+      - name: Build release binary
+        run: task build
 ```
 
 ## Do
 
 * **Use Taskfiles**: CI workflow steps must use the `task` execution interface.
-* **Pin Actions**: All third-party actions in GitHub workflows must use immutable refs (e.g. `@v4`).
+* **Pin Actions**: Third-party actions should be pinned to stable major versions or immutable SHAs according to repository policy.
 * **Pin Toolchains**: The Rust compiler toolchain should be pinned (e.g. `stable`).
 
 ## Don't
