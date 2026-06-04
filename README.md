@@ -20,10 +20,10 @@ Install from this checkout:
 cargo install --path .
 ```
 
-After the repository has a public Git remote, users can install directly from it:
+Install from GitHub:
 
 ```sh
-cargo install --git <repository-url> skm
+cargo install --git https://github.com/skills-yaml/skm.git skm
 ```
 
 For local development without installing:
