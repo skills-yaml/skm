@@ -23,4 +23,4 @@ Provide a lightweight local client that simplifies skill onboarding for develope
 
 ## Platform assumptions
 
-The current implementation uses Unix symlinks and targets Unix-like agent configuration directories. Windows support is not currently implemented.
+The implementation uses directory symlinks. On Windows, creating symlinks may require Developer Mode or administrator privileges.

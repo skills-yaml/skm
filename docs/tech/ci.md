@@ -13,6 +13,15 @@ CI workflows must align with our local task automation setup:
 3. **Deterministic Verification**: `task test` must run to execute unit and integration tests.
 4. **Release Build**: `task build` should run before publishing release artifacts.
 
+## Release Artifacts
+
+The release workflow builds installable binaries from branch pushes:
+
+* `main` publishes production assets to the `prod-latest` GitHub Release.
+* `development` publishes prerelease assets to the `development-latest` GitHub Release.
+
+Each release includes Linux, macOS, and Windows packages plus SHA-256 checksum files. The installer scripts in `scripts/` download from these release channels.
+
 ## Recommended GitHub Actions Workflow
 
 ```yaml

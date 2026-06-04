@@ -1,7 +1,6 @@
 use crate::config::SkillSpec;
 use std::fs;
 use std::io;
-use std::os::unix::fs::symlink;
 use std::path::{Component, Path, PathBuf};
 
 pub fn get_global_agent_skills_dir(agent: &str) -> Option<PathBuf> {
@@ -169,7 +168,7 @@ pub fn link_skill(
             Err(e) => return Err(e.into()),
         }
 
-        symlink(&source_dir, &skill_target)?;
+        symlink_dir(&source_dir, &skill_target)?;
         println!("Linked {} to {:?}", skill.name, skill_target);
     }
 
@@ -215,6 +214,16 @@ fn validated_skill_path(name: &str) -> Result<PathBuf, Box<dyn std::error::Error
     }
 
     Ok(safe_path)
+}
+
+#[cfg(unix)]
+fn symlink_dir(source: &Path, target: &Path) -> io::Result<()> {
+    std::os::unix::fs::symlink(source, target)
+}
+
+#[cfg(windows)]
+fn symlink_dir(source: &Path, target: &Path) -> io::Result<()> {
+    std::os::windows::fs::symlink_dir(source, target)
 }
 
 #[cfg(test)]
@@ -277,7 +286,7 @@ mod tests {
         let agents = vec!["codex".to_string()];
         let target = project.join(".codex").join("skills").join("foo");
         fs::create_dir_all(target.parent().unwrap()).unwrap();
-        symlink(&other, &target).unwrap();
+        symlink_dir(&other, &target).unwrap();
 
         link_skill(&skill, &project, &agents, false).unwrap();
 

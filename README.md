@@ -4,7 +4,7 @@
 
 It installs skills by creating symlinks into supported agent skill directories, so a project can declare the skills it needs once and keep Claude, Codex, Cursor, Copilot, Grok, and Hermes in sync.
 
-[Install](#install) | [Quick Start](#quick-start) | [Commands](#commands) | [Configuration](#configuration)
+[Install](#install) | [Release Channels](#release-channels) | [Quick Start](#quick-start) | [Commands](#commands) | [Configuration](#configuration)
 
 ## Install
 
@@ -12,7 +12,33 @@ Prerequisites:
 
 - Rust toolchain with Cargo
 - Git, when using remote registries
-- A Unix-like environment with symlink support
+- Symlink support. On Windows, creating symlinks may require Developer Mode or administrator privileges.
+
+Install the latest production release on macOS or Linux:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/skills-yaml/skm/main/scripts/install.sh | sh
+```
+
+Install the latest development release on macOS or Linux:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/skills-yaml/skm/main/scripts/install.sh | sh -s -- development
+```
+
+Install the latest production release on Windows PowerShell:
+
+```powershell
+iwr https://raw.githubusercontent.com/skills-yaml/skm/main/scripts/install.ps1 -OutFile install.ps1
+.\install.ps1 -AddToPath
+```
+
+Install the latest development release on Windows PowerShell:
+
+```powershell
+iwr https://raw.githubusercontent.com/skills-yaml/skm/main/scripts/install.ps1 -OutFile install.ps1
+.\install.ps1 -Channel development -AddToPath
+```
 
 Install from this checkout:
 
@@ -20,17 +46,40 @@ Install from this checkout:
 cargo install --path .
 ```
 
-Install from GitHub:
-
-```sh
-cargo install --git https://github.com/skills-yaml/skm.git skm
-```
-
 For local development without installing:
 
 ```sh
 cargo run -- <command>
 ```
+
+## How Installation Works
+
+GitHub Actions builds release binaries for Linux, macOS, and Windows. Each build is packaged as a GitHub Release asset:
+
+```txt
+skm-linux-x86_64.tar.gz
+skm-macos-x86_64.tar.gz
+skm-macos-aarch64.tar.gz
+skm-windows-x86_64.zip
+```
+
+The installer script detects the operating system and CPU architecture, downloads the correct asset from GitHub Releases, extracts `skm`, and installs it into:
+
+```txt
+~/.local/bin/skm          # macOS/Linux default
+%USERPROFILE%\.local\bin # Windows default
+```
+
+Override the install directory with `SKM_INSTALL_DIR` on macOS/Linux or `-InstallDir` on Windows.
+
+## Release Channels
+
+The release workflow publishes two moving release channels:
+
+- `main` publishes production artifacts to the `prod-latest` GitHub Release.
+- `development` publishes prerelease artifacts to the `development-latest` GitHub Release.
+
+Both channels also upload the same packaged binaries as workflow artifacts for each run. Production installers use `prod-latest` by default; pass `development` to install from `development-latest`.
 
 ## Quick Start
 
