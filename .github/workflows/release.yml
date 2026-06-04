@@ -128,7 +128,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}
-          path: dist/*
+          path: |
+            dist/${{ matrix.asset }}
+            dist/${{ matrix.asset }}.sha256
           if-no-files-found: error
 
   release:
@@ -182,4 +184,4 @@ jobs:
             gh "${args[@]}"
           fi
 
-          gh release upload "$RELEASE_TAG" dist/* --clobber
+          gh release upload "$RELEASE_TAG" dist/*.tar.gz dist/*.zip dist/*.sha256 --clobber
