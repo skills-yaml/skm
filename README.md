@@ -81,6 +81,31 @@ The release workflow publishes two moving release channels:
 
 Both channels also upload the same packaged binaries as workflow artifacts for each run. Production installers use `prod-latest` by default; pass `development` to install from `development-latest`.
 
+## Updates
+
+Release builds embed the Git commit and release channel they were built from. `skm update` compares that commit with the current channel tag on GitHub.
+
+Check for a production update:
+
+```sh
+skm update --check
+```
+
+Install the latest production build:
+
+```sh
+skm update --yes
+```
+
+Check or install the development channel:
+
+```sh
+skm update --channel development --check
+skm update --channel development --yes
+```
+
+On macOS and Linux, `skm update` runs the shell installer directly. On Windows, it starts a separate PowerShell updater so the currently running `skm.exe` can exit before the binary is replaced.
+
 ## Quick Start
 
 Create a project manifest:
@@ -117,6 +142,7 @@ skm install [--global]
 skm add <skill-name> [--source <registry>] [--path <local-path>] [--global]
 skm list [--global]
 skm check [--global]
+skm update [--channel prod|development] [--check] [--yes]
 ```
 
 - `init`: creates a default `skills.yaml`.
@@ -124,6 +150,7 @@ skm check [--global]
 - `add`: adds one skill to `skills.yaml`, then links it.
 - `list`: reports current link status, including missing sources and bad links.
 - `check`: verifies source directories, `SKILL.md`, symlink existence, and symlink targets; intended for CI.
+- `update`: checks the selected release channel and installs the latest release artifact.
 
 ## Configuration
 

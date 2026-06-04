@@ -1,10 +1,13 @@
 mod config;
 mod linker;
+mod updater;
 
 use clap::{Parser, Subcommand};
 use config::{SkillSpec, SkillsConfig};
 use std::env;
+use std::io::{self, Write};
 use std::path::Path;
+use updater::UpdateChannel;
 
 #[derive(Parser)]
 #[command(name = "skm")]
@@ -53,6 +56,18 @@ enum Commands {
         /// Verify global links status instead of project-local
         #[arg(short, long)]
         global: bool,
+    },
+    /// Check for and install skm release updates
+    Update {
+        /// Release channel to use: prod or development
+        #[arg(long, default_value = "prod")]
+        channel: String,
+        /// Only check whether an update is available
+        #[arg(long)]
+        check: bool,
+        /// Install without prompting for confirmation
+        #[arg(short, long)]
+        yes: bool,
     },
 }
 
@@ -219,9 +234,42 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 return Err("Validation checks failed. Some skills or links are missing.".into());
             }
         }
+        Commands::Update {
+            channel,
+            check,
+            yes,
+        } => {
+            let channel = UpdateChannel::parse(&channel)?;
+            let update_available = updater::check_for_update(channel)?;
+
+            if check {
+                return Ok(());
+            }
+
+            if !update_available {
+                return Ok(());
+            }
+
+            if !yes && !confirm_update()? {
+                println!("Update cancelled.");
+                return Ok(());
+            }
+
+            updater::install_update(channel)?;
+        }
     }
 
     Ok(())
+}
+
+fn confirm_update() -> Result<bool, Box<dyn std::error::Error>> {
+    print!("Install this update now? [y/N] ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    Ok(matches!(input.trim(), "y" | "Y" | "yes" | "YES"))
 }
 
 fn load_config(path: &Path) -> Result<SkillsConfig, Box<dyn std::error::Error>> {

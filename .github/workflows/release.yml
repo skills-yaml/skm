@@ -100,6 +100,9 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Build
+        env:
+          SKM_BUILD_CHANNEL: ${{ needs.prepare.outputs.channel }}
+          SKM_BUILD_COMMIT: ${{ github.sha }}
         run: cargo build --locked --release --target ${{ matrix.target }}
 
       - name: Package Unix artifact
