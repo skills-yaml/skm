@@ -54,7 +54,7 @@ cargo run -- <command>
 
 ## How Installation Works
 
-GitHub Actions builds release binaries for Linux, macOS, and Windows. Each build is packaged as a GitHub Release asset:
+GitHub Actions builds release binaries for Linux, macOS, and Windows. The Linux release is built for musl so it does not require a specific host glibc version. Each build is packaged as a GitHub Release asset:
 
 ```txt
 skm-linux-x86_64.tar.gz

@@ -74,7 +74,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-musl
             binary: skm
             asset: skm-linux-x86_64.tar.gz
           - os: macos-15-intel
@@ -99,11 +99,16 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build
         env:
           SKM_BUILD_CHANNEL: ${{ needs.prepare.outputs.channel }}
           SKM_BUILD_COMMIT: ${{ github.sha }}
-        run: cargo build --locked --release --target ${{ matrix.target }}
+        run: task build TARGET=${{ matrix.target }}
 
       - name: Package Unix artifact
         if: runner.os != 'Windows'

@@ -22,4 +22,4 @@ tasks:
   build:
     desc: Build optimized release binary
     cmds:
-      - cargo build --release
+      - cargo build --locked --release {{if .TARGET}}--target {{.TARGET}}{{end}}
