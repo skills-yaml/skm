@@ -19,11 +19,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize a default skills.yaml configuration in the current directory
+    /// Initialize a skills.yaml configuration interactively or with defaults
     Init {
         /// Optional name of the project environment (defaults to current folder name)
         #[arg(long)]
         name: Option<String>,
+        /// Run in interactive mode to select skills, agents, and configuration scope
+        #[arg(short, long)]
+        interactive: bool,
+        /// Configure for global user directory instead of project-local
+        #[arg(short, long)]
+        global: bool,
     },
     /// Install and symlink all skills specified in skills.yaml
     Install {
@@ -80,28 +86,174 @@ fn main() {
     }
 }
 
+/// Available agents that can be configured
+const AVAILABLE_AGENTS: &[&str] = &[
+    "claude",
+    "codex", 
+    "cursor",
+    "copilot",
+    "grok",
+    "hermes",
+];
+
+/// Available skills in the default registry (for interactive selection)
+const AVAILABLE_SKILLS: &[&str] = &[
+    "software-development/spec",
+    "system/devops-manager",
+];
+
+/// Runs interactive initialization, prompting user for configuration choices
+fn run_interactive_init(
+    name: Option<String>,
+    _global: bool,
+) -> Result<SkillsConfig, Box<dyn std::error::Error>> {
+    let mut stdout = io::stdout();
+    let stdin = io::stdin();
+    
+    // Project name
+    let project_name = if let Some(n) = name {
+        n
+    } else {
+        let current_dir_name = std::env::current_dir()?
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("my-project")
+            .to_string();
+        
+        print!("Project name [{}]: ", current_dir_name);
+        stdout.flush()?;
+        
+        let mut input = String::new();
+        stdin.read_line(&mut input)?;
+        let input = input.trim();
+        
+        if input.is_empty() {
+            current_dir_name
+        } else {
+            input.to_string()
+        }
+    };
+    
+    // Select agents
+    println!("\nAvailable agents:");
+    for (i, agent) in AVAILABLE_AGENTS.iter().enumerate() {
+        println!("  [{}] {}", i + 1, agent);
+    }
+    
+    print!("\nSelect agents (comma-separated numbers, e.g., 1,2,3) [all]: ");
+    stdout.flush()?;
+    
+    let mut input = String::new();
+    stdin.read_line(&mut input)?;
+    let input = input.trim();
+    
+    let selected_agents: Vec<String> = if input.is_empty() {
+        AVAILABLE_AGENTS.iter().map(|&s| s.to_string()).collect()
+    } else {
+        input
+            .split(',')
+            .filter_map(|s| s.trim().parse::<usize>().ok())
+            .filter(|&i| i > 0 && i <= AVAILABLE_AGENTS.len())
+            .map(|i| AVAILABLE_AGENTS[i - 1].to_string())
+            .collect()
+    };
+    
+    // Select skills
+    println!("\nAvailable skills:");
+    for (i, skill) in AVAILABLE_SKILLS.iter().enumerate() {
+        println!("  [{}] {}", i + 1, skill);
+    }
+    
+    print!("\nSelect skills (comma-separated numbers, e.g., 1,2) [none]: ");
+    stdout.flush()?;
+    
+    let mut input = String::new();
+    stdin.read_line(&mut input)?;
+    let input = input.trim();
+    
+    let selected_skills: Vec<SkillSpec> = if input.is_empty() {
+        // Default: select first skill if available
+        if !AVAILABLE_SKILLS.is_empty() {
+            vec![SkillSpec {
+                name: AVAILABLE_SKILLS[0].to_string(),
+                version: Some("latest".to_string()),
+                source: Some("default".to_string()),
+                path: None,
+            }]
+        } else {
+            vec![]
+        }
+    } else {
+        input
+            .split(',')
+            .filter_map(|s| s.trim().parse::<usize>().ok())
+            .filter(|&i| i > 0 && i <= AVAILABLE_SKILLS.len())
+            .map(|i| SkillSpec {
+                name: AVAILABLE_SKILLS[i - 1].to_string(),
+                version: Some("latest".to_string()),
+                source: Some("default".to_string()),
+                path: None,
+            })
+            .collect()
+    };
+    
+    // Use default registry
+    let mut registries = std::collections::HashMap::new();
+    registries.insert(
+        "default".to_string(),
+        "git@github.com:skills-yaml/skills-registry.git".to_string(),
+    );
+    
+    Ok(SkillsConfig {
+        name: project_name,
+        version: Some("0.1.0".to_string()),
+        registries: Some(registries),
+        agents: selected_agents,
+        skills: selected_skills,
+    })
+}
+
 fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
     let current_dir = env::current_dir()?;
     let config_path = current_dir.join("skills.yaml");
 
     match command {
-        Commands::Init { name } => {
+        Commands::Init { name, interactive, global } => {
             if config_path.exists() {
                 return Err("skills.yaml already exists in the current directory".into());
             }
-            let project_name = name.unwrap_or_else(|| {
-                current_dir
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("my-project")
-                    .to_string()
-            });
-            let default_config = SkillsConfig::default_init(&project_name);
-            default_config.save_to_file(&config_path)?;
-            println!(
-                "Initialized default skills.yaml for project '{}'",
-                project_name
-            );
+            
+            let config = if interactive {
+                run_interactive_init(name, global)?
+            } else {
+                let project_name = name.unwrap_or_else(|| {
+                    current_dir
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("my-project")
+                        .to_string()
+                });
+                SkillsConfig::default_init(&project_name)
+            };
+            
+            config.save_to_file(&config_path)?;
+            
+            if global {
+                println!("Initialized skills.yaml for GLOBAL user configuration");
+            } else {
+                let project_name = config.name;
+                println!("Initialized skills.yaml for project '{}'", project_name);
+            }
+            
+            // Give helpful next steps
+            println!("\nNext steps:");
+            if global {
+                println!("  Run: skm install --global");
+            } else {
+                println!("  Run: skm install");
+            }
+            println!("  Run: skm list");
+            println!("  Run: skm check");
         }
         Commands::Install { global } => {
             let config = load_config(&config_path)?;
