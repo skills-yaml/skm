@@ -1,10 +1,12 @@
 mod config;
+mod config_manager;
 mod linker;
 mod updater;
 mod wizard;
 
 use clap::{Parser, Subcommand};
 use config::{SkillSpec, SkillsConfig};
+use config_manager::first_time_setup;
 use std::env;
 use std::io::{self, Write};
 use std::path::Path;
@@ -79,10 +81,37 @@ enum Commands {
         #[arg(short, long)]
         yes: bool,
     },
+    /// Update local cache of skill registries
+    CacheUpdate {
+        /// Specific registry to update (updates all if not specified)
+        #[arg(long)]
+        registry: Option<String>,
+    },
+    /// Run first-time setup (initialize base config and cache)
+    Setup,
+    /// Initialize global base configuration with default registry
+    InitConfig,
 }
 
 fn main() {
     let cli = Cli::parse();
+
+    // Check if this is first time and user is running a command that needs setup
+    if config_manager::is_first_time() {
+        match &cli.command {
+            Commands::Setup => {},
+            Commands::InitConfig => {},
+            Commands::CacheUpdate { .. } => {},
+            Commands::Update { .. } => {},
+            _ => {
+                println!("First time setup required. Running automatic setup...");
+                if let Err(e) = config_manager::first_time_setup() {
+                    eprintln!("Warning: First-time setup failed: {}", e);
+                    eprintln!("You may need to run 'skm setup' manually.");
+                }
+            }
+        }
+    }
 
     if let Err(e) = run(cli.command) {
         eprintln!("Error: {}", e);
@@ -294,6 +323,17 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
 
             updater::install_update(channel)?;
         }
+        Commands::CacheUpdate { registry } => {
+            config_manager::update_cache(registry.as_deref())?;
+        }
+        Commands::Setup => {
+            first_time_setup()?;
+        }
+        Commands::InitConfig => {
+            config_manager::init_base_config()?;
+            println!("Base configuration initialized.");
+            println!("You can now use 'skm cache-update' to populate the skill registry cache.");
+        }
     }
 
     Ok(())
@@ -327,29 +367,40 @@ fn validate_config(config: &SkillsConfig) -> Result<(), Box<dyn std::error::Erro
 }
 
 fn ensure_registries_cached(config: &SkillsConfig) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(ref registries) = config.registries {
-        for (name, url) in registries {
-            let path = linker::resolve_registry_path(name)
-                .ok_or_else(|| format!("Could not resolve path for registry: {}", name))?;
+    // First, try to use the base config registries
+    let base_config = config_manager::ensure_base_config()?;
+    
+    // Merge registries from config with base config
+    let mut all_registries = base_config.registries.clone();
+    
+    // Override with project-specific registries
+    if let Some(ref project_registries) = config.registries {
+        for (name, url) in project_registries {
+            all_registries.insert(name.clone(), url.clone());
+        }
+    }
+    
+    for (name, url) in &all_registries {
+        let path = linker::resolve_registry_path(name)
+            .ok_or_else(|| format!("Could not resolve path for registry: {}", name))?;
 
-            if path.exists() {
-                continue;
-            }
+        if path.exists() {
+            continue;
+        }
 
-            // Get parent directory to clone into
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
+        // Get parent directory to clone into
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
 
-            println!("Cloning registry '{}' from '{}'...", name, url);
-            let output = std::process::Command::new("git")
-                .args(["clone", url, path.to_str().unwrap()])
-                .output()?;
+        println!("Cloning registry '{}' from '{}'...", name, url);
+        let output = std::process::Command::new("git")
+            .args(["clone", url, path.to_str().unwrap()])
+            .output()?;
 
-            if !output.status.success() {
-                let err = String::from_utf8_lossy(&output.stderr);
-                return Err(format!("Failed to clone registry '{}': {}", name, err).into());
-            }
+        if !output.status.success() {
+            let err = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("Failed to clone registry '{}': {}", name, err).into());
         }
     }
     Ok(())
