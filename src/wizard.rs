@@ -1,26 +1,14 @@
-use std::io::{self, Write};
-use std::collections::HashMap;
-use std::path::Path;
-use std::fs;
 use crate::config::{SkillSpec, SkillsConfig};
+use std::collections::HashMap;
+use std::fs;
+use std::io::{self, Write};
+use std::path::Path;
 
 /// All known agent types
-const KNOWN_AGENTS: &[&str] = &[
-    "claude",
-    "codex", 
-    "cursor",
-    "copilot",
-    "grok",
-    "hermes",
-];
+const KNOWN_AGENTS: &[&str] = &["claude", "codex", "cursor", "copilot", "grok", "hermes"];
 
 /// Coding-specific agents (subset of known agents)
-const CODING_AGENTS_LIST: &[&str] = &[
-    "codex",
-    "cursor",
-    "copilot",
-    "claude",
-];
+const CODING_AGENTS_LIST: &[&str] = &["codex", "cursor", "copilot", "claude"];
 
 /// Returns a list of agents that are actually available in the user's environment
 pub fn detect_available_agents() -> Vec<String> {
@@ -37,7 +25,7 @@ fn is_agent_available(agent: &str) -> bool {
         Some(h) => h,
         None => return false,
     };
-    
+
     let agent_dir = match agent {
         "claude" => home.join(".claude"),
         "codex" => home.join(".codex"),
@@ -53,7 +41,7 @@ fn is_agent_available(agent: &str) -> bool {
         "hermes" => home.join(".hermes"),
         _ => return false,
     };
-    
+
     agent_dir.exists()
 }
 
@@ -69,16 +57,16 @@ pub fn detect_available_coding_agents() -> Vec<String> {
 /// Discover skills from a registry directory
 pub fn discover_skills_from_registry(registry_path: &Path) -> Vec<String> {
     let mut skills = Vec::new();
-    
+
     if !registry_path.exists() {
         return skills;
     }
-    
+
     // Read all entries in the registry
     if let Ok(entries) = fs::read_dir(registry_path) {
         for entry in entries.flatten() {
             let path = entry.path();
-            
+
             // Check if it's a directory (skill)
             if path.is_dir() {
                 // Validate it's a valid skill (has SKILL.md)
@@ -87,13 +75,16 @@ pub fn discover_skills_from_registry(registry_path: &Path) -> Vec<String> {
                         skills.push(skill_name.to_string());
                     }
                 }
-                
+
                 // Also check subdirectories (for categorized skills)
                 if let Ok(sub_entries) = fs::read_dir(&path) {
                     for sub_entry in sub_entries.flatten() {
                         let sub_path = sub_entry.path();
                         if sub_path.is_dir() && sub_path.join("SKILL.md").exists() {
-                            if let (Some(parent), Some(child)) = (path.file_name().and_then(|s| s.to_str()), sub_path.file_name().and_then(|s| s.to_str())) {
+                            if let (Some(parent), Some(child)) = (
+                                path.file_name().and_then(|s| s.to_str()),
+                                sub_path.file_name().and_then(|s| s.to_str()),
+                            ) {
                                 skills.push(format!("{}/{}", parent, child));
                             }
                         }
@@ -102,7 +93,7 @@ pub fn discover_skills_from_registry(registry_path: &Path) -> Vec<String> {
             }
         }
     }
-    
+
     skills.sort();
     skills
 }
@@ -110,33 +101,31 @@ pub fn discover_skills_from_registry(registry_path: &Path) -> Vec<String> {
 /// Discover skills from all configured registries
 pub fn discover_skills(registries: &HashMap<String, String>) -> Vec<String> {
     let mut all_skills = Vec::new();
-    
-    for (name, _) in registries {
+
+    for name in registries.keys() {
         if let Some(registry_path) = crate::linker::resolve_registry_path(name) {
             let skills = discover_skills_from_registry(&registry_path);
             all_skills.extend(skills);
         }
     }
-    
+
     all_skills
 }
 
 /// Organize skills into categories based on their names
 pub fn organize_skills_by_category(skills: Vec<String>) -> Vec<(String, Vec<String>)> {
     let mut categories: HashMap<String, Vec<String>> = HashMap::new();
-    
+
     for skill in skills {
         let category = if let Some(pos) = skill.find('/') {
             skill[..pos].to_string()
         } else {
             "Uncategorized".to_string()
         };
-        
-        categories.entry(category)
-            .or_insert_with(Vec::new)
-            .push(skill);
+
+        categories.entry(category).or_default().push(skill);
     }
-    
+
     let mut result: Vec<(String, Vec<String>)> = categories.into_iter().collect();
     result.sort_by(|a, b| a.0.cmp(&b.0));
     result
@@ -173,7 +162,7 @@ pub fn multi_select_menu(
     let stdin = io::stdin();
 
     println!("\n{}== {} =={}", "=".repeat(20), title, "=".repeat(20));
-    
+
     // Display all items
     for item in items.iter_mut() {
         if default_select_all {
@@ -190,7 +179,7 @@ pub fn multi_select_menu(
     println!("  [t] Toggle selection");
     println!("  [1-9] Toggle specific item");
     println!("  [d] Done");
-    
+
     if allow_none {
         println!("  [q] Continue with no selection");
     }
@@ -269,7 +258,7 @@ fn display_selection_state(items: &[SelectableItem]) {
         .filter(|i| i.selected)
         .map(|i| i.name.as_str())
         .collect();
-    
+
     if selected.is_empty() {
         println!("  (none)");
     } else {
@@ -327,21 +316,15 @@ pub fn get_project_name(default_name: &str) -> io::Result<String> {
 /// Get agent selection from user (uses dynamically detected agents)
 pub fn select_agents() -> io::Result<Vec<String>> {
     let available_agents = detect_available_agents();
-    
+
     if available_agents.is_empty() {
         return Ok(Vec::new());
     }
-    
+
     let mut agents: Vec<SelectableItem> = available_agents
         .iter()
         .enumerate()
-        .map(|(i, name)| {
-            SelectableItem::with_description(
-                i + 1,
-                name,
-                get_agent_description(name)
-            )
-        })
+        .map(|(i, name)| SelectableItem::with_description(i + 1, name, get_agent_description(name)))
         .collect();
 
     let selected_indices = multi_select_menu(
@@ -360,27 +343,23 @@ pub fn select_agents() -> io::Result<Vec<String>> {
 /// Get coding agent selection from user (uses dynamically detected coding agents)
 pub fn select_coding_agents() -> io::Result<Vec<String>> {
     let available_coding_agents = detect_available_coding_agents();
-    
+
     if available_coding_agents.is_empty() {
         return Ok(Vec::new());
     }
-    
+
     let mut agents: Vec<SelectableItem> = available_coding_agents
         .iter()
         .enumerate()
         .map(|(i, name)| {
-            SelectableItem::with_description(
-                i + 1,
-                name,
-                get_coding_agent_description(name)
-            )
+            SelectableItem::with_description(i + 1, name, get_coding_agent_description(name))
         })
         .collect();
 
     let selected_indices = multi_select_menu(
         "Select Coding Agents",
         &mut agents,
-        true, // Allow none
+        true,  // Allow none
         false, // Default: don't select all
     )?;
 
@@ -395,16 +374,16 @@ pub fn select_skills_enhanced(registries: &HashMap<String, String>) -> io::Resul
     let stdin = io::stdin();
 
     println!("\n{}== Select Skills =={}", "=".repeat(20), "=".repeat(20));
-    
+
     // Discover skills from registries
     let discovered_skills = discover_skills(registries);
     let categories = organize_skills_by_category(discovered_skills);
-    
+
     if categories.is_empty() {
         println!("No skills found in registries. You may need to run 'skm install' first to cache registries.");
         return Ok(Vec::new());
     }
-    
+
     // Show categories
     for (i, (category, skills)) in categories.iter().enumerate() {
         println!("\n[{}] {}", i + 1, category);
@@ -453,7 +432,10 @@ pub fn select_skills_enhanced(registries: &HashMap<String, String>) -> io::Resul
                     path: None,
                 })
                 .collect();
-            println!("All skills selected. Current count: {}", selected_skills.len());
+            println!(
+                "All skills selected. Current count: {}",
+                selected_skills.len()
+            );
             continue;
         }
 
@@ -478,7 +460,11 @@ pub fn select_skills_enhanced(registries: &HashMap<String, String>) -> io::Resul
                             });
                         }
                     }
-                    println!("Added {} skills from category. Total: {}", category_skills.len(), selected_skills.len());
+                    println!(
+                        "Added {} skills from category. Total: {}",
+                        category_skills.len(),
+                        selected_skills.len()
+                    );
                     continue;
                 }
             }
@@ -506,7 +492,9 @@ pub fn select_skills_enhanced(registries: &HashMap<String, String>) -> io::Resul
             }
         }
 
-        println!("Invalid input. Use 'c <num>' for category, 's <num>' for skill, or see options above.");
+        println!(
+            "Invalid input. Use 'c <num>' for category, 's <num>' for skill, or see options above."
+        );
     }
 
     Ok(selected_skills)
@@ -552,11 +540,16 @@ fn get_skill_description(name: &str) -> &'static str {
 }
 
 /// Main interactive wizard for init
+#[allow(clippy::only_used_in_recursion)]
 pub fn run_wizard(
     name: Option<String>,
     global: bool,
 ) -> Result<SkillsConfig, Box<dyn std::error::Error>> {
-    println!("\n{}== SKM Configuration Wizard =={}", "=".repeat(20), "=".repeat(20));
+    println!(
+        "\n{}== SKM Configuration Wizard =={}",
+        "=".repeat(20),
+        "=".repeat(20)
+    );
     println!("This wizard will help you set up your skills configuration.");
 
     // Step 1: Project name
@@ -565,13 +558,13 @@ pub fn run_wizard(
         .and_then(|s| s.to_str())
         .unwrap_or("my-project")
         .to_string();
-    
+
     let project_name = if let Some(ref n) = name {
         n.clone()
     } else {
         get_project_name(&current_dir_name)?
     };
-    
+
     println!("\nProject name: {}", project_name);
 
     // Step 2: Select agents
@@ -587,7 +580,7 @@ pub fn run_wizard(
 
     // Step 4: Select skills
     println!("\n--- Step 3: Select Skills ---");
-    
+
     // Create default registries for skill discovery
     let mut default_registries = HashMap::new();
     default_registries.insert(
@@ -595,12 +588,15 @@ pub fn run_wizard(
         "git@github.com:skills-yaml/skills-registry.git".to_string(),
     );
     let skills = select_skills_enhanced(&default_registries)?;
-    println!("Selected skills: {:?}", skills.iter().map(|s| &s.name).collect::<Vec<_>>());
+    println!(
+        "Selected skills: {:?}",
+        skills.iter().map(|s| &s.name).collect::<Vec<_>>()
+    );
 
     // Step 5: Configure registries
     println!("\n--- Step 4: Configure Registries ---");
     let use_default_registry = confirm_prompt("Use default skills registry?", true)?;
-    
+
     let mut registries = HashMap::new();
     if use_default_registry {
         registries.insert(
@@ -620,16 +616,23 @@ pub fn run_wizard(
         }
     }
 
-    println!("\n{}Configuration Summary:{}", "=".repeat(20), "=".repeat(20));
+    println!(
+        "\n{}Configuration Summary:{}",
+        "=".repeat(20),
+        "=".repeat(20)
+    );
     println!("  Project name: {}", project_name);
     println!("  Version: {}", version);
     println!("  Agents: {:?}", all_agents);
     println!("  Coding Agents: {:?}", coding_agents);
-    println!("  Skills: {:?}", skills.iter().map(|s| &s.name).collect::<Vec<_>>());
+    println!(
+        "  Skills: {:?}",
+        skills.iter().map(|s| &s.name).collect::<Vec<_>>()
+    );
     println!("  Registries: {:?}", registries);
 
     let confirmed = confirm_prompt("\nConfirm configuration?", true)?;
-    
+
     if !confirmed {
         println!("Configuration cancelled. Starting over...");
         return run_wizard(name.clone(), global);
@@ -658,7 +661,7 @@ pub fn run_streamlined_wizard(
         .and_then(|s| s.to_str())
         .unwrap_or("my-project")
         .to_string();
-    
+
     let project_name = if let Some(n) = name {
         n
     } else {
@@ -680,10 +683,10 @@ pub fn run_streamlined_wizard(
     for (i, agent) in available_agents.iter().enumerate() {
         println!("  [{}] {} - {}", i + 1, agent, get_agent_description(agent));
     }
-    
+
     print!("\nSelect agents (comma-separated numbers, or 'a' for all) [all]: ");
     io::stdout().flush()?;
-    
+
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
     let input = input.trim().to_lowercase();
@@ -705,18 +708,26 @@ pub fn run_streamlined_wizard(
     let available_coding_agents = detect_available_coding_agents();
     println!("\nCoding Agents (specialized for development):");
     for (i, agent) in available_coding_agents.iter().enumerate() {
-        println!("  [{}] {} - {}", i + 1, agent, get_coding_agent_description(agent));
+        println!(
+            "  [{}] {} - {}",
+            i + 1,
+            agent,
+            get_coding_agent_description(agent)
+        );
     }
-    
+
     print!("\nSelect coding agents (comma-separated numbers, or 'a' for all) [none]: ");
     io::stdout().flush()?;
-    
+
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
     let input = input.trim().to_lowercase();
 
     let coding_agents: Vec<String> = if input == "a" {
-        available_coding_agents.iter().map(|s| s.to_string()).collect()
+        available_coding_agents
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
     } else if input.is_empty() {
         Vec::new()
     } else {
@@ -737,15 +748,15 @@ pub fn run_streamlined_wizard(
         "git@github.com:skills-yaml/skills-registry.git".to_string(),
     );
     let discovered_skills = discover_skills(&default_registries);
-    
+
     println!("\nAvailable Skills:");
     for (i, skill) in discovered_skills.iter().enumerate() {
         println!("  [{}] {} - {}", i + 1, skill, get_skill_description(skill));
     }
-    
+
     print!("\nSelect skills (comma-separated numbers, or 'a' for all) [none]: ");
     io::stdout().flush()?;
-    
+
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
     let input = input.trim().to_lowercase();
@@ -776,7 +787,10 @@ pub fn run_streamlined_wizard(
             .collect()
     };
 
-    println!("Selected skills: {:?}", selected_skills.iter().map(|s| &s.name).collect::<Vec<_>>());
+    println!(
+        "Selected skills: {:?}",
+        selected_skills.iter().map(|s| &s.name).collect::<Vec<_>>()
+    );
 
     // Combine agents
     let mut all_agents = selected_agents.clone();

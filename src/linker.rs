@@ -71,16 +71,16 @@ pub fn resolve_skill_source_dir(
         let registry_name = skill.source.as_deref().unwrap_or("default");
         let reg_path = resolve_registry_path(registry_name)
             .ok_or_else(|| format!("Could not resolve path for registry: {}", registry_name))?;
-        
+
         // Resolve version path
         let version_path = resolve_version_path(skill)?;
-        
+
         Ok(reg_path.join(skill_path).join(version_path))
     }
 }
 
 /// Resolves the version component of a skill path.
-/// 
+///
 /// Version resolution order:
 /// 1. If version is "latest" → use "latest" (follows symlink)
 /// 2. If version is "default" → use "default" (follows symlink)
@@ -88,7 +88,7 @@ pub fn resolve_skill_source_dir(
 /// 4. If version is None → use "latest"
 pub fn resolve_version_path(skill: &SkillSpec) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let version = skill.version.as_deref().unwrap_or("latest");
-    
+
     // Normalize version to path component
     let version_path = if version == "latest" || version == "default" {
         // Use as-is, will follow symlink
@@ -101,12 +101,12 @@ pub fn resolve_version_path(skill: &SkillSpec) -> Result<PathBuf, Box<dyn std::e
             PathBuf::from(format!("v{}", version))
         }
     };
-    
+
     // Validate version path is safe
     if !is_safe_version_path(&version_path) {
         return Err(format!("Invalid version path: {}", version_path.display()).into());
     }
-    
+
     Ok(version_path)
 }
 

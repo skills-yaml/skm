@@ -99,10 +99,10 @@ fn main() {
     // Check if this is first time and user is running a command that needs setup
     if config_manager::is_first_time() {
         match &cli.command {
-            Commands::Setup => {},
-            Commands::InitConfig => {},
-            Commands::CacheUpdate { .. } => {},
-            Commands::Update { .. } => {},
+            Commands::Setup => {}
+            Commands::InitConfig => {}
+            Commands::CacheUpdate { .. } => {}
+            Commands::Update { .. } => {}
             _ => {
                 println!("First time setup required. Running automatic setup...");
                 if let Err(e) = config_manager::first_time_setup() {
@@ -119,18 +119,21 @@ fn main() {
     }
 }
 
-
-
 fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
     let current_dir = env::current_dir()?;
     let config_path = current_dir.join("skills.yaml");
 
     match command {
-        Commands::Init { name, interactive, advanced, global } => {
+        Commands::Init {
+            name,
+            interactive,
+            advanced,
+            global,
+        } => {
             if config_path.exists() {
                 return Err("skills.yaml already exists in the current directory".into());
             }
-            
+
             let config = if interactive || advanced {
                 if advanced {
                     // Advanced wizard is the main run_wizard
@@ -149,16 +152,16 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 });
                 SkillsConfig::default_init(&project_name)
             };
-            
+
             config.save_to_file(&config_path)?;
-            
+
             if global {
                 println!("Initialized skills.yaml for GLOBAL user configuration");
             } else {
                 let project_name = config.name;
                 println!("Initialized skills.yaml for project '{}'", project_name);
             }
-            
+
             // Give helpful next steps
             println!("\nNext steps:");
             if global {
@@ -369,17 +372,17 @@ fn validate_config(config: &SkillsConfig) -> Result<(), Box<dyn std::error::Erro
 fn ensure_registries_cached(config: &SkillsConfig) -> Result<(), Box<dyn std::error::Error>> {
     // First, try to use the base config registries
     let base_config = config_manager::ensure_base_config()?;
-    
+
     // Merge registries from config with base config
     let mut all_registries = base_config.registries.clone();
-    
+
     // Override with project-specific registries
     if let Some(ref project_registries) = config.registries {
         for (name, url) in project_registries {
             all_registries.insert(name.clone(), url.clone());
         }
     }
-    
+
     for (name, url) in &all_registries {
         let path = linker::resolve_registry_path(name)
             .ok_or_else(|| format!("Could not resolve path for registry: {}", name))?;
