@@ -1,9 +1,11 @@
 use std::io::{self, Write};
 use std::collections::HashMap;
+use std::path::Path;
+use std::fs;
 use crate::config::{SkillSpec, SkillsConfig};
 
-/// Available agents categorized by type
-const AVAILABLE_AGENTS: &[&str] = &[
+/// All known agent types
+const KNOWN_AGENTS: &[&str] = &[
     "claude",
     "codex", 
     "cursor",
@@ -12,34 +14,133 @@ const AVAILABLE_AGENTS: &[&str] = &[
     "hermes",
 ];
 
-/// Coding-specific agents
-pub const CODING_AGENTS: &[&str] = &[
+/// Coding-specific agents (subset of known agents)
+const CODING_AGENTS_LIST: &[&str] = &[
     "codex",
     "cursor",
     "copilot",
     "claude",
 ];
 
-/// Available skills in the default registry
-pub const AVAILABLE_SKILLS: &[&str] = &[
-    "software-development/spec",
-    "software-development/symphony-spec-writing",
-    "system/devops-manager",
-    "system/cloud-architecture",
-    "data/data-analysis",
-    "security/security-audit",
-    "writing/technical-writing",
-    "writing/documentation",
-];
+/// Returns a list of agents that are actually available in the user's environment
+pub fn detect_available_agents() -> Vec<String> {
+    KNOWN_AGENTS
+        .iter()
+        .filter(|&agent| is_agent_available(agent))
+        .map(|&s| s.to_string())
+        .collect()
+}
 
-/// Skill categories for better organization
-pub const SKILL_CATEGORIES: &[(&str, &[&str])] = &[
-    ("Software Development", &["software-development/spec", "software-development/symphony-spec-writing"]),
-    ("System & DevOps", &["system/devops-manager", "system/cloud-architecture"]),
-    ("Data & Analytics", &["data/data-analysis"]),
-    ("Security", &["security/security-audit"]),
-    ("Writing", &["writing/technical-writing", "writing/documentation"]),
-];
+/// Check if a specific agent is available by checking for its directory
+fn is_agent_available(agent: &str) -> bool {
+    let home = match dirs::home_dir() {
+        Some(h) => h,
+        None => return false,
+    };
+    
+    let agent_dir = match agent {
+        "claude" => home.join(".claude"),
+        "codex" => home.join(".codex"),
+        "cursor" => home.join(".cursor"),
+        "copilot" => {
+            // Copilot can be in .github or .vscode/extensions
+            if home.join(".github").exists() || home.join(".vscode").exists() {
+                return true;
+            }
+            return false;
+        }
+        "grok" => home.join(".grok"),
+        "hermes" => home.join(".hermes"),
+        _ => return false,
+    };
+    
+    agent_dir.exists()
+}
+
+/// Returns a list of coding agents that are available
+pub fn detect_available_coding_agents() -> Vec<String> {
+    CODING_AGENTS_LIST
+        .iter()
+        .filter(|&agent| is_agent_available(agent))
+        .map(|&s| s.to_string())
+        .collect()
+}
+
+/// Discover skills from a registry directory
+pub fn discover_skills_from_registry(registry_path: &Path) -> Vec<String> {
+    let mut skills = Vec::new();
+    
+    if !registry_path.exists() {
+        return skills;
+    }
+    
+    // Read all entries in the registry
+    if let Ok(entries) = fs::read_dir(registry_path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            
+            // Check if it's a directory (skill)
+            if path.is_dir() {
+                // Validate it's a valid skill (has SKILL.md)
+                if path.join("SKILL.md").exists() {
+                    if let Some(skill_name) = path.file_name().and_then(|s| s.to_str()) {
+                        skills.push(skill_name.to_string());
+                    }
+                }
+                
+                // Also check subdirectories (for categorized skills)
+                if let Ok(sub_entries) = fs::read_dir(&path) {
+                    for sub_entry in sub_entries.flatten() {
+                        let sub_path = sub_entry.path();
+                        if sub_path.is_dir() && sub_path.join("SKILL.md").exists() {
+                            if let (Some(parent), Some(child)) = (path.file_name().and_then(|s| s.to_str()), sub_path.file_name().and_then(|s| s.to_str())) {
+                                skills.push(format!("{}/{}", parent, child));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    skills.sort();
+    skills
+}
+
+/// Discover skills from all configured registries
+pub fn discover_skills(registries: &HashMap<String, String>) -> Vec<String> {
+    let mut all_skills = Vec::new();
+    
+    for (name, _) in registries {
+        if let Some(registry_path) = crate::linker::resolve_registry_path(name) {
+            let skills = discover_skills_from_registry(&registry_path);
+            all_skills.extend(skills);
+        }
+    }
+    
+    all_skills
+}
+
+/// Organize skills into categories based on their names
+pub fn organize_skills_by_category(skills: Vec<String>) -> Vec<(String, Vec<String>)> {
+    let mut categories: HashMap<String, Vec<String>> = HashMap::new();
+    
+    for skill in skills {
+        let category = if let Some(pos) = skill.find('/') {
+            skill[..pos].to_string()
+        } else {
+            "Uncategorized".to_string()
+        };
+        
+        categories.entry(category)
+            .or_insert_with(Vec::new)
+            .push(skill);
+    }
+    
+    let mut result: Vec<(String, Vec<String>)> = categories.into_iter().collect();
+    result.sort_by(|a, b| a.0.cmp(&b.0));
+    result
+}
 
 /// Represents a selectable item in the wizard
 #[derive(Debug, Clone)]
@@ -223,12 +324,18 @@ pub fn get_project_name(default_name: &str) -> io::Result<String> {
     text_input("Project name", default_name)
 }
 
-/// Get agent selection from user
+/// Get agent selection from user (uses dynamically detected agents)
 pub fn select_agents() -> io::Result<Vec<String>> {
-    let mut agents: Vec<SelectableItem> = AVAILABLE_AGENTS
+    let available_agents = detect_available_agents();
+    
+    if available_agents.is_empty() {
+        return Ok(Vec::new());
+    }
+    
+    let mut agents: Vec<SelectableItem> = available_agents
         .iter()
         .enumerate()
-        .map(|(i, &name)| {
+        .map(|(i, name)| {
             SelectableItem::with_description(
                 i + 1,
                 name,
@@ -246,16 +353,22 @@ pub fn select_agents() -> io::Result<Vec<String>> {
 
     Ok(selected_indices
         .into_iter()
-        .map(|idx| AVAILABLE_AGENTS[idx - 1].to_string())
+        .map(|idx| available_agents[idx - 1].clone())
         .collect())
 }
 
-/// Get coding agent selection from user
+/// Get coding agent selection from user (uses dynamically detected coding agents)
 pub fn select_coding_agents() -> io::Result<Vec<String>> {
-    let mut agents: Vec<SelectableItem> = CODING_AGENTS
+    let available_coding_agents = detect_available_coding_agents();
+    
+    if available_coding_agents.is_empty() {
+        return Ok(Vec::new());
+    }
+    
+    let mut agents: Vec<SelectableItem> = available_coding_agents
         .iter()
         .enumerate()
-        .map(|(i, &name)| {
+        .map(|(i, name)| {
             SelectableItem::with_description(
                 i + 1,
                 name,
@@ -273,19 +386,27 @@ pub fn select_coding_agents() -> io::Result<Vec<String>> {
 
     Ok(selected_indices
         .into_iter()
-        .map(|idx| CODING_AGENTS[idx - 1].to_string())
+        .map(|idx| available_coding_agents[idx - 1].clone())
         .collect())
 }
 
-/// Enhanced skill selection with search and filtering
-pub fn select_skills_enhanced() -> io::Result<Vec<SkillSpec>> {
-    let mut stdout = io::stdout();
+/// Enhanced skill selection with search and filtering (uses dynamically discovered skills)
+pub fn select_skills_enhanced(registries: &HashMap<String, String>) -> io::Result<Vec<SkillSpec>> {
     let stdin = io::stdin();
 
     println!("\n{}== Select Skills =={}", "=".repeat(20), "=".repeat(20));
     
+    // Discover skills from registries
+    let discovered_skills = discover_skills(registries);
+    let categories = organize_skills_by_category(discovered_skills);
+    
+    if categories.is_empty() {
+        println!("No skills found in registries. You may need to run 'skm install' first to cache registries.");
+        return Ok(Vec::new());
+    }
+    
     // Show categories
-    for (i, (category, skills)) in SKILL_CATEGORIES.iter().enumerate() {
+    for (i, (category, skills)) in categories.iter().enumerate() {
         println!("\n[{}] {}", i + 1, category);
         for (j, skill) in skills.iter().enumerate() {
             println!("    [{}] {}", j + 1, skill);
@@ -301,15 +422,14 @@ pub fn select_skills_enhanced() -> io::Result<Vec<SkillSpec>> {
     println!("  [q] Continue with no selection");
 
     let mut selected_skills: Vec<SkillSpec> = Vec::new();
-    let all_skills: Vec<&str> = SKILL_CATEGORIES
+    let all_skills: Vec<String> = categories
         .iter()
-        .flat_map(|(_, skills)| skills.iter())
-        .copied()
+        .flat_map(|(_, skills)| skills.clone())
         .collect();
 
     loop {
         print!("\n> ");
-        stdout.flush()?;
+        io::stdout().flush()?;
 
         let mut input = String::new();
         stdin.read_line(&mut input)?;
@@ -326,8 +446,8 @@ pub fn select_skills_enhanced() -> io::Result<Vec<SkillSpec>> {
         if input == "a" || input == "all" {
             selected_skills = all_skills
                 .iter()
-                .map(|&name| SkillSpec {
-                    name: name.to_string(),
+                .map(|name| SkillSpec {
+                    name: name.clone(),
                     version: Some("latest".to_string()),
                     source: Some("default".to_string()),
                     path: None,
@@ -346,12 +466,12 @@ pub fn select_skills_enhanced() -> io::Result<Vec<SkillSpec>> {
         // Handle category selection: c <num>
         if input.starts_with("c ") || input.starts_with("category ") {
             if let Ok(cat_num) = input.trim_start_matches("c ").parse::<usize>() {
-                if cat_num > 0 && cat_num <= SKILL_CATEGORIES.len() {
-                    let (_, category_skills) = SKILL_CATEGORIES[cat_num - 1];
-                    for &skill_name in category_skills {
-                        if !selected_skills.iter().any(|s| s.name == skill_name) {
+                if cat_num > 0 && cat_num <= categories.len() {
+                    let (_, category_skills) = &categories[cat_num - 1];
+                    for skill_name in category_skills {
+                        if !selected_skills.iter().any(|s| s.name == *skill_name) {
                             selected_skills.push(SkillSpec {
-                                name: skill_name.to_string(),
+                                name: skill_name.clone(),
                                 version: Some("latest".to_string()),
                                 source: Some("default".to_string()),
                                 path: None,
@@ -370,10 +490,10 @@ pub fn select_skills_enhanced() -> io::Result<Vec<SkillSpec>> {
         let skill_num_str = input.trim_start_matches("s ");
         if let Ok(skill_num) = skill_num_str.parse::<usize>() {
             if skill_num > 0 && skill_num <= all_skills.len() {
-                let skill_name = all_skills[skill_num - 1];
-                if !selected_skills.iter().any(|s| s.name == skill_name) {
+                let skill_name = &all_skills[skill_num - 1];
+                if !selected_skills.iter().any(|s| s.name == *skill_name) {
                     selected_skills.push(SkillSpec {
-                        name: skill_name.to_string(),
+                        name: skill_name.clone(),
                         version: Some("latest".to_string()),
                         source: Some("default".to_string()),
                         path: None,
@@ -467,7 +587,14 @@ pub fn run_wizard(
 
     // Step 4: Select skills
     println!("\n--- Step 3: Select Skills ---");
-    let skills = select_skills_enhanced()?;
+    
+    // Create default registries for skill discovery
+    let mut default_registries = HashMap::new();
+    default_registries.insert(
+        "default".to_string(),
+        "git@github.com:skills-yaml/skills-registry.git".to_string(),
+    );
+    let skills = select_skills_enhanced(&default_registries)?;
     println!("Selected skills: {:?}", skills.iter().map(|s| &s.name).collect::<Vec<_>>());
 
     // Step 5: Configure registries
@@ -547,9 +674,10 @@ pub fn run_streamlined_wizard(
         }
     };
 
-    // Step 2: Agents with nice display
+    // Step 2: Agents with nice display (dynamically detected)
+    let available_agents = detect_available_agents();
     println!("\nAvailable Agents:");
-    for (i, agent) in AVAILABLE_AGENTS.iter().enumerate() {
+    for (i, agent) in available_agents.iter().enumerate() {
         println!("  [{}] {} - {}", i + 1, agent, get_agent_description(agent));
     }
     
@@ -561,21 +689,22 @@ pub fn run_streamlined_wizard(
     let input = input.trim().to_lowercase();
 
     let selected_agents: Vec<String> = if input == "a" || input.is_empty() {
-        AVAILABLE_AGENTS.iter().map(|&s| s.to_string()).collect()
+        available_agents.iter().map(|s| s.to_string()).collect()
     } else {
         input
             .split(',')
             .filter_map(|s| s.trim().parse::<usize>().ok())
-            .filter(|&i| i > 0 && i <= AVAILABLE_AGENTS.len())
-            .map(|i| AVAILABLE_AGENTS[i - 1].to_string())
+            .filter(|&i| i > 0 && i <= available_agents.len())
+            .map(|i| available_agents[i - 1].to_string())
             .collect()
     };
 
     println!("Selected agents: {:?}", selected_agents);
 
-    // Step 3: Coding agents
+    // Step 3: Coding agents (dynamically detected)
+    let available_coding_agents = detect_available_coding_agents();
     println!("\nCoding Agents (specialized for development):");
-    for (i, agent) in CODING_AGENTS.iter().enumerate() {
+    for (i, agent) in available_coding_agents.iter().enumerate() {
         println!("  [{}] {} - {}", i + 1, agent, get_coding_agent_description(agent));
     }
     
@@ -587,23 +716,30 @@ pub fn run_streamlined_wizard(
     let input = input.trim().to_lowercase();
 
     let coding_agents: Vec<String> = if input == "a" {
-        CODING_AGENTS.iter().map(|&s| s.to_string()).collect()
+        available_coding_agents.iter().map(|s| s.to_string()).collect()
     } else if input.is_empty() {
         Vec::new()
     } else {
         input
             .split(',')
             .filter_map(|s| s.trim().parse::<usize>().ok())
-            .filter(|&i| i > 0 && i <= CODING_AGENTS.len())
-            .map(|i| CODING_AGENTS[i - 1].to_string())
+            .filter(|&i| i > 0 && i <= available_coding_agents.len())
+            .map(|i| available_coding_agents[i - 1].to_string())
             .collect()
     };
 
     println!("Selected coding agents: {:?}", coding_agents);
 
-    // Step 4: Skills
+    // Step 4: Skills (discover from default registry)
+    let mut default_registries = HashMap::new();
+    default_registries.insert(
+        "default".to_string(),
+        "git@github.com:skills-yaml/skills-registry.git".to_string(),
+    );
+    let discovered_skills = discover_skills(&default_registries);
+    
     println!("\nAvailable Skills:");
-    for (i, skill) in AVAILABLE_SKILLS.iter().enumerate() {
+    for (i, skill) in discovered_skills.iter().enumerate() {
         println!("  [{}] {} - {}", i + 1, skill, get_skill_description(skill));
     }
     
@@ -615,10 +751,10 @@ pub fn run_streamlined_wizard(
     let input = input.trim().to_lowercase();
 
     let selected_skills: Vec<SkillSpec> = if input == "a" {
-        AVAILABLE_SKILLS
+        discovered_skills
             .iter()
-            .map(|&name| SkillSpec {
-                name: name.to_string(),
+            .map(|name| SkillSpec {
+                name: name.clone(),
                 version: Some("latest".to_string()),
                 source: Some("default".to_string()),
                 path: None,
@@ -630,9 +766,9 @@ pub fn run_streamlined_wizard(
         input
             .split(',')
             .filter_map(|s| s.trim().parse::<usize>().ok())
-            .filter(|&i| i > 0 && i <= AVAILABLE_SKILLS.len())
+            .filter(|&i| i > 0 && i <= discovered_skills.len())
             .map(|i| SkillSpec {
-                name: AVAILABLE_SKILLS[i - 1].to_string(),
+                name: discovered_skills[i - 1].clone(),
                 version: Some("latest".to_string()),
                 source: Some("default".to_string()),
                 path: None,
