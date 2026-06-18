@@ -33,6 +33,12 @@ fn get_registries_cache_dir() -> Option<PathBuf> {
 pub struct BaseConfig {
     pub default_registry: String,
     pub registries: HashMap<String, String>,
+    #[serde(default = "default_true")]
+    pub check_for_updates: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl BaseConfig {
@@ -43,6 +49,7 @@ impl BaseConfig {
         Self {
             default_registry: "default".to_string(),
             registries,
+            check_for_updates: true,
         }
     }
 
@@ -77,9 +84,16 @@ impl BaseConfig {
             registries.insert(default_registry.clone(), DEFAULT_REGISTRY_URL.to_string());
         }
 
+        // Load check_for_updates, default to true if not present
+        let check_for_updates = config
+            .get("check_for_updates")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
         Ok(Self {
             default_registry,
             registries,
+            check_for_updates,
         })
     }
 
@@ -226,15 +240,55 @@ mod tests {
     use super::*;
     use std::fs;
 
-    fn create_temp_config_dir() -> tempfile::TempDir {
-        let temp_dir = tempfile::tempdir().unwrap();
-        std::env::set_var("HOME", temp_dir.path());
-        temp_dir
+    /// Helper struct to temporarily set HOME and XDG_CONFIG_HOME and restore them on drop
+    struct TempHome {
+        _temp_dir: tempfile::TempDir,
+        original_home: Option<String>,
+        original_xdg_config_home: Option<String>,
+    }
+
+    impl TempHome {
+        fn new() -> Self {
+            let original_home = std::env::var("HOME").ok();
+            let original_xdg_config_home = std::env::var("XDG_CONFIG_HOME").ok();
+            let temp_dir = tempfile::tempdir().unwrap();
+            let temp_config_dir = temp_dir.path().join(".config");
+            fs::create_dir_all(&temp_config_dir).ok();
+            std::env::set_var("HOME", temp_dir.path());
+            std::env::set_var("XDG_CONFIG_HOME", temp_config_dir);
+            Self {
+                _temp_dir: temp_dir,
+                original_home,
+                original_xdg_config_home,
+            }
+        }
+    }
+
+    impl Drop for TempHome {
+        fn drop(&mut self) {
+            if let Some(ref home) = self.original_home {
+                std::env::set_var("HOME", home);
+            } else {
+                std::env::remove_var("HOME");
+            }
+            if let Some(ref xdg) = self.original_xdg_config_home {
+                std::env::set_var("XDG_CONFIG_HOME", xdg);
+            } else {
+                std::env::remove_var("XDG_CONFIG_HOME");
+            }
+        }
+    }
+
+    fn create_temp_config_dir() -> TempHome {
+        TempHome::new()
     }
 
     #[test]
     fn test_ensure_global_env_creates_config() {
-        let _temp_dir = create_temp_config_dir();
+        let _temp_home = create_temp_config_dir();
+
+        // Clear any environment variables that might affect the test
+        std::env::remove_var("SKM_CHECK_UPDATE");
 
         // Ensure we're starting fresh
         let config_path = get_base_config_path().unwrap();
@@ -256,11 +310,12 @@ mod tests {
             config.registries.get("default").unwrap(),
             DEFAULT_REGISTRY_URL
         );
+        assert!(config.check_for_updates); // Should default to true
     }
 
     #[test]
     fn test_ensure_global_env_idempotent() {
-        let _temp_dir = create_temp_config_dir();
+        let _temp_home = create_temp_config_dir();
 
         // Create initial config
         ensure_global_env().unwrap();
@@ -277,11 +332,19 @@ mod tests {
 
     #[test]
     fn test_ensure_global_env_with_existing_config() {
-        let _temp_dir = create_temp_config_dir();
+        let _temp_home = create_temp_config_dir();
 
-        // Create config directory and file manually
+        // Clear any environment variables that might affect the test
+        std::env::remove_var("SKM_CHECK_UPDATE");
+
+        // Remove any existing config first
         let config_path = get_base_config_path().unwrap();
         let parent = config_path.parent().unwrap();
+        if parent.exists() {
+            fs::remove_dir_all(parent).ok();
+        }
+
+        // Create config directory and file manually
         fs::create_dir_all(parent).unwrap();
 
         let custom_config = BaseConfig {
@@ -293,6 +356,7 @@ mod tests {
             .iter()
             .cloned()
             .collect(),
+            check_for_updates: true,
         };
         custom_config.save().unwrap();
 

@@ -10,7 +10,7 @@ use config_manager::{ensure_global_env, first_time_setup};
 use std::env;
 use std::io::{self, Write};
 use std::path::Path;
-use updater::UpdateChannel;
+use updater::{check_and_notify_update, UpdateChannel};
 
 #[derive(Parser)]
 #[command(name = "skm")]
@@ -100,6 +100,18 @@ fn main() {
     if let Err(e) = ensure_global_env() {
         eprintln!("Warning: Failed to initialize global configuration: {}", e);
         eprintln!("SKM may not function correctly. Run 'skm setup' to manually configure.");
+    }
+
+    // Check for updates at launch
+    if let Ok(should_update) = check_and_notify_update() {
+        if should_update {
+            // User agreed to update, run update and exit
+            if let Err(e) = updater::install_update(UpdateChannel::Prod) {
+                eprintln!("Update failed: {}", e);
+                std::process::exit(1);
+            }
+            std::process::exit(0);
+        }
     }
 
     if let Err(e) = run(cli.command) {
