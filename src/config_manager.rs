@@ -178,12 +178,25 @@ pub fn update_cache(registry_name: Option<&str>) -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
+/// Ensure base configuration exists, create with defaults if missing
+/// This is separate from first_time_setup() which also updates cache
+pub fn ensure_global_env() -> Result<(), Box<dyn std::error::Error>> {
+    let path = get_base_config_path().ok_or("Could not determine config directory")?;
+
+    if !path.exists() {
+        println!("Initializing global SKM configuration...");
+        init_base_config()?;
+    }
+
+    Ok(())
+}
+
 /// First-time setup: initialize base config and cache default registry
 pub fn first_time_setup() -> Result<(), Box<dyn std::error::Error>> {
     println!("Running first-time setup for SKM...");
 
     // Initialize base config
-    init_base_config()?;
+    ensure_global_env()?;
 
     // Update cache for default registry
     update_cache(Some("default"))?;
@@ -194,10 +207,101 @@ pub fn first_time_setup() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Check if this is the first time running SKM
+/// Check if this is the first time running SKM (deprecated: use ensure_global_env() instead)
+#[deprecated(
+    note = "Use ensure_global_env() instead. This function checks both config and cache, but global env should always be ensured."
+)]
 pub fn is_first_time() -> bool {
     let base_config_path = get_base_config_path();
     let registries_cache_dir = get_registries_cache_dir();
 
     base_config_path.is_none_or(|p| !p.exists()) || registries_cache_dir.is_none_or(|p| !p.exists())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn create_temp_config_dir() -> tempfile::TempDir {
+        let temp_dir = tempfile::tempdir().unwrap();
+        std::env::set_var("HOME", temp_dir.path());
+        temp_dir
+    }
+
+    #[test]
+    fn test_ensure_global_env_creates_config() {
+        let _temp_dir = create_temp_config_dir();
+
+        // Ensure we're starting fresh
+        let config_path = get_base_config_path().unwrap();
+        let parent = config_path.parent().unwrap();
+        if parent.exists() {
+            fs::remove_dir_all(parent).ok();
+        }
+
+        // Run ensure_global_env
+        ensure_global_env().unwrap();
+
+        // Verify config was created
+        assert!(config_path.exists());
+
+        // Verify it has the correct default values
+        let config = BaseConfig::load().unwrap();
+        assert_eq!(config.default_registry, "default");
+        assert_eq!(
+            config.registries.get("default").unwrap(),
+            DEFAULT_REGISTRY_URL
+        );
+    }
+
+    #[test]
+    fn test_ensure_global_env_idempotent() {
+        let _temp_dir = create_temp_config_dir();
+
+        // Create initial config
+        ensure_global_env().unwrap();
+        let config_path = get_base_config_path().unwrap();
+        let original_content = fs::read_to_string(&config_path).unwrap();
+
+        // Run again
+        ensure_global_env().unwrap();
+
+        // Content should be unchanged
+        let new_content = fs::read_to_string(&config_path).unwrap();
+        assert_eq!(original_content, new_content);
+    }
+
+    #[test]
+    fn test_ensure_global_env_with_existing_config() {
+        let _temp_dir = create_temp_config_dir();
+
+        // Create config directory and file manually
+        let config_path = get_base_config_path().unwrap();
+        let parent = config_path.parent().unwrap();
+        fs::create_dir_all(parent).unwrap();
+
+        let custom_config = BaseConfig {
+            default_registry: "custom".to_string(),
+            registries: [(
+                "custom".to_string(),
+                "git@github.com:custom/registry.git".to_string(),
+            )]
+            .iter()
+            .cloned()
+            .collect(),
+        };
+        custom_config.save().unwrap();
+
+        // Run ensure_global_env
+        ensure_global_env().unwrap();
+
+        // Verify config was NOT overwritten
+        let loaded_config = BaseConfig::load().unwrap();
+        assert_eq!(loaded_config.default_registry, "custom");
+        assert_eq!(
+            loaded_config.registries.get("custom").unwrap(),
+            "git@github.com:custom/registry.git"
+        );
+    }
 }

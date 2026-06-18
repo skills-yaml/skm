@@ -6,7 +6,7 @@ mod wizard;
 
 use clap::{Parser, Subcommand};
 use config::{SkillSpec, SkillsConfig};
-use config_manager::first_time_setup;
+use config_manager::{ensure_global_env, first_time_setup};
 use std::env;
 use std::io::{self, Write};
 use std::path::Path;
@@ -96,21 +96,10 @@ enum Commands {
 fn main() {
     let cli = Cli::parse();
 
-    // Check if this is first time and user is running a command that needs setup
-    if config_manager::is_first_time() {
-        match &cli.command {
-            Commands::Setup => {}
-            Commands::InitConfig => {}
-            Commands::CacheUpdate { .. } => {}
-            Commands::Update { .. } => {}
-            _ => {
-                println!("First time setup required. Running automatic setup...");
-                if let Err(e) = config_manager::first_time_setup() {
-                    eprintln!("Warning: First-time setup failed: {}", e);
-                    eprintln!("You may need to run 'skm setup' manually.");
-                }
-            }
-        }
+    // Always ensure global environment is configured
+    if let Err(e) = ensure_global_env() {
+        eprintln!("Warning: Failed to initialize global configuration: {}", e);
+        eprintln!("SKM may not function correctly. Run 'skm setup' to manually configure.");
     }
 
     if let Err(e) = run(cli.command) {
