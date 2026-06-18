@@ -17,11 +17,13 @@ pub fn get_base_config_path() -> Option<PathBuf> {
 }
 
 /// Get the cache directory path
+#[allow(dead_code)]
 fn get_cache_dir() -> Option<PathBuf> {
     dirs::cache_dir().map(|d| d.join("skm"))
 }
 
 /// Get the registries cache directory
+#[allow(dead_code)]
 fn get_registries_cache_dir() -> Option<PathBuf> {
     get_cache_dir().map(|d| d.join("registries"))
 }
@@ -211,6 +213,7 @@ pub fn first_time_setup() -> Result<(), Box<dyn std::error::Error>> {
 #[deprecated(
     note = "Use ensure_global_env() instead. This function checks both config and cache, but global env should always be ensured."
 )]
+#[allow(dead_code)]
 pub fn is_first_time() -> bool {
     let base_config_path = get_base_config_path();
     let registries_cache_dir = get_registries_cache_dir();
