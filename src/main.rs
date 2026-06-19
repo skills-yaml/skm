@@ -28,7 +28,7 @@ enum Commands {
         #[arg(long)]
         name: Option<String>,
         /// Run in interactive mode to select skills, agents, and configuration scope
-        #[arg(short, long)]
+        #[arg(short, long, default_value = "true")]
         interactive: bool,
         /// Use advanced interactive wizard with more options
         #[arg(long)]
@@ -36,6 +36,9 @@ enum Commands {
         /// Configure for global user directory instead of project-local
         #[arg(short, long)]
         global: bool,
+        /// Use non-interactive mode with default values
+        #[arg(long)]
+        non_interactive: bool,
     },
     /// Install and symlink all skills specified in skills.yaml
     Install {
@@ -127,23 +130,17 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
     match command {
         Commands::Init {
             name,
-            interactive,
             advanced,
             global,
+            non_interactive,
+            ..
         } => {
             if config_path.exists() {
                 return Err("skills.yaml already exists in the current directory".into());
             }
 
-            let config = if interactive || advanced {
-                if advanced {
-                    // Advanced wizard is the main run_wizard
-                    wizard::run_wizard(name, global)?
-                } else {
-                    // Use streamlined wizard for --interactive
-                    wizard::run_streamlined_wizard(name, global)?
-                }
-            } else {
+            let config = if non_interactive {
+                // Non-interactive mode: use defaults
                 let project_name = name.unwrap_or_else(|| {
                     current_dir
                         .file_name()
@@ -152,6 +149,12 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                         .to_string()
                 });
                 SkillsConfig::default_init(&project_name)
+            } else if advanced {
+                // Advanced interactive wizard
+                wizard::run_wizard(name, global)?
+            } else {
+                // Default: streamlined interactive wizard
+                wizard::run_streamlined_wizard(name, global)?
             };
 
             config.save_to_file(&config_path)?;
