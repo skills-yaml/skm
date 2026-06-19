@@ -35,3 +35,15 @@ Align skm CLI command outputs with the UI brand and style guide. Diagnostic outp
 Content:
 
 Implemented `skm remove <SKILL_NAME>` command to safely unlink skill directories from configured agent paths and programmatically update `./skills.yaml` config entries.
+
+## 2026-06-19 - Implement Cleanup and Maintenance Feature
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Implemented the `skm clean` suite of commands for repository and system maintenance: `skm clean symlinks` for pruning broken/orphaned links, `skm clean cache` for registry pruning (retaining dynamic versions), and `skm clean reset` for fresh states (with home/workspace backups).

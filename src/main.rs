@@ -1,3 +1,4 @@
+mod cleaner;
 mod config;
 mod config_manager;
 mod linker;
@@ -115,6 +116,92 @@ enum Commands {
     Setup,
     /// Initialize global base configuration with default registry
     InitConfig,
+    /// Clean up SKM artifacts (broken symlinks, cache, etc.)
+    #[command(subcommand)]
+    Clean(CleanCommands),
+}
+
+#[derive(Subcommand)]
+enum CleanCommands {
+    /// Clean up broken and orphaned symlinks
+    Symlinks {
+        /// Clean global symlinks
+        #[arg(short, long)]
+        global: bool,
+        /// Only clean broken symlinks
+        #[arg(long)]
+        broken: bool,
+        /// Only clean orphaned symlinks
+        #[arg(long)]
+        orphaned: bool,
+        /// Clean all symlinks (broken + orphaned)
+        #[arg(long)]
+        all: bool,
+        /// Preview what would be removed
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip confirmation
+        #[arg(short, long)]
+        yes: bool,
+        /// Show verbose output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Clean up registry cache
+    Cache {
+        /// Clean all registry caches
+        #[arg(long)]
+        all: bool,
+        /// Remove old skill versions
+        #[arg(long)]
+        old_versions: bool,
+        /// Keep N most recent versions
+        #[arg(short, long, default_value = "5")]
+        keep: usize,
+        /// Preview what would be removed
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip confirmation
+        #[arg(short, long)]
+        yes: bool,
+        /// Show cache statistics
+        #[arg(long)]
+        stats: bool,
+        /// Show verbose output
+        #[arg(short, long)]
+        verbose: bool,
+        /// Specific registry to clean
+        registry: Option<String>,
+    },
+
+    /// Reset SKM to clean state
+    Reset {
+        /// Reset configuration files
+        #[arg(long)]
+        config: bool,
+        /// Clear all caches
+        #[arg(long)]
+        cache: bool,
+        /// Remove all symlinks
+        #[arg(long)]
+        symlinks: bool,
+        /// Reset everything
+        #[arg(long)]
+        all: bool,
+        /// Create backup before reset
+        #[arg(long)]
+        backup: bool,
+        /// Directory to store backups
+        #[arg(long)]
+        backup_dir: Option<String>,
+        /// Preview what would be removed
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip confirmation
+        #[arg(short, long)]
+        yes: bool,
+    },
 }
 
 fn main() {
@@ -380,6 +467,54 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("Base configuration initialized.");
             eprintln!("You can now use 'skm cache-update' to populate the skill registry cache.");
         }
+        Commands::Clean(cmd) => match cmd {
+            CleanCommands::Symlinks {
+                global,
+                broken,
+                orphaned,
+                all,
+                dry_run,
+                yes,
+                verbose,
+            } => {
+                cleaner::clean_symlinks(global, broken, orphaned, all, dry_run, yes, verbose)?;
+            }
+            CleanCommands::Cache {
+                all,
+                old_versions,
+                keep,
+                dry_run,
+                yes,
+                stats,
+                verbose,
+                registry,
+            } => {
+                cleaner::clean_cache(
+                    all,
+                    old_versions,
+                    keep,
+                    dry_run,
+                    yes,
+                    stats,
+                    verbose,
+                    registry,
+                )?;
+            }
+            CleanCommands::Reset {
+                config,
+                cache,
+                symlinks,
+                all,
+                backup,
+                backup_dir,
+                dry_run,
+                yes,
+            } => {
+                cleaner::reset(
+                    config, cache, symlinks, all, backup, backup_dir, dry_run, yes,
+                )?;
+            }
+        },
     }
 
     Ok(())

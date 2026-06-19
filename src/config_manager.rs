@@ -17,8 +17,7 @@ pub fn get_base_config_path() -> Option<PathBuf> {
 }
 
 /// Get the cache directory path
-#[allow(dead_code)]
-fn get_cache_dir() -> Option<PathBuf> {
+pub fn get_cache_dir() -> Option<PathBuf> {
     dirs::cache_dir().map(|d| d.join("skm"))
 }
 
