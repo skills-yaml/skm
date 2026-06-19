@@ -326,9 +326,11 @@ fn short_sha(value: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::env;
 
     #[test]
+    #[serial]
     fn test_is_update_check_disabled_with_env_var() {
         // Set environment variable to disable
         env::set_var("SKM_CHECK_UPDATE", "false");
@@ -337,6 +339,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_is_update_check_disabled_without_env_var() {
         // Ensure env var is not set
         env::remove_var("SKM_CHECK_UPDATE");
