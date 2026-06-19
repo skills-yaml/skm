@@ -191,7 +191,7 @@ pub fn link_skill(
         match fs::symlink_metadata(&skill_target) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
                 if symlink_points_to(&skill_target, &source_dir)? {
-                    println!("Already linked {} to {:?}", skill.name, skill_target);
+                    eprintln!("Already linked {} to {:?}", skill.name, skill_target);
                     continue;
                 }
 
@@ -209,10 +209,76 @@ pub fn link_skill(
         }
 
         symlink_dir(&source_dir, &skill_target)?;
-        println!("Linked {} to {:?}", skill.name, skill_target);
+        eprintln!("Linked {} to {:?}", skill.name, skill_target);
     }
 
     Ok(())
+}
+/// Remove a skill from all configured agent directories
+pub fn unlink_skill(
+    skill_name: &str,
+    project_root: &Path,
+    agents: &[String],
+    global: bool,
+    force: bool,
+    dry_run: bool,
+    verbose: bool,
+) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+    let mut removed = Vec::new();
+
+    for agent in agents {
+        let base_dir = get_agent_skills_dir(agent, project_root, global)?;
+        let skill_path = get_skill_target_path(&base_dir, skill_name)?;
+
+        if !skill_path.exists() && !skill_path.is_symlink() {
+            if verbose {
+                eprintln!(
+                    "Symlink already missing for agent '{}': {}",
+                    agent,
+                    skill_path.display()
+                );
+            }
+            continue;
+        }
+
+        if !skill_path.is_symlink() {
+            if force {
+                if dry_run {
+                    eprintln!(
+                        "Would remove non-symlink directory: {}",
+                        skill_path.display()
+                    );
+                    removed.push(skill_path);
+                    continue;
+                }
+                if skill_path.is_dir() {
+                    fs::remove_dir_all(&skill_path)?;
+                } else {
+                    fs::remove_file(&skill_path)?;
+                }
+                removed.push(skill_path);
+            } else {
+                return Err(format!(
+                    "Refusing to remove non-symlink path for agent '{}': {}. Use --force to override this safety check.",
+                    agent,
+                    skill_path.display()
+                )
+                .into());
+            }
+            continue;
+        }
+
+        // It's a symlink, safe to remove
+        if dry_run {
+            eprintln!("Would remove symlink: {}", skill_path.display());
+            removed.push(skill_path.clone());
+        } else {
+            fs::remove_file(&skill_path)?;
+            removed.push(skill_path.clone());
+        }
+    }
+
+    Ok(removed)
 }
 
 fn is_supported_agent(agent: &str) -> bool {
@@ -339,5 +405,28 @@ mod tests {
         let agents = vec!["codxe".to_string()];
 
         assert!(validate_agents(&agents).is_err());
+    }
+
+    #[test]
+    fn test_unlink_skill() {
+        let project = temp_project();
+        let skill = local_skill(&project, "foo");
+        let agents = vec!["codex".to_string()];
+        let target = project.join(".codex").join("skills").join("foo");
+
+        link_skill(&skill, &project, &agents, false).unwrap();
+        assert!(target.exists() || target.is_symlink());
+
+        let removed = unlink_skill("foo", &project, &agents, false, false, false, false).unwrap();
+        assert_eq!(removed.len(), 1);
+        assert_eq!(removed[0], target);
+        assert!(!target.exists() && !target.is_symlink());
+
+        // Idempotent check
+        let removed_again =
+            unlink_skill("foo", &project, &agents, false, false, false, false).unwrap();
+        assert!(removed_again.is_empty());
+
+        fs::remove_dir_all(project).unwrap();
     }
 }

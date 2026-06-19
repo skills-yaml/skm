@@ -55,23 +55,23 @@ pub fn check_for_update(channel: UpdateChannel) -> Result<bool, Box<dyn std::err
     let current_short = short_sha(current);
     let latest_short = short_sha(&latest);
 
-    println!(
+    eprintln!(
         "Current build: {} ({})",
         current_short,
         current_build_channel()
     );
-    println!("Latest {} build: {}", channel.tag(), latest_short);
+    eprintln!("Latest {} build: {}", channel.tag(), latest_short);
 
     if current == "unknown" {
-        println!("Update status: unknown (current build commit is not embedded)");
+        eprintln!("Update status: unknown (current build commit is not embedded)");
         return Ok(true);
     }
 
     if current == latest {
-        println!("Update status: up to date");
+        eprintln!("Update status: up to date");
         Ok(false)
     } else {
-        println!("Update status: update available");
+        eprintln!("Update status: update available");
         Ok(true)
     }
 }
@@ -115,7 +115,7 @@ fn install_update_unix(channel: UpdateChannel) -> Result<(), Box<dyn std::error:
         channel.as_installer_arg()
     );
 
-    println!("Running installer for {}...", channel.tag());
+    eprintln!("Running installer for {}...", channel.tag());
     let status = Command::new("sh").args(["-c", &command]).status()?;
 
     if status.success() {
@@ -137,8 +137,8 @@ fn install_update_windows(channel: UpdateChannel) -> Result<(), Box<dyn std::err
         channel.as_installer_arg()
     );
 
-    println!("Starting Windows updater for {}...", channel.tag());
-    println!("The update will continue in a separate PowerShell process after skm exits.");
+    eprintln!("Starting Windows updater for {}...", channel.tag());
+    eprintln!("The update will continue in a separate PowerShell process after skm exits.");
     Command::new("cmd")
         .args([
             "/C",
@@ -254,19 +254,19 @@ fn notify_update_available() -> Result<(), Box<dyn std::error::Error>> {
     let current = current_build_commit();
     let latest = latest_release_commit(UpdateChannel::Prod)?;
 
-    println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("  New SKM version available!");
-    println!("  Current: {}", &current[..current.len().min(12)]);
-    println!("  Latest:  {}", &latest[..latest.len().min(12)]);
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    eprintln!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    eprintln!("  New SKM version available!");
+    eprintln!("  Current: {}", &current[..current.len().min(12)]);
+    eprintln!("  Latest:  {}", &latest[..latest.len().min(12)]);
+    eprintln!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
     Ok(())
 }
 
 /// Prompt user to update
 fn prompt_for_update() -> bool {
-    print!("\nWould you like to update now? [y/N] ");
-    io::stdout().flush().unwrap();
+    eprint!("\nWould you like to update now? [y/N] ");
+    io::stderr().flush().unwrap();
 
     let mut input = String::new();
     io::stdin().read_line(&mut input).unwrap();

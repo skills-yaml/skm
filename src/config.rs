@@ -62,4 +62,10 @@ impl SkillsConfig {
             }],
         }
     }
+
+    /// Remove a skill from the configuration
+    pub fn remove_skill(&mut self, skill_name: &str) -> Option<SkillSpec> {
+        let index = self.skills.iter().position(|s| s.name == skill_name)?;
+        Some(self.skills.remove(index))
+    }
 }

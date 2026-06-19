@@ -116,7 +116,7 @@ impl BaseConfig {
 pub fn init_base_config() -> Result<(), Box<dyn std::error::Error>> {
     let config = BaseConfig::new();
     config.save()?;
-    println!(
+    eprintln!(
         "Created base configuration at: {:?}",
         get_base_config_path()
     );
@@ -166,7 +166,7 @@ pub fn update_cache(registry_name: Option<&str>) -> Result<(), Box<dyn std::erro
         }
 
         if cache_path.exists() {
-            println!("Updating registry '{}'...", reg_name);
+            eprintln!("Updating registry '{}'...", reg_name);
             // Pull latest changes
             let output = std::process::Command::new("git")
                 .args(["-C", cache_path.to_str().unwrap(), "pull"])
@@ -176,9 +176,9 @@ pub fn update_cache(registry_name: Option<&str>) -> Result<(), Box<dyn std::erro
                 let err = String::from_utf8_lossy(&output.stderr);
                 return Err(format!("Failed to update registry '{}': {}", reg_name, err).into());
             }
-            println!("Registry '{}' updated successfully.", reg_name);
+            eprintln!("Registry '{}' updated successfully.", reg_name);
         } else {
-            println!("Cloning registry '{}' from '{}'...", reg_name, url);
+            eprintln!("Cloning registry '{}' from '{}'...", reg_name, url);
             let output = std::process::Command::new("git")
                 .args(["clone", url, cache_path.to_str().unwrap()])
                 .output()?;
@@ -187,7 +187,7 @@ pub fn update_cache(registry_name: Option<&str>) -> Result<(), Box<dyn std::erro
                 let err = String::from_utf8_lossy(&output.stderr);
                 return Err(format!("Failed to clone registry '{}': {}", reg_name, err).into());
             }
-            println!("Registry '{}' cloned successfully.", reg_name);
+            eprintln!("Registry '{}' cloned successfully.", reg_name);
         }
     }
 
@@ -200,7 +200,7 @@ pub fn ensure_global_env() -> Result<(), Box<dyn std::error::Error>> {
     let path = get_base_config_path().ok_or("Could not determine config directory")?;
 
     if !path.exists() {
-        println!("Initializing global SKM configuration...");
+        eprintln!("Initializing global SKM configuration...");
         init_base_config()?;
     }
 
@@ -209,7 +209,7 @@ pub fn ensure_global_env() -> Result<(), Box<dyn std::error::Error>> {
 
 /// First-time setup: initialize base config and cache default registry
 pub fn first_time_setup() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Running first-time setup for SKM...");
+    eprintln!("Running first-time setup for SKM...");
 
     // Initialize base config
     ensure_global_env()?;
@@ -217,8 +217,8 @@ pub fn first_time_setup() -> Result<(), Box<dyn std::error::Error>> {
     // Update cache for default registry
     update_cache(Some("default"))?;
 
-    println!("\nFirst-time setup completed!");
-    println!("Run 'skm init' to create a project configuration.");
+    eprintln!("\nFirst-time setup completed!");
+    eprintln!("Run 'skm init' to create a project configuration.");
 
     Ok(())
 }

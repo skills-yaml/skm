@@ -1,6 +1,7 @@
 mod config;
 mod config_manager;
 mod linker;
+mod remover;
 mod updater;
 mod wizard;
 
@@ -59,6 +60,26 @@ enum Commands {
         /// Link skills globally instead of project-local
         #[arg(short, long)]
         global: bool,
+    },
+    /// Remove a skill from skills.yaml and unlink it from agent directories
+    Remove {
+        /// Name of the skill to remove
+        skill_name: String,
+        /// Remove from global agent directories instead of project-local
+        #[arg(short, long)]
+        global: bool,
+        /// Skip confirmation prompt
+        #[arg(short, long)]
+        yes: bool,
+        /// Remove even if target is not a symlink (use with caution)
+        #[arg(long)]
+        force: bool,
+        /// Preview actions without making changes
+        #[arg(long)]
+        dry_run: bool,
+        /// Show verbose output
+        #[arg(short, long)]
+        verbose: bool,
     },
     /// List all defined skills and verify their current linkage status
     List {
@@ -160,32 +181,32 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             config.save_to_file(&config_path)?;
 
             if global {
-                println!("Initialized skills.yaml for GLOBAL user configuration");
+                eprintln!("Initialized skills.yaml for GLOBAL user configuration");
             } else {
                 let project_name = config.name;
-                println!("Initialized skills.yaml for project '{}'", project_name);
+                eprintln!("Initialized skills.yaml for project '{}'", project_name);
             }
 
             // Give helpful next steps
-            println!("\nNext steps:");
+            eprintln!("\nNext steps:");
             if global {
-                println!("  Run: skm install --global");
+                eprintln!("  Run: skm install --global");
             } else {
-                println!("  Run: skm install");
+                eprintln!("  Run: skm install");
             }
-            println!("  Run: skm list");
-            println!("  Run: skm check");
+            eprintln!("  Run: skm list");
+            eprintln!("  Run: skm check");
         }
         Commands::Install { global } => {
             let config = load_config(&config_path)?;
             validate_config(&config)?;
             ensure_registries_cached(&config)?;
 
-            println!("Installing skills for agents: {:?}", config.agents);
+            eprintln!("Installing skills for agents: {:?}", config.agents);
             for skill in &config.skills {
                 linker::link_skill(skill, &current_dir, &config.agents, global)?;
             }
-            println!("Successfully installed all skills.");
+            eprintln!("Successfully installed all skills.");
         }
         Commands::Add {
             skill_name,
@@ -211,15 +232,33 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
 
             config.skills.push(new_skill.clone());
             config.save_to_file(&config_path)?;
-            println!("Added skill '{}' to skills.yaml", skill_name);
+            eprintln!("Added skill '{}' to skills.yaml", skill_name);
 
             ensure_registries_cached(&config)?;
             linker::link_skill(&new_skill, &current_dir, &config.agents, global)?;
         }
+        Commands::Remove {
+            skill_name,
+            global,
+            yes,
+            force,
+            dry_run,
+            verbose,
+        } => {
+            remover::remove_skill(
+                &skill_name,
+                &current_dir,
+                global,
+                yes,
+                force,
+                dry_run,
+                verbose,
+            )?;
+        }
         Commands::List { global } => {
             let config = load_config(&config_path)?;
             validate_config(&config)?;
-            println!("Listing skills for project '{}':", config.name);
+            eprintln!("Listing skills for project '{}':", config.name);
 
             for skill in &config.skills {
                 let mut status = "OK".to_string();
@@ -264,7 +303,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 let source_dir = linker::resolve_skill_source_dir(skill, &current_dir)?;
 
                 if !source_dir.exists() {
-                    println!(
+                    eprintln!(
                         "[FAIL] Skill '{}' source directory not found: {:?}",
                         skill.name, source_dir
                     );
@@ -273,7 +312,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 if !source_dir.join("SKILL.md").exists() {
-                    println!("[FAIL] Skill '{}' missing SKILL.md", skill.name);
+                    eprintln!("[FAIL] Skill '{}' missing SKILL.md", skill.name);
                     all_ok = false;
                     continue;
                 }
@@ -283,7 +322,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                     let base = linker::get_agent_skills_dir(agent, &current_dir, global)?;
                     let path = linker::get_skill_target_path(&base, &skill.name)?;
                     if !path.is_symlink() {
-                        println!(
+                        eprintln!(
                             "[FAIL] Missing symlink for agent '{}' to skill '{}'",
                             agent, skill.name
                         );
@@ -292,7 +331,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                     }
 
                     if !linker::symlink_points_to(&path, &source_dir)? {
-                        println!(
+                        eprintln!(
                             "[FAIL] Link for agent '{}' to skill '{}' points at the wrong target",
                             agent, skill.name
                         );
@@ -302,7 +341,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if all_ok {
-                println!("[SUCCESS] All skills validated and correctly linked.");
+                eprintln!("[SUCCESS] All skills validated and correctly linked.");
             } else {
                 return Err("Validation checks failed. Some skills or links are missing.".into());
             }
@@ -324,7 +363,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if !yes && !confirm_update()? {
-                println!("Update cancelled.");
+                eprintln!("Update cancelled.");
                 return Ok(());
             }
 
@@ -338,8 +377,8 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::InitConfig => {
             config_manager::ensure_global_env()?;
-            println!("Base configuration initialized.");
-            println!("You can now use 'skm cache-update' to populate the skill registry cache.");
+            eprintln!("Base configuration initialized.");
+            eprintln!("You can now use 'skm cache-update' to populate the skill registry cache.");
         }
     }
 
@@ -347,8 +386,8 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn confirm_update() -> Result<bool, Box<dyn std::error::Error>> {
-    print!("Install this update now? [y/N] ");
-    io::stdout().flush()?;
+    eprint!("Install this update now? [y/N] ");
+    io::stderr().flush()?;
 
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
@@ -400,7 +439,7 @@ fn ensure_registries_cached(config: &SkillsConfig) -> Result<(), Box<dyn std::er
             std::fs::create_dir_all(parent)?;
         }
 
-        println!("Cloning registry '{}' from '{}'...", name, url);
+        eprintln!("Cloning registry '{}' from '{}'...", name, url);
         let output = std::process::Command::new("git")
             .args(["clone", url, path.to_str().unwrap()])
             .output()?;
