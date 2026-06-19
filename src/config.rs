@@ -55,7 +55,7 @@ impl SkillsConfig {
                 "hermes".to_string(),
             ],
             skills: vec![SkillSpec {
-                name: "software-development/symphony-spec-writing".to_string(),
+                name: "software-development/spec".to_string(),
                 version: Some("latest".to_string()),
                 source: Some("default".to_string()),
                 path: None,

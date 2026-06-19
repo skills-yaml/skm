@@ -40,8 +40,7 @@ pub fn resolve_registry_path(name: &str) -> Option<PathBuf> {
         home.join(".cache")
             .join("skm")
             .join("registries")
-            .join(name)
-            .join("skills"),
+            .join(name),
     )
 }
 
@@ -75,7 +74,8 @@ pub fn resolve_skill_source_dir(
         // Resolve version path
         let version_path = resolve_version_path(skill)?;
 
-        Ok(reg_path.join(skill_path).join(version_path))
+        // Append "skills" directory to registry path
+        Ok(reg_path.join("skills").join(skill_path).join(version_path))
     }
 }
 

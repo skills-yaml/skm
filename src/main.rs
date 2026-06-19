@@ -45,7 +45,7 @@ enum Commands {
     },
     /// Add a new skill to skills.yaml and link it
     Add {
-        /// Name of the skill (e.g. software-development/symphony-spec-writing)
+        /// Name of the skill (e.g. software-development/spec)
         skill_name: String,
         /// Source registry name (defaults to 'default')
         #[arg(long)]
