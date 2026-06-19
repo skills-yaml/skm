@@ -59,3 +59,27 @@ Implemented `skm remove` command to safely remove skill entries from `./skills.y
 Content:
 
 Implemented `skm clean` subcommands (`symlinks`, `cache`, `reset`) to find and remove broken or orphaned symlinks, manage cache size/retention, show cache statistics, and perform full/selective workspace resets with backup, backed by unit tests. Moved `cleanup-commands.md` spec to `docs/specs/done/`.
+
+## 2026-06-19 - Implement Local Development Mode (skm dev)
+
+- Type: fact
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Implemented `skm dev` commands (`link`, `unlink`, `list`, `show`, `mode`) to enable linking local directories as development skills, unlinking them, listing them, showing info, and toggling dev mode, backed by unit tests. Moved `local-dev-mode.md` spec to `docs/specs/done/`.
+
+## 2026-06-19 - Implement Skill Version Management
+
+- Type: fact
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Implemented skill versioning commands (`versions`, `use`, `update-skill`) to list registry versions semantically, switch config/links to a specific version, and update skills to the latest version, backed by integration tests. Moved `skill-version-management.md` spec to `docs/specs/done/`.
