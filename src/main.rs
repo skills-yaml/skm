@@ -334,7 +334,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             first_time_setup()?;
         }
         Commands::InitConfig => {
-            config_manager::init_base_config()?;
+            config_manager::ensure_global_env()?;
             println!("Base configuration initialized.");
             println!("You can now use 'skm cache-update' to populate the skill registry cache.");
         }
