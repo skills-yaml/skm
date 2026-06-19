@@ -281,7 +281,7 @@ pub fn unlink_skill(
     Ok(removed)
 }
 
-fn is_supported_agent(agent: &str) -> bool {
+pub fn is_supported_agent(agent: &str) -> bool {
     matches!(
         agent,
         "claude" | "codex" | "cursor" | "copilot" | "grok" | "hermes"
@@ -296,7 +296,7 @@ fn is_safe_registry_name(name: &str) -> bool {
         && Path::new(name).components().count() == 1
 }
 
-fn validated_skill_path(name: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+pub fn validated_skill_path(name: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let path = Path::new(name);
     let mut has_component = false;
     let mut safe_path = PathBuf::new();
@@ -323,12 +323,12 @@ fn validated_skill_path(name: &str) -> Result<PathBuf, Box<dyn std::error::Error
 }
 
 #[cfg(unix)]
-fn symlink_dir(source: &Path, target: &Path) -> io::Result<()> {
+pub fn symlink_dir(source: &Path, target: &Path) -> io::Result<()> {
     std::os::unix::fs::symlink(source, target)
 }
 
 #[cfg(windows)]
-fn symlink_dir(source: &Path, target: &Path) -> io::Result<()> {
+pub fn symlink_dir(source: &Path, target: &Path) -> io::Result<()> {
     std::os::windows::fs::symlink_dir(source, target)
 }
 

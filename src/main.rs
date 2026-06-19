@@ -1,7 +1,10 @@
 mod cleaner;
 mod config;
+mod config_editor;
 mod config_manager;
+mod dev;
 mod linker;
+mod registry;
 mod remover;
 mod updater;
 mod wizard;
@@ -119,6 +122,15 @@ enum Commands {
     /// Clean up SKM artifacts (broken symlinks, cache, etc.)
     #[command(subcommand)]
     Clean(CleanCommands),
+    /// Manage SKM configuration
+    #[command(subcommand)]
+    Config(ConfigCommands),
+    /// Manage skill registries
+    #[command(subcommand)]
+    Registry(RegistryCommands),
+    /// Manage local development skills
+    #[command(subcommand)]
+    Dev(DevCommands),
 }
 
 #[derive(Subcommand)]
@@ -201,6 +213,276 @@ enum CleanCommands {
         /// Skip confirmation
         #[arg(short, long)]
         yes: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum ConfigCommands {
+    /// Get a configuration value
+    Get {
+        /// Configuration key (supports dot notation)
+        key: String,
+        /// Get from global configuration
+        #[arg(short, long)]
+        global: bool,
+        /// Get from project configuration
+        #[arg(short, long)]
+        project: bool,
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+        /// Show default value if key not found
+        #[arg(long)]
+        default: bool,
+    },
+
+    /// Set a configuration value
+    Set {
+        /// Configuration key
+        key: String,
+        /// Value to set
+        value: String,
+        /// Set in global configuration
+        #[arg(short, long)]
+        global: bool,
+        /// Set in project configuration
+        #[arg(short, long)]
+        project: bool,
+        /// Parse value as JSON
+        #[arg(long)]
+        json: bool,
+        /// Preview changes without applying
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip confirmation for sensitive changes
+        #[arg(short, long)]
+        yes: bool,
+    },
+
+    /// Remove a configuration value
+    Unset {
+        /// Configuration key to remove
+        key: String,
+        /// Unset from global configuration
+        #[arg(short, long)]
+        global: bool,
+        /// Unset from project configuration
+        #[arg(short, long)]
+        project: bool,
+        /// Preview changes without applying
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip confirmation
+        #[arg(short, long)]
+        yes: bool,
+    },
+
+    /// Show full configuration
+    Show {
+        /// Show global configuration
+        #[arg(short, long)]
+        global: bool,
+        /// Show project configuration
+        #[arg(short, long)]
+        project: bool,
+        /// Show both configurations
+        #[arg(long)]
+        all: bool,
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+        /// Output in YAML format
+        #[arg(long)]
+        yaml: bool,
+        /// Show configuration file paths
+        #[arg(long)]
+        paths: bool,
+    },
+
+    /// Reset configuration to defaults
+    Reset {
+        /// Reset global configuration
+        #[arg(short, long)]
+        global: bool,
+        /// Reset project configuration
+        #[arg(short, long)]
+        project: bool,
+        /// Skip confirmation
+        #[arg(short, long)]
+        yes: bool,
+        /// Preview what would be reset
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Validate configuration files
+    Validate {
+        /// Validate global configuration
+        #[arg(short, long)]
+        global: bool,
+        /// Validate project configuration
+        #[arg(short, long)]
+        project: bool,
+        /// Validate all configurations
+        #[arg(long)]
+        all: bool,
+        /// Perform strict validation
+        #[arg(long)]
+        strict: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum RegistryCommands {
+    /// Add a new skill registry
+    Add {
+        /// Name for the new registry
+        name: String,
+        /// Git URL of the registry
+        url: String,
+        /// Set this registry as the default
+        #[arg(long)]
+        set_default: bool,
+        /// Skip URL validation
+        #[arg(long)]
+        skip_validate: bool,
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Remove a skill registry
+    Remove {
+        /// Name of the registry to remove
+        name: String,
+        /// Force removal even if it's the default
+        #[arg(short, long)]
+        force: bool,
+        /// Skip confirmation
+        #[arg(short, long)]
+        yes: bool,
+        /// Preview what would be removed
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// List all configured registries
+    List {
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+        /// Show detailed information
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Update a registry cache
+    Update {
+        /// Name of the registry to update
+        name: Option<String>,
+        /// Update all registries
+        #[arg(long)]
+        all: bool,
+        /// Force update even if already up-to-date
+        #[arg(long)]
+        force: bool,
+    },
+
+    /// Set the default registry
+    Default {
+        /// Name of the registry to set as default
+        name: String,
+    },
+
+    /// Show detailed registry information
+    Info {
+        /// Name of the registry
+        name: String,
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum DevCommands {
+    /// Link a local directory as a development skill
+    Link {
+        /// Path to local skill directory
+        path: std::path::PathBuf,
+        /// Skill name (defaults to directory name)
+        #[arg(short, long)]
+        name: Option<String>,
+        /// Registry source to override
+        #[arg(short, long)]
+        source: Option<String>,
+        /// Link globally instead of in current project
+        #[arg(short, long)]
+        global: bool,
+        /// Link to all available agents
+        #[arg(long)]
+        all_agents: bool,
+        /// Link to specific agent(s)
+        #[arg(long)]
+        agent: Option<String>,
+        /// Override existing skill without warning
+        #[arg(short, long)]
+        force: bool,
+        /// Show verbose output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Unlink a development skill
+    Unlink {
+        /// Name of the development skill to unlink
+        skill_name: String,
+        /// Unlink from global scope
+        #[arg(short, long)]
+        global: bool,
+        /// Skip confirmation
+        #[arg(short, long)]
+        yes: bool,
+        /// Show verbose output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// List all linked development skills
+    List {
+        /// Show global development skills
+        #[arg(short, long)]
+        global: bool,
+        /// Show both project and global
+        #[arg(long)]
+        all: bool,
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+        /// Show full paths
+        #[arg(long)]
+        paths: bool,
+    },
+
+    /// Show information about a development skill
+    Show {
+        /// Name of the development skill
+        skill_name: String,
+        /// Show from global scope
+        #[arg(short, long)]
+        global: bool,
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Toggle development mode
+    Mode {
+        /// Action: on, off, or status
+        action: String,
+        /// Apply to global configuration
+        #[arg(short, long)]
+        global: bool,
     },
 }
 
@@ -513,6 +795,142 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 cleaner::reset(
                     config, cache, symlinks, all, backup, backup_dir, dry_run, yes,
                 )?;
+            }
+        },
+        Commands::Config(cmd) => match cmd {
+            ConfigCommands::Get {
+                key,
+                global,
+                project,
+                json,
+                default,
+            } => {
+                config_editor::get_value(&key, global, project, json, default)?;
+            }
+            ConfigCommands::Set {
+                key,
+                value,
+                global,
+                project,
+                json,
+                dry_run,
+                yes,
+            } => {
+                config_editor::set_value(&key, &value, global, project, json, dry_run, yes)?;
+            }
+            ConfigCommands::Unset {
+                key,
+                global,
+                project,
+                dry_run,
+                yes,
+            } => {
+                config_editor::unset_value(&key, global, project, dry_run, yes)?;
+            }
+            ConfigCommands::Show {
+                global,
+                project,
+                all,
+                json,
+                yaml,
+                paths,
+            } => {
+                config_editor::show_config(global, project, all, json, yaml, paths)?;
+            }
+            ConfigCommands::Reset {
+                global,
+                project,
+                yes,
+                dry_run,
+            } => {
+                config_editor::reset_config(global, project, yes, dry_run)?;
+            }
+            ConfigCommands::Validate {
+                global,
+                project,
+                all,
+                strict,
+            } => {
+                config_editor::validate_config(global, project, all, strict)?;
+            }
+        },
+        Commands::Registry(cmd) => match cmd {
+            RegistryCommands::Add {
+                name,
+                url,
+                set_default,
+                skip_validate,
+                json,
+            } => {
+                registry::add(name, url, set_default, skip_validate, json)?;
+            }
+            RegistryCommands::Remove {
+                name,
+                force,
+                yes,
+                dry_run,
+            } => {
+                registry::remove(name, force, yes, dry_run)?;
+            }
+            RegistryCommands::List { json, verbose } => {
+                registry::list(json, verbose)?;
+            }
+            RegistryCommands::Update { name, all, force } => {
+                if all {
+                    registry::update_all(force)?;
+                } else if let Some(name) = name {
+                    registry::update(name, force)?;
+                } else {
+                    return Err("Must specify a registry name or use --all".into());
+                }
+            }
+            RegistryCommands::Default { name } => {
+                registry::set_default(name)?;
+            }
+            RegistryCommands::Info { name, json } => {
+                registry::info(name, json)?;
+            }
+        },
+        Commands::Dev(cmd) => match cmd {
+            DevCommands::Link {
+                path,
+                name,
+                source,
+                global,
+                all_agents,
+                agent,
+                force,
+                verbose,
+            } => {
+                dev::link_local_skill(
+                    path, name, source, global, all_agents, agent, force, verbose,
+                )?;
+            }
+            DevCommands::Unlink {
+                skill_name,
+                global,
+                yes,
+                verbose,
+            } => {
+                dev::unlink_local_skill(&skill_name, global, yes, verbose)?;
+            }
+            DevCommands::List {
+                global,
+                all,
+                json,
+                paths,
+            } => {
+                dev::list_local_skills(global, all, json, paths)?;
+            }
+            DevCommands::Show {
+                skill_name,
+                global,
+                json,
+            } => {
+                dev::show_local_skill(&skill_name, global, json)?;
+            }
+            DevCommands::Mode { action, global } => {
+                dev::toggle_dev_mode(&action, global)?;
             }
         },
     }

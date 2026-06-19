@@ -17,7 +17,7 @@ tasks:
   test:
     desc: Run unit and integration tests
     cmds:
-      - cargo test
+      - cargo test -- --test-threads=1
 
   build:
     desc: Build optimized release binary
