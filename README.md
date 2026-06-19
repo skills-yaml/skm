@@ -143,6 +143,14 @@ skm add <skill-name> [--source <registry>] [--path <local-path>] [--global]
 skm list [--global]
 skm check [--global]
 skm update [--channel prod|development] [--check] [--yes]
+skm versions <skill-name> [--registry <registry>] [--json] [--stable-only] [--pre] [--limit <limit>]
+skm use <skill-name>@<version> [--global] [--yes] [--dry-run]
+skm update-skill <skill-name> [--global] [--yes] [--dry-run] [--pre]
+skm dev link <path> [--name <name>] [--source <source>] [--global] [--all-agents] [--agent <agents>] [--force] [--verbose]
+skm dev unlink <skill-name> [--global] [--yes] [--verbose]
+skm dev list [--global] [--all] [--json] [--paths]
+skm dev show <skill-name> [--global] [--json]
+skm dev mode [on|off|status] [--global]
 ```
 
 - `init`: creates a default `skills.yaml`.
@@ -151,6 +159,10 @@ skm update [--channel prod|development] [--check] [--yes]
 - `list`: reports current link status, including missing sources and bad links.
 - `check`: verifies source directories, `SKILL.md`, symlink existence, and symlink targets; intended for CI.
 - `update`: checks the selected release channel and installs the latest release artifact.
+- `versions`: lists all available versions for a skill from a registry.
+- `use`: switches a skill to a specific version (e.g. `skill@v1.2.0`) in `skills.yaml` and re-links it.
+- `update-skill`: updates a skill to its latest version in `skills.yaml` and re-links it.
+- `dev`: manages local development skills (linking local paths as symlinks directly, toggling dev mode).
 
 ## Configuration
 
