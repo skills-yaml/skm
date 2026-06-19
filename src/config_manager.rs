@@ -238,6 +238,7 @@ pub fn is_first_time() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::fs;
 
     /// Helper struct to temporarily set HOME and XDG_CONFIG_HOME and restore them on drop
@@ -284,6 +285,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_ensure_global_env_creates_config() {
         let _temp_home = create_temp_config_dir();
 
@@ -314,6 +316,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_ensure_global_env_idempotent() {
         let _temp_home = create_temp_config_dir();
 
@@ -331,6 +334,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_ensure_global_env_with_existing_config() {
         let _temp_home = create_temp_config_dir();
 
