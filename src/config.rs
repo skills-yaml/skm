@@ -12,6 +12,21 @@ pub struct SkillSpec {
     pub path: Option<String>,
 }
 
+impl SkillSpec {
+    /// Parse skill spec with version (e.g., "my-skill@v1.2.0")
+    pub fn parse_with_version(
+        input: &str,
+    ) -> Result<(String, Option<String>), Box<dyn std::error::Error>> {
+        if let Some(at_pos) = input.rfind('@') {
+            let name = &input[..at_pos];
+            let version = Some(input[at_pos + 1..].to_string());
+            Ok((name.to_string(), version))
+        } else {
+            Ok((input.to_string(), None))
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SkillsConfig {
     pub name: String,

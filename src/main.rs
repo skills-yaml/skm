@@ -7,6 +7,7 @@ mod linker;
 mod registry;
 mod remover;
 mod updater;
+mod version_manager;
 mod wizard;
 
 use clap::{Parser, Subcommand};
@@ -119,6 +120,60 @@ enum Commands {
     Setup,
     /// Initialize global base configuration with default registry
     InitConfig,
+    /// List all available versions for a skill
+    Versions {
+        /// Name of the skill
+        skill_name: String,
+        /// Specific registry to query
+        #[arg(short, long)]
+        registry: Option<String>,
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+        /// Only show stable versions
+        #[arg(long)]
+        stable_only: bool,
+        /// Include prerelease versions
+        #[arg(long)]
+        pre: bool,
+        /// Limit number of versions shown
+        #[arg(short, long, default_value = "50")]
+        limit: usize,
+    },
+
+    /// Switch a skill to a specific version
+    Use {
+        /// Skill and version (format: skill@v1.2.0)
+        skill_version: String,
+        /// Apply to global configuration
+        #[arg(short, long)]
+        global: bool,
+        /// Skip confirmation
+        #[arg(short, long)]
+        yes: bool,
+        /// Preview changes
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Update a skill to its latest version
+    #[command(name = "update-skill")]
+    UpdateSkill {
+        /// Name of the skill to update
+        skill_name: String,
+        /// Update in global configuration
+        #[arg(short, long)]
+        global: bool,
+        /// Skip confirmation
+        #[arg(short, long)]
+        yes: bool,
+        /// Preview changes
+        #[arg(long)]
+        dry_run: bool,
+        /// Update to prerelease version
+        #[arg(long)]
+        pre: bool,
+    },
     /// Clean up SKM artifacts (broken symlinks, cache, etc.)
     #[command(subcommand)]
     Clean(CleanCommands),
@@ -933,6 +988,56 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 dev::toggle_dev_mode(&action, global)?;
             }
         },
+        Commands::Versions {
+            skill_name,
+            registry,
+            json,
+            stable_only,
+            pre,
+            limit,
+        } => {
+            version_manager::list_versions_cmd(
+                &skill_name,
+                registry.as_deref(),
+                stable_only,
+                pre,
+                limit,
+                json,
+            )?;
+        }
+        Commands::Use {
+            skill_version,
+            global,
+            yes,
+            dry_run,
+        } => {
+            let (skill_name, version) = SkillSpec::parse_with_version(&skill_version)?;
+            let version = version.unwrap_or_else(|| "latest".to_string());
+            version_manager::use_version(
+                &skill_name,
+                &version,
+                &config_path,
+                global,
+                yes,
+                dry_run,
+            )?;
+        }
+        Commands::UpdateSkill {
+            skill_name,
+            global,
+            yes,
+            dry_run,
+            pre,
+        } => {
+            version_manager::update_to_latest(
+                &skill_name,
+                &config_path,
+                global,
+                pre,
+                yes,
+                dry_run,
+            )?;
+        }
     }
 
     Ok(())
