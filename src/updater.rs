@@ -44,6 +44,7 @@ pub fn current_build_commit() -> &'static str {
     env!("SKM_BUILD_COMMIT")
 }
 
+#[allow(dead_code)]
 pub fn current_build_channel() -> &'static str {
     env!("SKM_BUILD_CHANNEL")
 }
@@ -55,9 +56,9 @@ pub fn check_for_update(channel: UpdateChannel) -> Result<bool, Box<dyn std::err
     let latest_short = short_sha(&latest);
 
     eprintln!(
-        "Current build: {} ({})",
-        current_short,
-        current_build_channel()
+        "Current version: {} (commit: {})",
+        env!("CARGO_PKG_VERSION"),
+        current_short
     );
     eprintln!("Latest {} build: {}", channel.tag(), latest_short);
 
@@ -254,9 +255,13 @@ fn notify_update_available() -> Result<(), Box<dyn std::error::Error>> {
     let latest = latest_release_commit(UpdateChannel::Prod)?;
 
     eprintln!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    eprintln!("  New SKM version available!");
-    eprintln!("  Current: {}", &current[..current.len().min(12)]);
-    eprintln!("  Latest:  {}", &latest[..latest.len().min(12)]);
+    eprintln!("  New SKM update available!");
+    eprintln!(
+        "  Current version: {} (commit: {})",
+        env!("CARGO_PKG_VERSION"),
+        &current[..current.len().min(12)]
+    );
+    eprintln!("  Latest commit:   {}", &latest[..latest.len().min(12)]);
     eprintln!("  Run `skm update` to update!");
     eprintln!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 

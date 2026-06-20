@@ -20,6 +20,7 @@ use updater::{check_and_notify_update, UpdateChannel};
 
 #[derive(Parser)]
 #[command(name = "skm")]
+#[command(version)]
 #[command(about = "Agent Skill Manager (skm) - Manage agent skills via skills.yaml", long_about = None)]
 struct Cli {
     #[command(subcommand)]
@@ -774,12 +775,15 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if !update_available {
-                return Ok(());
-            }
-
-            if !yes && !confirm_update()? {
-                eprintln!("Update cancelled.");
-                return Ok(());
+                eprintln!("You are already on the latest version.");
+                if !yes && !confirm_update()? {
+                    return Ok(());
+                }
+            } else {
+                if !yes && !confirm_update()? {
+                    eprintln!("Update cancelled.");
+                    return Ok(());
+                }
             }
 
             updater::install_update(channel)?;
