@@ -551,16 +551,7 @@ fn main() {
     }
 
     // Check for updates at launch
-    if let Ok(should_update) = check_and_notify_update() {
-        if should_update {
-            // User agreed to update, run update and exit
-            if let Err(e) = updater::install_update(UpdateChannel::Prod) {
-                eprintln!("Update failed: {}", e);
-                std::process::exit(1);
-            }
-            std::process::exit(0);
-        }
-    }
+    let _ = check_and_notify_update();
 
     if let Err(e) = run(cli.command) {
         eprintln!("Error: {}", e);

@@ -1,5 +1,4 @@
 use std::fs;
-use std::io::{self, Write};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -258,28 +257,17 @@ fn notify_update_available() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("  New SKM version available!");
     eprintln!("  Current: {}", &current[..current.len().min(12)]);
     eprintln!("  Latest:  {}", &latest[..latest.len().min(12)]);
-    eprintln!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    eprintln!("  Run `skm update` to update!");
+    eprintln!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
     Ok(())
 }
 
-/// Prompt user to update
-fn prompt_for_update() -> bool {
-    eprint!("\nWould you like to update now? [y/N] ");
-    io::stderr().flush().unwrap();
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
-
-    matches!(input.trim().to_lowercase().as_str(), "y" | "yes")
-}
-
 /// Check for update and notify user if available
-/// Returns true if an update is available and user agreed to update
-pub fn check_and_notify_update() -> Result<bool, Box<dyn std::error::Error>> {
+pub fn check_and_notify_update() -> Result<(), Box<dyn std::error::Error>> {
     // Check if update check is disabled
     if is_update_check_disabled() {
-        return Ok(false);
+        return Ok(());
     }
 
     // Check cache first
@@ -287,11 +275,8 @@ pub fn check_and_notify_update() -> Result<bool, Box<dyn std::error::Error>> {
         if !cached_result.is_expired() {
             if cached_result.update_available {
                 notify_update_available()?;
-                let should_update = prompt_for_update();
-                cache_update_result(true); // Re-cache with new TTL
-                return Ok(should_update);
             }
-            return Ok(false);
+            return Ok(());
         }
     }
 
@@ -302,15 +287,13 @@ pub fn check_and_notify_update() -> Result<bool, Box<dyn std::error::Error>> {
             cache_update_result(update_available);
             if update_available {
                 notify_update_available()?;
-                Ok(prompt_for_update())
-            } else {
-                Ok(false)
             }
+            Ok(())
         }
         Err(e) => {
             // Log error but don't fail
             eprintln!("Warning: Update check failed: {}", e);
-            Ok(false)
+            Ok(())
         }
     }
 }
