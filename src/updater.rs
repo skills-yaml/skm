@@ -165,6 +165,8 @@ fn install_update_windows(_channel: UpdateChannel) -> Result<(), Box<dyn std::er
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct UpdateCache {
     update_available: bool,
+    #[serde(default)]
+    latest_commit: String,
     checked_at: u64,
     ttl_seconds: u64,
 }
@@ -196,7 +198,7 @@ fn get_cached_update_result() -> Option<UpdateCache> {
 }
 
 /// Cache the update check result
-fn cache_update_result(update_available: bool) {
+fn cache_update_result(update_available: bool, latest_commit: &str) {
     let path = match get_update_cache_path() {
         Some(p) => p,
         None => return,
@@ -209,6 +211,7 @@ fn cache_update_result(update_available: bool) {
 
     let cache = UpdateCache {
         update_available,
+        latest_commit: latest_commit.to_string(),
         checked_at: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -238,21 +241,22 @@ fn is_update_check_disabled() -> bool {
 }
 
 /// Silent version of check_for_update that doesn't print status messages
-pub fn check_for_update_silent(channel: UpdateChannel) -> Result<bool, Box<dyn std::error::Error>> {
+pub fn check_for_update_silent(
+    channel: UpdateChannel,
+) -> Result<(bool, String), Box<dyn std::error::Error>> {
     let current = current_build_commit();
     let latest = latest_release_commit(channel)?;
 
     if current == "unknown" {
-        return Ok(true);
+        return Ok((true, latest));
     }
 
-    Ok(current != latest)
+    Ok((current != latest, latest))
 }
 
 /// Display update notification message
-fn notify_update_available() -> Result<(), Box<dyn std::error::Error>> {
+fn notify_update_available(latest: &str) {
     let current = current_build_commit();
-    let latest = latest_release_commit(UpdateChannel::Prod)?;
 
     eprintln!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     eprintln!("  New SKM update available!");
@@ -264,8 +268,6 @@ fn notify_update_available() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("  Latest commit:   {}", &latest[..latest.len().min(12)]);
     eprintln!("  Run `skm update` to update!");
     eprintln!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-
-    Ok(())
 }
 
 /// Check for update and notify user if available
@@ -275,11 +277,20 @@ pub fn check_and_notify_update() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    let current = current_build_commit();
+
     // Check cache first
-    if let Some(cached_result) = get_cached_update_result() {
+    if let Some(mut cached_result) = get_cached_update_result() {
         if !cached_result.is_expired() {
-            if cached_result.update_available {
-                notify_update_available()?;
+            // If the cached latest commit matches our current commit, we've already updated!
+            if cached_result.update_available
+                && current != "unknown"
+                && current == cached_result.latest_commit
+            {
+                cached_result.update_available = false;
+                cache_update_result(false, &cached_result.latest_commit);
+            } else if cached_result.update_available {
+                notify_update_available(&cached_result.latest_commit);
             }
             return Ok(());
         }
@@ -288,10 +299,10 @@ pub fn check_and_notify_update() -> Result<(), Box<dyn std::error::Error>> {
     // Perform fresh check
     let channel = UpdateChannel::Prod;
     match check_for_update_silent(channel) {
-        Ok(update_available) => {
-            cache_update_result(update_available);
+        Ok((update_available, latest)) => {
+            cache_update_result(update_available, &latest);
             if update_available {
-                notify_update_available()?;
+                notify_update_available(&latest);
             }
             Ok(())
         }
@@ -348,6 +359,7 @@ mod tests {
 
         let cache = UpdateCache {
             update_available: true,
+            latest_commit: "dummy".to_string(),
             checked_at: now, // Just checked now
             ttl_seconds: 3600,
         };
@@ -360,6 +372,7 @@ mod tests {
     fn test_update_cache_expiration() {
         let cache = UpdateCache {
             update_available: true,
+            latest_commit: "dummy".to_string(),
             checked_at: 0,
             ttl_seconds: 3600,
         };
