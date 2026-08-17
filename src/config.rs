@@ -7,9 +7,29 @@ use std::path::Path;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SkillSpec {
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct ToolkitSelection {
+    pub manifest: String,
+    pub version: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct WorkspaceSelection {
+    pub standard: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub integrity: Option<String>,
 }
 
 impl SkillSpec {
@@ -30,10 +50,24 @@ impl SkillSpec {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SkillsConfig {
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub registries: Option<HashMap<String, String>>,
+    #[serde(default)]
     pub agents: Vec<String>,
+    #[serde(default)]
     pub skills: Vec<SkillSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toolkit: Option<ToolkitSelection>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bundles: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub profiles: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<WorkspaceSelection>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trusted_sources: Vec<String>,
 }
 
 impl SkillsConfig {
@@ -75,6 +109,11 @@ impl SkillsConfig {
                 source: Some("default".to_string()),
                 path: None,
             }],
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            workspace: None,
+            trusted_sources: Vec::new(),
         }
     }
 

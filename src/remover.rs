@@ -107,7 +107,9 @@ mod tests {
     #[test]
     fn test_remove_skill_success() {
         let project = temp_project();
-        let config = SkillsConfig::default_init("test-proj");
+        let mut config = SkillsConfig::default_init("test-proj");
+        config.skills[0].path = Some("source/software-development/spec".to_string());
+        config.skills[0].source = None;
         let config_path = project.join("skills.yaml");
         config.save_to_file(&config_path).unwrap();
 

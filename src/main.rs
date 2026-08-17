@@ -6,9 +6,11 @@ mod dev;
 mod linker;
 mod registry;
 mod remover;
+mod toolkit;
 mod updater;
 mod version_manager;
 mod wizard;
+mod workspace;
 
 use clap::{Parser, Subcommand};
 use config::{SkillSpec, SkillsConfig};
@@ -46,12 +48,48 @@ enum Commands {
         /// Use non-interactive mode with default values
         #[arg(long)]
         non_interactive: bool,
+        /// Select a repository-local Workspace toolkit manifest
+        #[arg(long)]
+        toolkit_manifest: Option<String>,
+        /// Pin the selected toolkit version
+        #[arg(long, default_value = "0.1.0")]
+        toolkit_version: String,
+        /// Select a toolkit bundle; repeat for multiple bundles
+        #[arg(long)]
+        bundle: Vec<String>,
+        /// Select an additional role profile; repeat for multiple profiles
+        #[arg(long)]
+        profile: Vec<String>,
+        /// Pin a workspace standard, for example workspace-docs@4.0.0
+        #[arg(long)]
+        workspace_standard: Option<String>,
+        /// Select a repository-local workspace standard source
+        #[arg(long)]
+        workspace_source: Option<String>,
+        /// Pin an immutable Git revision for a remote workspace source
+        #[arg(long)]
+        workspace_revision: Option<String>,
+        /// Pin the expected SHA-256 package integrity for a remote workspace source
+        #[arg(long)]
+        workspace_integrity: Option<String>,
+        /// Authorize a local path or Git source; repeat for multiple sources
+        #[arg(long)]
+        trusted_source: Vec<String>,
     },
     /// Install and symlink all skills specified in skills.yaml
     Install {
         /// Link skills globally (to user home directory) instead of project-local
         #[arg(short, long)]
         global: bool,
+        /// Preview the complete plan without writing
+        #[arg(long)]
+        dry_run: bool,
+        /// Emit the plan as JSON
+        #[arg(long)]
+        json: bool,
+        /// Confirm non-interactive application
+        #[arg(short, long)]
+        yes: bool,
     },
     /// Add a new skill to skills.yaml and link it
     Add {
@@ -187,6 +225,77 @@ enum Commands {
     /// Manage local development skills
     #[command(subcommand)]
     Dev(DevCommands),
+    /// Assess and prepare workspace structure operations
+    #[command(subcommand)]
+    Workspace(WorkspaceCommands),
+}
+
+#[derive(Subcommand)]
+enum WorkspaceCommands {
+    /// Assess the current workspace and trusted package without writing
+    Audit {
+        #[arg(long)]
+        target: Option<String>,
+        #[arg(long)]
+        source: Option<String>,
+        #[arg(long)]
+        revision: Option<String>,
+        #[arg(long)]
+        integrity: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Prepare a verified fresh-adoption handoff
+    Adopt {
+        #[arg(long)]
+        target: Option<String>,
+        #[arg(long)]
+        source: Option<String>,
+        #[arg(long)]
+        revision: Option<String>,
+        #[arg(long)]
+        integrity: Option<String>,
+        #[arg(long)]
+        apply: bool,
+        #[arg(short, long)]
+        yes: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Prepare a verified ordered workspace upgrade handoff
+    Upgrade {
+        #[arg(long)]
+        target: Option<String>,
+        #[arg(long)]
+        source: Option<String>,
+        #[arg(long)]
+        revision: Option<String>,
+        #[arg(long)]
+        integrity: Option<String>,
+        #[arg(long)]
+        apply: bool,
+        #[arg(short, long)]
+        yes: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Prepare a verified workspace repair handoff
+    Repair {
+        #[arg(long)]
+        target: Option<String>,
+        #[arg(long)]
+        source: Option<String>,
+        #[arg(long)]
+        revision: Option<String>,
+        #[arg(long)]
+        integrity: Option<String>,
+        #[arg(long)]
+        apply: bool,
+        #[arg(short, long)]
+        yes: bool,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -570,13 +679,22 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             advanced,
             global,
             non_interactive,
+            toolkit_manifest,
+            toolkit_version,
+            bundle,
+            profile,
+            workspace_standard,
+            workspace_source,
+            workspace_revision,
+            workspace_integrity,
+            trusted_source,
             ..
         } => {
             if config_path.exists() {
                 return Err("skills.yaml already exists in the current directory".into());
             }
 
-            let config = if non_interactive {
+            let mut config = if non_interactive {
                 // Non-interactive mode: use defaults
                 let project_name = name.unwrap_or_else(|| {
                     current_dir
@@ -593,6 +711,36 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 // Default: streamlined interactive wizard
                 wizard::run_streamlined_wizard(name, global)?
             };
+
+            if global && toolkit_manifest.is_some() {
+                return Err(
+                    "toolkit initialization is project-scoped; --global is not supported".into(),
+                );
+            }
+            if let Some(manifest) = toolkit_manifest {
+                config.toolkit = Some(config::ToolkitSelection {
+                    manifest,
+                    version: toolkit_version,
+                });
+                config.bundles = bundle;
+                config.profiles = profile;
+            } else if !bundle.is_empty() || !profile.is_empty() {
+                return Err("--bundle and --profile require --toolkit-manifest".into());
+            }
+            if let Some(standard) = workspace_standard {
+                config.workspace = Some(config::WorkspaceSelection {
+                    standard,
+                    source: workspace_source,
+                    revision: workspace_revision,
+                    integrity: workspace_integrity,
+                });
+            } else if workspace_source.is_some()
+                || workspace_revision.is_some()
+                || workspace_integrity.is_some()
+            {
+                return Err("workspace source options require --workspace-standard".into());
+            }
+            config.trusted_sources = trusted_source;
 
             config.save_to_file(&config_path)?;
 
@@ -613,16 +761,44 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("  Run: skm list");
             eprintln!("  Run: skm check");
         }
-        Commands::Install { global } => {
+        Commands::Install {
+            global,
+            dry_run,
+            json,
+            yes,
+        } => {
             let config = load_config(&config_path)?;
             validate_config(&config)?;
-            ensure_registries_cached(&config)?;
 
-            eprintln!("Installing skills for agents: {:?}", config.agents);
-            for skill in &config.skills {
-                linker::link_skill(skill, &current_dir, &config.agents, global)?;
+            if config.toolkit.is_some() {
+                if global {
+                    return Err(
+                        "toolkit installation is project-scoped; --global is not supported".into(),
+                    );
+                }
+                if !dry_run && !yes {
+                    return Err(
+                        "toolkit installation requires --yes; use --dry-run to preview".into(),
+                    );
+                }
+                toolkit::install(
+                    &config,
+                    &current_dir,
+                    toolkit::InstallOptions { dry_run, json },
+                )?;
+            } else {
+                if dry_run || json {
+                    return Err("--dry-run and --json require a configured toolkit".into());
+                }
+                if config.skills.iter().any(|skill| skill.path.is_none()) {
+                    ensure_registries_cached(&config)?;
+                }
+                eprintln!("Installing skills for agents: {:?}", config.agents);
+                for skill in &config.skills {
+                    linker::link_skill(skill, &current_dir, &config.agents, global)?;
+                }
+                eprintln!("Successfully installed all skills.");
             }
-            eprintln!("Successfully installed all skills.");
         }
         Commands::Add {
             skill_name,
@@ -708,6 +884,9 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
 
                 println!(" - {} (Status: {})", skill.name, status);
             }
+            if config.toolkit.is_some() {
+                toolkit::list(&current_dir)?;
+            }
         }
         Commands::Check { global } => {
             let config = load_config(&config_path)?;
@@ -756,7 +935,9 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
-            if all_ok {
+            if all_ok && config.toolkit.is_some() {
+                toolkit::check(&config, &current_dir)?;
+            } else if all_ok {
                 eprintln!("[SUCCESS] All skills validated and correctly linked.");
             } else {
                 return Err("Validation checks failed. Some skills or links are missing.".into());
@@ -983,6 +1164,89 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 dev::toggle_dev_mode(&action, global)?;
             }
         },
+        Commands::Workspace(command) => {
+            let config = load_config(&config_path)?;
+            match command {
+                WorkspaceCommands::Audit {
+                    target,
+                    source,
+                    revision,
+                    integrity,
+                    json,
+                } => workspace::run(
+                    workspace::Mode::Audit,
+                    &config,
+                    &current_dir,
+                    target,
+                    source,
+                    revision,
+                    integrity,
+                    false,
+                    false,
+                    json,
+                )?,
+                WorkspaceCommands::Adopt {
+                    target,
+                    source,
+                    revision,
+                    integrity,
+                    apply,
+                    yes,
+                    json,
+                } => workspace::run(
+                    workspace::Mode::Adopt,
+                    &config,
+                    &current_dir,
+                    target,
+                    source,
+                    revision,
+                    integrity,
+                    apply,
+                    yes,
+                    json,
+                )?,
+                WorkspaceCommands::Upgrade {
+                    target,
+                    source,
+                    revision,
+                    integrity,
+                    apply,
+                    yes,
+                    json,
+                } => workspace::run(
+                    workspace::Mode::Upgrade,
+                    &config,
+                    &current_dir,
+                    target,
+                    source,
+                    revision,
+                    integrity,
+                    apply,
+                    yes,
+                    json,
+                )?,
+                WorkspaceCommands::Repair {
+                    target,
+                    source,
+                    revision,
+                    integrity,
+                    apply,
+                    yes,
+                    json,
+                } => workspace::run(
+                    workspace::Mode::Repair,
+                    &config,
+                    &current_dir,
+                    target,
+                    source,
+                    revision,
+                    integrity,
+                    apply,
+                    yes,
+                    json,
+                )?,
+            }
+        }
         Commands::Versions {
             skill_name,
             registry,
@@ -1049,8 +1313,18 @@ fn confirm_update() -> Result<bool, Box<dyn std::error::Error>> {
 }
 
 fn load_config(path: &Path) -> Result<SkillsConfig, Box<dyn std::error::Error>> {
-    if !path.exists() {
-        return Err("skills.yaml file not found. Run 'skm init' to create one.".into());
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err("skills.yaml must not be a symlink".into())
+        }
+        Ok(metadata) if !metadata.is_file() => {
+            return Err("skills.yaml must be a regular file".into())
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err("skills.yaml file not found. Run 'skm init' to create one.".into())
+        }
+        Err(error) => return Err(error.into()),
     }
     SkillsConfig::load_from_file(path)
 }

@@ -644,6 +644,11 @@ pub fn run_wizard(
         registries: Some(registries),
         agents: all_agents,
         skills,
+        toolkit: None,
+        bundles: Vec::new(),
+        profiles: Vec::new(),
+        workspace: None,
+        trusted_sources: Vec::new(),
     })
 }
 
@@ -813,5 +818,10 @@ pub fn run_streamlined_wizard(
         registries: Some(registries),
         agents: all_agents,
         skills: selected_skills,
+        toolkit: None,
+        bundles: Vec::new(),
+        profiles: Vec::new(),
+        workspace: None,
+        trusted_sources: Vec::new(),
     })
 }

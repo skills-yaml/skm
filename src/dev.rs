@@ -600,6 +600,11 @@ mod tests {
             registries: None,
             agents: vec!["claude".to_string(), "cursor".to_string()],
             skills: vec![],
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            workspace: None,
+            trusted_sources: Vec::new(),
         };
         mock_config
             .save_to_file(project_dir.join("skills.yaml"))

@@ -422,6 +422,11 @@ mod tests {
                 source: Some("default".to_string()),
                 path: None,
             }],
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            workspace: None,
+            trusted_sources: Vec::new(),
         };
         mock_config.save_to_file(&config_path).unwrap();
 
