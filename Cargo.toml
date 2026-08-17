@@ -1,6 +1,6 @@
 [package]
 name = "skm"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
@@ -10,6 +10,7 @@ serde_yaml = "0.9"
 serde_json = "1.0"
 dirs = "5.0"
 walkdir = "2.4"
+sha2 = "0.10"
 
 [dev-dependencies]
 tempfile = "3.8"

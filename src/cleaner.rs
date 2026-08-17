@@ -903,6 +903,11 @@ mod tests {
                 path: None,
             }],
             registries: None,
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            workspace: None,
+            trusted_sources: Vec::new(),
         };
         config.save_to_file(&temp.join("skills.yaml")).unwrap();
 
@@ -1047,6 +1052,11 @@ mod tests {
             agents: vec!["claude".to_string()],
             skills: vec![],
             registries: None,
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            workspace: None,
+            trusted_sources: Vec::new(),
         };
         let project_config_path = temp.join("skills.yaml");
         config.save_to_file(&project_config_path).unwrap();
