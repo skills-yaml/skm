@@ -2,11 +2,9 @@
 
 ## Status
 
-State: development
+State: done
 
-SKM 0.2.0 is implemented and locally validated on this feature branch. It
-remains in development until confirmed integration into `development` and
-production release through `main`.
+SKM 0.2.0 is implemented, documented, and released through `main`.
 
 ## Problem
 
@@ -158,6 +156,6 @@ second apply.
 
 ## Memory Impact
 
-Status: `pending`
+Status: `none`
 
-Rationale: The 0.2.0 toolkit manager is implemented locally; the durable release record stays pending until production release through main.
+Rationale: The original completion recorded behavior in the spec; no separate durable memory entry was created.

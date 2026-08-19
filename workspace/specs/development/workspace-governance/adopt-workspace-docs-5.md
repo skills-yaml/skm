@@ -71,7 +71,7 @@ with a root catalog, and memory-impact plus spec-catalog completion gates.
 | `docs/standards/workspace-docs/README.md` | `workspace/instructions/standards/workspace-docs/` | Do not copy. The pin file records a sibling absolute path. Install the complete trusted 5.0.0 package instead. |
 | `docs/specs/backlog/` | `workspace/specs/backlog/` | Empty besides `.gitkeep`. Recreate as reserved state. |
 | `docs/specs/development/workspace-docs-5-compatibility.md` | `workspace/specs/development/workspace-toolkit/workspace-docs-5-compatibility.md` | Move. Keep `development`; no `development` or `main` integration evidence. |
-| `docs/specs/done/workspace-toolkit-manager.md` | `workspace/specs/development/workspace-toolkit/workspace-toolkit-manager.md` | Move to development. Present on this feature branch only; not released through `main`. |
+| `docs/specs/done/workspace-toolkit-manager.md` | `workspace/specs/done/workspace-toolkit/workspace-toolkit-manager.md` | Keep in done. Released through `main` as SKM 0.2.0. |
 | `docs/specs/done/auto-update-notification.md` | `workspace/specs/done/updates/auto-update-notification.md` | Move. Present on `main`. |
 | `docs/specs/done/cleanup-commands.md` | `workspace/specs/done/maintenance/cleanup-commands.md` | Move. Present on `main`. |
 | `docs/specs/done/config-management.md` | `workspace/specs/done/configuration/config-management.md` | Move. Present on `main`. |
@@ -157,3 +157,4 @@ Justified deviations:
 - SKM cannot verify a 1.0.0-to-5.0.0 chain because `v1.1.0` and `v1.2.0` have no `migration.md`. Intermediate notes applied were 2.0.0, 2.1.0, 3.0.0, 4.0.0, and 5.0.0 as required by `AGENT_MIGRATION.md`.
 - This repository has no `develop` branch. The documented test target is `development`.
 - Example command output in released specs used `$HOME` placeholders so the privacy gate can reject real machine-local paths.
+- An initial stale `main` snapshot lacked `workspace-toolkit-manager.md`. After fetching `origin/main`, that spec was returned to `done` because SKM 0.2.0 is released.

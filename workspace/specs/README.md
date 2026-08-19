@@ -38,7 +38,7 @@ reopened, is superseded, or materially changes why it is in its state.
 | --- | --- | --- | --- |
 | [adopt-workspace-docs-5.md](development/workspace-governance/adopt-workspace-docs-5.md) | `workspace-governance` | `development` | Local implementation of the 1.x-to-5.0.0 migration is active; not merged to `development` or released through `main`. |
 | [workspace-docs-5-compatibility.md](development/workspace-toolkit/workspace-docs-5-compatibility.md) | `workspace-toolkit` | `development` | SKM 0.2.1 compatibility is implemented locally on a feature branch; not merged to `development` or released through `main`. |
-| [workspace-toolkit-manager.md](development/workspace-toolkit/workspace-toolkit-manager.md) | `workspace-toolkit` | `development` | Present only on this feature branch versus `main`; production release is not confirmed. |
+| [workspace-toolkit-manager.md](done/workspace-toolkit/workspace-toolkit-manager.md) | `workspace-toolkit` | `done` | Released through `main` in SKM 0.2.0. |
 | [config-management.md](done/configuration/config-management.md) | `configuration` | `done` | Released through `main`. |
 | [global-env-auto-config.md](done/configuration/global-env-auto-config.md) | `configuration` | `done` | Released through `main`. |
 | [local-dev-mode.md](done/local-dev/local-dev-mode.md) | `local-dev` | `done` | Released through `main`. |
