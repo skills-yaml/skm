@@ -60,7 +60,7 @@ enum Commands {
         /// Select an additional role profile; repeat for multiple profiles
         #[arg(long)]
         profile: Vec<String>,
-        /// Pin a workspace standard, for example workspace-docs@4.0.0
+        /// Pin a workspace standard, for example workspace-docs@5.0.0
         #[arg(long)]
         workspace_standard: Option<String>,
         /// Select a repository-local workspace standard source

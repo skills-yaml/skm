@@ -227,13 +227,13 @@ agents:
 skills: []
 toolkit:
   manifest: workspace/instructions/toolkit/manifest.yaml
-  version: 0.1.0
+  version: 0.2.0
 bundles:
   - development-core
 profiles:
   - security-reviewer
 workspace:
-  standard: workspace-docs@4.0.0
+  standard: workspace-docs@5.0.0
   source: workspace/instructions/standards/workspace-docs
 trusted_sources:
   - workspace/instructions/standards/workspace-docs
@@ -243,6 +243,11 @@ Toolkit and local workspace source paths must be repository-relative and may not
 contain symlinks. The committed `skills.lock.yaml` records toolkit and workspace
 versions and integrity, resolved skill and profile versions and integrity,
 adapter versions and capabilities, and every managed output.
+
+SKM 0.2.1 accepts toolkit packages targeting Workspace Docs 4.x or 5.x. The
+current toolkit uses the 5.x `backlog -> development -> test -> done`
+lifecycle; `develop` and `main` are conventional targets that repositories may
+replace with explicitly documented equivalents.
 
 The initial profile adapters are deliberately different: Codex receives native
 project custom-agent TOML under `.codex/agents/`; Cursor receives an explicitly
@@ -294,8 +299,19 @@ writes outside the current repository unless an existing non-toolkit command is
 explicitly invoked with its established `--global` option.
 
 Installed Workspace workflows enforce OpenTofu as the only infrastructure
-mutation mechanism. Provider CLIs and consoles are diagnostic-only; alternative
-IaC engines and imperative provisioning are not valid fallbacks.
+mutation mechanism and repository CI/CD as the only mutation environment.
+Local work is limited to OpenTofu source changes and non-mutating validation or
+review. Applies, destroys, imports, and state mutations run only in CI/CD.
+Provider CLIs and consoles are diagnostic-only even in CI/CD; alternative IaC
+engines and imperative provisioning are not valid fallbacks.
+
+Installed mutable Workspace workflows also treat the user's delivery request
+as standing authority for routine repository work: implementation, tests,
+feature-branch commits and pushes, pull-request updates, bounded CI repair,
+test integration, and non-destructive releases continue without repeated
+approval prompts. Read-only review roles remain read-only. Human approval is
+reserved for a specifically identified destructive production action; SKM does
+not bypass repository, branch, environment, or CI/CD protections.
 
 ## Development
 
@@ -307,4 +323,5 @@ task test
 task build
 ```
 
-`task check` runs formatting checks, Clippy with warnings denied, and `cargo check`.
+`task check` runs formatting checks, Clippy with warnings denied, `cargo check`,
+and the workspace-docs structure, spec-catalog, memory-impact, and privacy gates.

@@ -1,0 +1,9 @@
+name: skm
+version: 0.2.1
+agents: []
+skills: []
+workspace:
+  standard: workspace-docs@5.0.0
+  source: workspace/instructions/standards/workspace-docs
+trusted_sources:
+  - workspace/instructions/standards/workspace-docs
