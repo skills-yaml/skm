@@ -2,12 +2,12 @@
 
 ## Status
 
-State: test
+State: done
 
 Version update from the committed `workspace-docs@1.0.0` 1.x layout to
-`workspace-docs@5.0.0`. PR #2 was merged into the configured `development`
-integration branch on 2026-09-05 as merge commit `d0400bb`; the migration has
-not been released through `main`.
+`workspace-docs@5.0.0`. After integration through PR #2, PR #4 was merged into
+`main` on 2026-09-05 as merge commit `e12ba7d`, and the `prod-latest` release
+artifacts were published successfully.
 
 ## Problem
 
@@ -152,6 +152,9 @@ and `workspace/agents/memory/changelog.md`.
 - `skm workspace repair --apply --yes --target workspace-docs@5.0.0`: wrote `.skm/workspace-plan.yaml`.
 - 5.0.0 manifest required files and directories are present.
 - Manual `AGENTS.md` policy outside the generated block was preserved except repository-relative path updates.
+- Production evidence: PR #4 merged the validated `development` branch into
+  `main` as `e12ba7d`; main CI and Release Artifacts run `33967911337` passed
+  and published the `prod-latest` assets.
 
 Justified deviations:
 
