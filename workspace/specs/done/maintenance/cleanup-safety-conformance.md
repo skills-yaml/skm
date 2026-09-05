@@ -2,11 +2,11 @@
 
 ## Status
 
-State: test
+State: done
 
-The cleanup data-preservation corrections were merged into the configured
-`development` integration branch through PR #2 on 2026-09-05 as merge commit
-`d0400bb`; they have not been released through `main`.
+The cleanup data-preservation corrections were integrated through PR #2, then
+released through `main` by PR #4 on 2026-09-05 as merge commit `e12ba7d`. The
+`prod-latest` release artifacts were published successfully.
 
 ## Problem
 
@@ -73,3 +73,6 @@ reset data-preservation behavior in `workspace/agents/memory/facts.md` and
 - Review fixed project-link discovery after configuration reset, removed cache
   presence as false ownership evidence, and excluded agent skills-root
   symlinks from cleanup and reset candidates.
+- Production evidence: PR #4 merged the validated `development` branch into
+  `main` as `e12ba7d`; main CI and Release Artifacts run `33967911337` passed
+  and published the `prod-latest` assets.

@@ -2,11 +2,12 @@
 
 ## Status
 
-State: test
+State: done
 
-The removal command's safety and partial-success corrections were merged into
-the configured `development` integration branch through PR #2 on 2026-09-05 as
-merge commit `d0400bb`; they have not been released through `main`.
+The removal command's safety and partial-success corrections were integrated
+through PR #2, then released through `main` by PR #4 on 2026-09-05 as merge
+commit `e12ba7d`. The `prod-latest` release artifacts were published
+successfully.
 
 ## Problem
 
@@ -71,3 +72,6 @@ partial-success behavior in `workspace/agents/memory/facts.md` and
   target, and later targets are attempted after a per-target failure.
 - Review added rejection of symlinked namespace parents so nested skill names
   cannot redirect link or unlink mutations outside the selected skills root.
+- Production evidence: PR #4 merged the validated `development` branch into
+  `main` as `e12ba7d`; main CI and Release Artifacts run `33967911337` passed
+  and published the `prod-latest` assets.

@@ -36,10 +36,10 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
-| [adopt-workspace-docs-5.md](test/workspace-governance/adopt-workspace-docs-5.md) | `workspace-governance` | `test` | Integrated into `development` through PR #2 on 2026-09-05 (`d0400bb`); not released through `main`. |
-| [workspace-docs-5-compatibility.md](test/workspace-toolkit/workspace-docs-5-compatibility.md) | `workspace-toolkit` | `test` | Integrated into `development` through PR #2 on 2026-09-05 (`d0400bb`); not released through `main`. |
-| [skill-removal-conformance.md](test/skill-lifecycle/skill-removal-conformance.md) | `skill-lifecycle` | `test` | Integrated into `development` through PR #2 on 2026-09-05 (`d0400bb`); not released through `main`. |
-| [cleanup-safety-conformance.md](test/maintenance/cleanup-safety-conformance.md) | `maintenance` | `test` | Integrated into `development` through PR #2 on 2026-09-05 (`d0400bb`); not released through `main`. |
+| [adopt-workspace-docs-5.md](done/workspace-governance/adopt-workspace-docs-5.md) | `workspace-governance` | `done` | Released through `main` by PR #4 on 2026-09-05 (`e12ba7d`); `prod-latest` artifacts published successfully. |
+| [workspace-docs-5-compatibility.md](done/workspace-toolkit/workspace-docs-5-compatibility.md) | `workspace-toolkit` | `done` | Released through `main` by PR #4 on 2026-09-05 (`e12ba7d`); `prod-latest` artifacts published successfully. |
+| [skill-removal-conformance.md](done/skill-lifecycle/skill-removal-conformance.md) | `skill-lifecycle` | `done` | Released through `main` by PR #4 on 2026-09-05 (`e12ba7d`); `prod-latest` artifacts published successfully. |
+| [cleanup-safety-conformance.md](done/maintenance/cleanup-safety-conformance.md) | `maintenance` | `done` | Released through `main` by PR #4 on 2026-09-05 (`e12ba7d`); `prod-latest` artifacts published successfully. |
 | [workspace-toolkit-manager.md](done/workspace-toolkit/workspace-toolkit-manager.md) | `workspace-toolkit` | `done` | Released through `main` in SKM 0.2.0. |
 | [config-management.md](done/configuration/config-management.md) | `configuration` | `done` | Released through `main`. |
 | [global-env-auto-config.md](done/configuration/global-env-auto-config.md) | `configuration` | `done` | Released through `main`. |
