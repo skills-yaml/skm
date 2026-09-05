@@ -2,11 +2,11 @@
 
 ## Status
 
-State: test
+State: done
 
-SKM compatibility support is implemented and validated. PR #2 was merged into
-the configured `development` integration branch on 2026-09-05 as merge commit
-`d0400bb`; the change has not been released through `main`.
+SKM compatibility support was integrated through PR #2, then released through
+`main` by PR #4 on 2026-09-05 as merge commit `e12ba7d`. The `prod-latest`
+release artifacts were published successfully.
 
 ## Problem
 
@@ -77,6 +77,9 @@ Docs 5.x so it cannot be installed even when its package is otherwise valid.
 - SKM documents the toolkit's routine-delivery standing authority and scoped
   destructive-production approval boundary.
 - `git diff --check`: passed.
+- Production evidence: PR #4 merged the validated `development` branch into
+  `main` as `e12ba7d`; main CI and Release Artifacts run `33967911337` passed
+  and published the `prod-latest` assets.
 
 ## Memory Impact
 
