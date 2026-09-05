@@ -1,0 +1,19 @@
+schema_version: 1
+mode: repair
+current_version: 5.0.0
+target_version: 5.0.0
+source: workspace/instructions/standards/workspace-docs
+resolved_source: workspace/instructions/standards/workspace-docs
+source_authorization: committed-manifest
+source_revision: null
+source_integrity: sha256:502be11e039435eb6691fab6cb0bb3021f10eb7b397baffd45e9df0d64022f41
+migration_chain: []
+missing_resources: []
+verified: true
+network_access: false
+repository_writes:
+- .skm/workspace-plan.yaml
+commands:
+- task check
+- task test
+delegated_workflow: adopt-workspace-structure

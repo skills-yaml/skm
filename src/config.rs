@@ -7,18 +7,67 @@ use std::path::Path;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SkillSpec {
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct ToolkitSelection {
+    pub manifest: String,
+    pub version: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct WorkspaceSelection {
+    pub standard: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub integrity: Option<String>,
+}
+
+impl SkillSpec {
+    /// Parse skill spec with version (e.g., "my-skill@v1.2.0")
+    pub fn parse_with_version(
+        input: &str,
+    ) -> Result<(String, Option<String>), Box<dyn std::error::Error>> {
+        if let Some(at_pos) = input.rfind('@') {
+            let name = &input[..at_pos];
+            let version = Some(input[at_pos + 1..].to_string());
+            Ok((name.to_string(), version))
+        } else {
+            Ok((input.to_string(), None))
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SkillsConfig {
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub registries: Option<HashMap<String, String>>,
+    #[serde(default)]
     pub agents: Vec<String>,
+    #[serde(default)]
     pub skills: Vec<SkillSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toolkit: Option<ToolkitSelection>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bundles: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub profiles: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<WorkspaceSelection>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trusted_sources: Vec<String>,
 }
 
 impl SkillsConfig {
@@ -55,11 +104,22 @@ impl SkillsConfig {
                 "hermes".to_string(),
             ],
             skills: vec![SkillSpec {
-                name: "software-development/symphony-spec-writing".to_string(),
+                name: "software-development/spec".to_string(),
                 version: Some("latest".to_string()),
                 source: Some("default".to_string()),
                 path: None,
             }],
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            workspace: None,
+            trusted_sources: Vec::new(),
         }
+    }
+
+    /// Remove a skill from the configuration
+    pub fn remove_skill(&mut self, skill_name: &str) -> Option<SkillSpec> {
+        let index = self.skills.iter().position(|s| s.name == skill_name)?;
+        Some(self.skills.remove(index))
     }
 }

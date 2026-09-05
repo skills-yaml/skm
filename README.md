@@ -1,8 +1,13 @@
 # skm
 
-`skm` is a Rust CLI for managing AI agent skills from a declarative `skills.yaml` manifest.
+`skm` is a Rust CLI for managing AI agent skills and Workspace development
+toolkits from a declarative `skills.yaml` manifest.
 
-It installs skills by creating symlinks into supported agent skill directories, so a project can declare the skills it needs once and keep Claude, Codex, Cursor, Copilot, Grok, and Hermes in sync.
+It installs skills by creating symlinks into supported agent skill directories,
+so a project can declare the skills it needs once and keep Claude, Codex,
+Cursor, Copilot, Grok, and Hermes in sync. Toolkit projects can also select
+versioned bundles and portable role profiles, render agent-specific projections,
+and commit a deterministic `skills.lock.yaml`.
 
 [Install](#install) | [Release Channels](#release-channels) | [Quick Start](#quick-start) | [Commands](#commands) | [Configuration](#configuration)
 
@@ -54,7 +59,7 @@ cargo run -- <command>
 
 ## How Installation Works
 
-GitHub Actions builds release binaries for Linux, macOS, and Windows. Each build is packaged as a GitHub Release asset:
+GitHub Actions builds release binaries for Linux, macOS, and Windows. The Linux release is built for musl so it does not require a specific host glibc version. Each build is packaged as a GitHub Release asset:
 
 ```txt
 skm-linux-x86_64.tar.gz
@@ -120,6 +125,13 @@ Install the skills declared in `skills.yaml` into project-local agent folders:
 skm install
 ```
 
+For a configured toolkit, preview every write and then apply non-interactively:
+
+```sh
+skm install --dry-run
+skm install --yes
+```
+
 List link status:
 
 ```sh
@@ -137,20 +149,39 @@ Use `--global` with `install`, `list`, or `check` to work against user-level age
 ## Commands
 
 ```txt
-skm init [--name <name>]
-skm install [--global]
+skm init [--name <name>] [--toolkit-manifest <path>] [--toolkit-version <version>] [--bundle <id>] [--profile <id>] [--workspace-standard <id>] [--workspace-source <path-or-git-url>] [--workspace-revision <commit>] [--workspace-integrity <sha256>] [--trusted-source <source>]
+skm install [--global] [--dry-run] [--json] [--yes]
 skm add <skill-name> [--source <registry>] [--path <local-path>] [--global]
 skm list [--global]
 skm check [--global]
 skm update [--channel prod|development] [--check] [--yes]
+skm versions <skill-name> [--registry <registry>] [--json] [--stable-only] [--pre] [--limit <limit>]
+skm use <skill-name>@<version> [--global] [--yes] [--dry-run]
+skm update-skill <skill-name> [--global] [--yes] [--dry-run] [--pre]
+skm dev link <path> [--name <name>] [--source <source>] [--global] [--all-agents] [--agent <agents>] [--force] [--verbose]
+skm dev unlink <skill-name> [--global] [--yes] [--verbose]
+skm dev list [--global] [--all] [--json] [--paths]
+skm dev show <skill-name> [--global] [--json]
+skm dev mode [on|off|status] [--global]
+skm workspace audit [--target <version>] [--source <path-or-git-url>] [--revision <commit>] [--integrity <sha256>] [--json]
+skm workspace adopt|upgrade|repair [--target <version>] [--source <path-or-git-url>] [--revision <commit>] [--integrity <sha256>] [--apply] [--yes] [--json]
 ```
 
 - `init`: creates a default `skills.yaml`.
-- `install`: resolves configured skills and links them for each configured agent.
+- `install`: resolves configured skills and toolkit bundles once, preflights
+  every target, transactionally materializes each adapter, and writes the
+  lockfile last.
 - `add`: adds one skill to `skills.yaml`, then links it.
 - `list`: reports current link status, including missing sources and bad links.
 - `check`: verifies source directories, `SKILL.md`, symlink existence, and symlink targets; intended for CI.
 - `update`: checks the selected release channel and installs the latest release artifact.
+- `versions`: lists all available versions for a skill from a registry.
+- `use`: switches a skill to a specific version (e.g. `skill@v1.2.0`) in `skills.yaml` and re-links it.
+- `update-skill`: updates a skill to its latest version in `skills.yaml` and re-links it.
+- `dev`: manages local development skills (linking local paths as symlinks directly, toggling dev mode).
+- `workspace`: audits trusted `workspace-docs` packages and creates a verified,
+  resumable handoff for adoption, upgrade, or repair. It does not interpret
+  migration prose as executable code.
 
 ## Configuration
 
@@ -183,6 +214,45 @@ skills:
 
 Each skill source directory must contain a `SKILL.md` file.
 
+### Workspace toolkit configuration
+
+Toolkit fields are optional, so existing skills-only manifests remain valid:
+
+```yaml
+name: my-project
+version: 1.0.0
+agents:
+  - codex
+  - cursor
+skills: []
+toolkit:
+  manifest: workspace/instructions/toolkit/manifest.yaml
+  version: 0.2.0
+bundles:
+  - development-core
+profiles:
+  - security-reviewer
+workspace:
+  standard: workspace-docs@5.0.0
+  source: workspace/instructions/standards/workspace-docs
+trusted_sources:
+  - workspace/instructions/standards/workspace-docs
+```
+
+Toolkit and local workspace source paths must be repository-relative and may not
+contain symlinks. The committed `skills.lock.yaml` records toolkit and workspace
+versions and integrity, resolved skill and profile versions and integrity,
+adapter versions and capabilities, and every managed output.
+
+SKM 0.2.1 accepts toolkit packages targeting Workspace Docs 4.x or 5.x. The
+current toolkit uses the 5.x `backlog -> development -> test -> done`
+lifecycle; `develop` and `main` are conventional targets that repositories may
+replace with explicitly documented equivalents.
+
+The initial profile adapters are deliberately different: Codex receives native
+project custom-agent TOML under `.codex/agents/`; Cursor receives an explicitly
+labeled generated skill fallback under `.cursor/skills/`.
+
 ## Link Targets
 
 Project-local mode links skills under the current project:
@@ -211,7 +281,37 @@ Global mode links under the current user's home directory:
 
 `skm` validates skill names and registry names before filesystem operations. It rejects absolute paths, `..`, empty path components, unsupported agents, and unsafe registry names.
 
-When installing, `skm` refuses to replace existing real files or directories. It only replaces existing symlinks, and `skm check` verifies that symlinks point to the expected source.
+Toolkit installation scans sources without following symlinks, computes SHA-256
+integrity, and refuses every unmanaged collision before writing. SKM replaces or
+removes only outputs owned by the previous lockfile. A repository-local journal
+backs up managed paths during apply, rolls back a partial failure, and writes the
+new lockfile last. An unchanged second install is byte-idempotent.
+
+Workspace source authorization is project-scoped. A partial local standard
+package is a read-only blocker; an explicit or committed complete source can
+resume the same plan. A Git source requires a full 40-character commit revision
+and expected `sha256:` package integrity. SKM fetches only that revision,
+materializes blobs without checkout filters, rejects unsafe paths and symlinks,
+verifies the package, and caches it inside the project for offline re-application.
+Committed Git sources must also appear in `trusted_sources`; an explicit
+`--source` authorizes only the current command. No toolkit or workspace command
+writes outside the current repository unless an existing non-toolkit command is
+explicitly invoked with its established `--global` option.
+
+Installed Workspace workflows enforce OpenTofu as the only infrastructure
+mutation mechanism and repository CI/CD as the only mutation environment.
+Local work is limited to OpenTofu source changes and non-mutating validation or
+review. Applies, destroys, imports, and state mutations run only in CI/CD.
+Provider CLIs and consoles are diagnostic-only even in CI/CD; alternative IaC
+engines and imperative provisioning are not valid fallbacks.
+
+Installed mutable Workspace workflows also treat the user's delivery request
+as standing authority for routine repository work: implementation, tests,
+feature-branch commits and pushes, pull-request updates, bounded CI repair,
+test integration, and non-destructive releases continue without repeated
+approval prompts. Read-only review roles remain read-only. Human approval is
+reserved for a specifically identified destructive production action; SKM does
+not bypass repository, branch, environment, or CI/CD protections.
 
 ## Development
 
@@ -223,4 +323,5 @@ task test
 task build
 ```
 
-`task check` runs formatting checks, Clippy with warnings denied, and `cargo check`.
+`task check` runs formatting checks, Clippy with warnings denied, `cargo check`,
+and the workspace-docs structure, spec-catalog, memory-impact, and privacy gates.

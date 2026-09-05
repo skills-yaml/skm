@@ -1,0 +1,4 @@
+interface:
+  display_name: "Adopt Workspace Structure"
+  short_description: "Adopt or migrate workspace documentation"
+  default_prompt: "Use $adopt-workspace-structure to adopt or safely migrate this repository to the workspace documentation standard."
