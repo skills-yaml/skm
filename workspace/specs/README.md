@@ -38,6 +38,8 @@ reopened, is superseded, or materially changes why it is in its state.
 | --- | --- | --- | --- |
 | [adopt-workspace-docs-5.md](development/workspace-governance/adopt-workspace-docs-5.md) | `workspace-governance` | `development` | Local implementation of the 1.x-to-5.0.0 migration is active; not merged to `development` or released through `main`. |
 | [workspace-docs-5-compatibility.md](development/workspace-toolkit/workspace-docs-5-compatibility.md) | `workspace-toolkit` | `development` | SKM 0.2.1 compatibility is implemented locally on a feature branch; not merged to `development` or released through `main`. |
+| [skill-removal-conformance.md](development/skill-lifecycle/skill-removal-conformance.md) | `skill-lifecycle` | `development` | Removal safety and partial-success corrections are implemented and validated locally; not integrated into `development`. |
+| [cleanup-safety-conformance.md](development/maintenance/cleanup-safety-conformance.md) | `maintenance` | `development` | Cleanup data-preservation corrections are implemented and validated locally; not integrated into `development`. |
 | [workspace-toolkit-manager.md](done/workspace-toolkit/workspace-toolkit-manager.md) | `workspace-toolkit` | `done` | Released through `main` in SKM 0.2.0. |
 | [config-management.md](done/configuration/config-management.md) | `configuration` | `done` | Released through `main`. |
 | [global-env-auto-config.md](done/configuration/global-env-auto-config.md) | `configuration` | `done` | Released through `main`. |

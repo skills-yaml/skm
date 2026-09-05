@@ -110,3 +110,33 @@ Content:
 Recorded the `workspace-docs@5.0.0` adoption decision, branch mapping, and
 canonical workspace paths in `workspace/agents/memory/decisions.md` and
 `workspace/agents/memory/facts.md`.
+
+## 2026-08-29 - Bring skill removal back into safety conformance
+
+- Type: fact
+- Source: spec
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded in `workspace/agents/memory/facts.md` that removal now preflights all
+configured targets before confirmation or mutation, keeps cancellation and
+dry-run non-mutating, and reports partial unlink failures after attempting all
+targets. Review also added symlinked namespace-parent rejection.
+
+## 2026-09-05 - Bring cleanup behavior back into safety conformance
+
+- Type: fact
+- Source: spec
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded in `workspace/agents/memory/facts.md` that orphan cleanup uses
+authoritative skill and development configuration, old-version cleanup
+preserves aliases and manifest pins, and reset preserves real content and
+agent skills-root symlinks.
