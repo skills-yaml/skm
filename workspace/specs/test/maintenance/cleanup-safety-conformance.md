@@ -2,10 +2,11 @@
 
 ## Status
 
-State: development
+State: test
 
-The released cleanup commands have been corrected locally to preserve valid
-links, referenced versions, and unmanaged agent-directory content.
+The cleanup data-preservation corrections were merged into the configured
+`development` integration branch through PR #2 on 2026-09-05 as merge commit
+`d0400bb`; they have not been released through `main`.
 
 ## Problem
 

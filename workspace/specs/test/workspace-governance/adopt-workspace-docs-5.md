@@ -2,11 +2,12 @@
 
 ## Status
 
-State: development
+State: test
 
 Version update from the committed `workspace-docs@1.0.0` 1.x layout to
-`workspace-docs@5.0.0`. Local implementation is active on the current feature
-branch.
+`workspace-docs@5.0.0`. PR #2 was merged into the configured `development`
+integration branch on 2026-09-05 as merge commit `d0400bb`; the migration has
+not been released through `main`.
 
 ## Problem
 
