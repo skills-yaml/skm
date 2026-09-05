@@ -1,6 +1,8 @@
 use crate::config::SkillsConfig;
 use crate::config_manager::{get_base_config_path, get_cache_dir, BaseConfig};
+use crate::dev::DevConfig;
 use crate::linker;
+use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -24,6 +26,20 @@ pub struct SymlinkInfo {
     pub status: SymlinkStatus,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum ResetItemKind {
+    Config,
+    Cache,
+    Symlink,
+}
+
+#[derive(Debug, Clone)]
+struct ResetItem {
+    name: String,
+    path: PathBuf,
+    kind: ResetItemKind,
+}
+
 /// Clean up broken and orphaned symlinks
 pub fn clean_symlinks(
     global: bool,
@@ -44,27 +60,22 @@ pub fn clean_symlinks(
         return Err("Must specify at least one of --broken, --orphaned, or --all".into());
     }
 
-    // Get project configuration if not global
-    let config_skills: Vec<String> = if global {
-        Vec::new()
+    let config_path = current_dir.join("skills.yaml");
+    let project_config = if config_path.exists() {
+        Some(SkillsConfig::load_from_file(&config_path)?)
     } else {
-        let config_path = current_dir.join("skills.yaml");
-        if config_path.exists() {
-            let config = SkillsConfig::load_from_file(&config_path)?;
-            config.skills.iter().map(|s| s.name.clone()).collect()
-        } else {
-            Vec::new()
-        }
+        None
     };
+    if clean_orphaned && project_config.is_none() {
+        return Err(
+            "Cannot identify orphaned links without skills.yaml in the current project".into(),
+        );
+    }
 
-    // Get base config for global skills
-    let base_config = BaseConfig::load().ok();
-    let all_skills: Vec<String> = if global {
-        base_config
-            .as_ref()
-            .map_or(Vec::new(), |c| c.registries.keys().cloned().collect())
+    let known_skills = if clean_orphaned {
+        collect_known_skill_names(project_config.as_ref(), global)?
     } else {
-        config_skills
+        HashSet::new()
     };
 
     // Find all symlinks
@@ -74,13 +85,10 @@ pub fn clean_symlinks(
             .map(|s| s.to_string())
             .collect()
     } else {
-        let config_path = current_dir.join("skills.yaml");
-        if config_path.exists() {
-            let config = SkillsConfig::load_from_file(&config_path)?;
-            config.agents
-        } else {
-            Vec::new()
-        }
+        project_config
+            .as_ref()
+            .map(|config| config.agents.clone())
+            .unwrap_or_default()
     };
 
     let mut symlinks_to_clean: Vec<SymlinkInfo> = Vec::new();
@@ -105,6 +113,8 @@ pub fn clean_symlinks(
 
         // Recursively find all symlinks in this agent directory using walkdir
         for entry in walkdir::WalkDir::new(&base_dir)
+            .min_depth(1)
+            .follow_links(false)
             .into_iter()
             .filter_map(|e| e.ok())
         {
@@ -130,7 +140,7 @@ pub fn clean_symlinks(
 
                 let status = if is_broken {
                     SymlinkStatus::Broken
-                } else if clean_orphaned && !all_skills.contains(&skill_name) {
+                } else if clean_orphaned && !known_skills.contains(&skill_name) {
                     SymlinkStatus::Orphaned
                 } else {
                     SymlinkStatus::Valid
@@ -217,6 +227,21 @@ pub fn clean_symlinks(
     eprintln!("Cleaned {} symlinks", cleaned);
 
     Ok(())
+}
+
+fn collect_known_skill_names(
+    project_config: Option<&SkillsConfig>,
+    global: bool,
+) -> Result<HashSet<String>, Box<dyn std::error::Error>> {
+    let mut known = HashSet::new();
+    if let Some(config) = project_config {
+        known.extend(config.skills.iter().map(|skill| skill.name.clone()));
+    }
+
+    let dev_config = DevConfig::load(global)?;
+    known.extend(dev_config.skills.into_keys());
+
+    Ok(known)
 }
 
 /// Clean up registry cache
@@ -354,8 +379,79 @@ pub fn clean_old_versions(
     yes: bool,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let current_dir = std::env::current_dir()?;
+    let project_config_path = current_dir.join("skills.yaml");
+    let project_config = if project_config_path.exists() {
+        Some(SkillsConfig::load_from_file(&project_config_path)?)
+    } else {
+        None
+    };
     let mut total_freed = 0;
     let mut versions_removed = 0;
+    let versions_to_remove =
+        find_old_version_candidates(registries, keep, project_config.as_ref(), verbose)?;
+    let candidate_bytes = versions_to_remove.iter().map(|(_, size)| size).sum::<u64>();
+
+    if versions_to_remove.is_empty() {
+        eprintln!("No old versions to remove");
+        return Ok(());
+    }
+
+    if dry_run {
+        println!("Would remove the following old versions:");
+        for (version_path, size) in &versions_to_remove {
+            println!("  - {} ({} bytes)", version_path.display(), size);
+        }
+        println!(
+            "\nWould remove {} old versions ({} bytes total)",
+            versions_to_remove.len(),
+            candidate_bytes
+        );
+        return Ok(());
+    }
+
+    // Confirm with user
+    if !yes {
+        eprintln!("Found {} old versions to remove:", versions_to_remove.len());
+        for (version_path, size) in &versions_to_remove {
+            eprintln!("  - {} ({} bytes)", version_path.display(), size);
+        }
+        eprint!("\nClean these old versions? [y/N] ");
+        std::io::stderr().flush()?;
+
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+
+        if !matches!(input.trim().to_lowercase().as_str(), "y" | "yes") {
+            eprintln!("Cleanup cancelled.");
+            return Ok(());
+        }
+    }
+
+    for (version_path, size) in &versions_to_remove {
+        if verbose {
+            eprintln!("Removing old version: {}", version_path.display());
+        }
+        fs::remove_dir_all(version_path)?;
+        total_freed += size;
+        versions_removed += 1;
+    }
+
+    eprintln!(
+        "Removed {} old versions ({} freed)",
+        versions_removed,
+        format_size(total_freed)
+    );
+
+    Ok(())
+}
+
+fn find_old_version_candidates(
+    registries: &[String],
+    keep: usize,
+    project_config: Option<&SkillsConfig>,
+    verbose: bool,
+) -> Result<Vec<(PathBuf, u64)>, Box<dyn std::error::Error>> {
     let mut versions_to_remove = Vec::new();
 
     for reg_name in registries {
@@ -403,8 +499,10 @@ pub fn clean_old_versions(
             }
         }
 
-        for (_, mut versions) in skill_to_versions {
+        for (skill_dir, mut versions) in skill_to_versions {
             if versions.len() > keep {
+                let protected =
+                    protected_skill_versions(reg_name, &skills_dir, &skill_dir, project_config);
                 // Sort by modification time (oldest first)
                 versions.sort_by(|a, b| {
                     let a_time = a
@@ -418,8 +516,12 @@ pub fn clean_old_versions(
                     a_time.cmp(&b_time)
                 });
 
-                let to_remove = &versions[..versions.len() - keep];
-                for version_path in to_remove {
+                let remove_count = versions.len() - keep;
+                for version_path in versions
+                    .iter()
+                    .filter(|path| !protected.contains(&canonical_or_original(path)))
+                    .take(remove_count)
+                {
                     let size = calculate_directory_size(version_path)?;
                     versions_to_remove.push((version_path.clone(), size));
                 }
@@ -427,58 +529,56 @@ pub fn clean_old_versions(
         }
     }
 
-    if versions_to_remove.is_empty() {
-        eprintln!("No old versions to remove");
-        return Ok(());
-    }
+    Ok(versions_to_remove)
+}
 
-    if dry_run {
-        println!("Would remove the following old versions:");
-        for (version_path, size) in &versions_to_remove {
-            println!("  - {} ({} bytes)", version_path.display(), size);
-        }
-        println!(
-            "\nWould remove {} old versions ({} bytes total)",
-            versions_to_remove.len(),
-            total_freed
-        );
-        return Ok(());
-    }
+fn protected_skill_versions(
+    registry: &str,
+    skills_root: &Path,
+    skill_dir: &Path,
+    project_config: Option<&SkillsConfig>,
+) -> HashSet<PathBuf> {
+    let mut protected = HashSet::new();
 
-    // Confirm with user
-    if !yes {
-        eprintln!("Found {} old versions to remove:", versions_to_remove.len());
-        for (version_path, size) in &versions_to_remove {
-            eprintln!("  - {} ({} bytes)", version_path.display(), size);
-        }
-        eprint!("\nClean these old versions? [y/N] ");
-        std::io::stderr().flush()?;
-
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input)?;
-
-        if !matches!(input.trim().to_lowercase().as_str(), "y" | "yes") {
-            eprintln!("Cleanup cancelled.");
-            return Ok(());
+    for alias in ["latest", "default"] {
+        let alias_path = skill_dir.join(alias);
+        if alias_path.is_symlink() {
+            if let Ok(target) = fs::canonicalize(&alias_path) {
+                protected.insert(target);
+            }
         }
     }
 
-    for (version_path, size) in &versions_to_remove {
-        if verbose {
-            eprintln!("Removing old version: {}", version_path.display());
+    let Ok(skill_name) = skill_dir.strip_prefix(skills_root) else {
+        return protected;
+    };
+    let skill_name = skill_name.to_string_lossy();
+    if let Some(config) = project_config {
+        for skill in &config.skills {
+            if skill.path.is_some()
+                || skill.name != skill_name
+                || skill.source.as_deref().unwrap_or("default") != registry
+            {
+                continue;
+            }
+            let version = skill.version.as_deref().unwrap_or("latest");
+            if matches!(version, "latest" | "default") {
+                continue;
+            }
+            let version = if version.starts_with('v') {
+                version.to_string()
+            } else {
+                format!("v{version}")
+            };
+            protected.insert(canonical_or_original(&skill_dir.join(version)));
         }
-        fs::remove_dir_all(version_path)?;
-        total_freed += size;
-        versions_removed += 1;
     }
 
-    eprintln!(
-        "Removed {} old versions ({} freed)",
-        versions_removed,
-        format_size(total_freed)
-    );
+    protected
+}
 
-    Ok(())
+fn canonical_or_original(path: &Path) -> PathBuf {
+    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 /// Reset SKM to clean state
@@ -519,37 +619,37 @@ pub fn reset(
     };
 
     // Collect items to reset
-    let mut items: Vec<(String, PathBuf, String)> = Vec::new();
+    let mut items = Vec::new();
 
     if reset_config {
         if let Some(path) = get_base_config_path() {
             if path.exists() {
-                items.push((
-                    "Global configuration".to_string(),
+                items.push(ResetItem {
+                    name: "Global configuration".to_string(),
                     path,
-                    "config".to_string(),
-                ));
+                    kind: ResetItemKind::Config,
+                });
             }
         }
 
         let project_config = current_dir.join("skills.yaml");
         if project_config.exists() {
-            items.push((
-                "Project configuration".to_string(),
-                project_config,
-                "config".to_string(),
-            ));
+            items.push(ResetItem {
+                name: "Project configuration".to_string(),
+                path: project_config,
+                kind: ResetItemKind::Config,
+            });
         }
     }
 
     if reset_cache {
         if let Some(cache_dir) = get_cache_dir() {
             if cache_dir.exists() {
-                items.push((
-                    "Cache directory".to_string(),
-                    cache_dir,
-                    "cache".to_string(),
-                ));
+                items.push(ResetItem {
+                    name: "Cache directory".to_string(),
+                    path: cache_dir,
+                    kind: ResetItemKind::Cache,
+                });
             }
         }
     }
@@ -558,31 +658,11 @@ pub fn reset(
         let agents = ["claude", "cursor", "codex", "copilot", "grok", "hermes"];
         for agent in &agents {
             if let Some(dir) = linker::get_global_agent_skills_dir(agent) {
-                if dir.exists() {
-                    items.push((
-                        format!("Global {} symlinks", agent),
-                        dir,
-                        "symlinks".to_string(),
-                    ));
-                }
+                collect_reset_symlinks(&dir, &format!("Global {agent}"), &mut items)?;
             }
-        }
 
-        let project_config = current_dir.join("skills.yaml");
-        if project_config.exists() {
-            let config = SkillsConfig::load_from_file(&project_config).ok();
-            if let Some(config) = config {
-                for agent in &config.agents {
-                    if let Some(dir) = linker::get_project_agent_skills_dir(agent, &current_dir) {
-                        if dir.exists() {
-                            items.push((
-                                format!("Project {} symlinks", agent),
-                                dir,
-                                "symlinks".to_string(),
-                            ));
-                        }
-                    }
-                }
+            if let Some(dir) = linker::get_project_agent_skills_dir(agent, &current_dir) {
+                collect_reset_symlinks(&dir, &format!("Project {agent}"), &mut items)?;
             }
         }
     }
@@ -594,8 +674,8 @@ pub fn reset(
 
     if dry_run {
         println!("Would reset the following items:");
-        for (name, path, _) in &items {
-            println!("  - {}: {}", name, path.display());
+        for item in &items {
+            println!("  - {}: {}", item.name, item.path.display());
         }
         if let Some(ref dir) = backup_dir {
             println!("\nBackups would be created in: {}", dir.display());
@@ -606,8 +686,8 @@ pub fn reset(
     // Confirm with user
     if !yes {
         eprintln!("About to reset the following items:");
-        for (name, path, _) in &items {
-            eprintln!("  - {}: {}", name, path.display());
+        for item in &items {
+            eprintln!("  - {}: {}", item.name, item.path.display());
         }
         if let Some(ref dir) = backup_dir {
             eprintln!("\nBackups will be created in: {}", dir.display());
@@ -626,34 +706,29 @@ pub fn reset(
 
     // Perform reset with optional backup
     let mut reset_count = 0;
-    for (name, path, _) in &items {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    for (index, item) in items.iter().enumerate() {
         if let Some(ref backup_dir) = backup_dir {
-            let timestamp = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs();
             let backup_path = backup_dir.join(format!(
-                "{}_{}.backup",
-                path.file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown"),
-                timestamp
+                "{timestamp}_{index:03}_{}.backup",
+                sanitize_backup_name(&item.name)
             ));
 
-            if path.is_dir() {
-                copy_dir_all(path, &backup_path)?;
-            } else {
-                fs::copy(path, &backup_path)?;
-            }
-            eprintln!("Backed up {} to {}", name, backup_path.display());
+            backup_reset_item(item, &backup_path)?;
+            eprintln!("Backed up {} to {}", item.name, backup_path.display());
         }
 
-        if path.is_dir() {
-            fs::remove_dir_all(path)?;
-        } else {
-            fs::remove_file(path)?;
+        match item.kind {
+            ResetItemKind::Symlink => fs::remove_file(&item.path)?,
+            ResetItemKind::Config | ResetItemKind::Cache if item.path.is_dir() => {
+                fs::remove_dir_all(&item.path)?
+            }
+            ResetItemKind::Config | ResetItemKind::Cache => fs::remove_file(&item.path)?,
         }
-        eprintln!("Reset: {}", name);
+        eprintln!("Reset: {}", item.name);
         reset_count += 1;
     }
 
@@ -662,6 +737,67 @@ pub fn reset(
     if reset_config {
         eprintln!("\nTo reinitialize, run:");
         eprintln!("  skm setup");
+    }
+
+    Ok(())
+}
+
+fn collect_reset_symlinks(
+    root: &Path,
+    label: &str,
+    items: &mut Vec<ResetItem>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if !root.exists() && !root.is_symlink() {
+        return Ok(());
+    }
+
+    for entry in walkdir::WalkDir::new(root).min_depth(1).follow_links(false) {
+        let entry = entry?;
+        let metadata = fs::symlink_metadata(entry.path())?;
+        if metadata.file_type().is_symlink() {
+            let relative = entry.path().strip_prefix(root).unwrap_or(entry.path());
+            items.push(ResetItem {
+                name: format!("{label} symlink {}", relative.display()),
+                path: entry.path().to_path_buf(),
+                kind: ResetItemKind::Symlink,
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn sanitize_backup_name(name: &str) -> String {
+    name.chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+fn backup_reset_item(
+    item: &ResetItem,
+    backup_path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if item.kind == ResetItemKind::Symlink {
+        let target = fs::read_link(&item.path)?;
+        let target = if target.is_absolute() {
+            target
+        } else {
+            item.path
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(target)
+        };
+        linker::symlink_dir(&target, backup_path)?;
+    } else if item.path.is_dir() {
+        copy_dir_all(&item.path, backup_path)?;
+    } else {
+        fs::copy(&item.path, backup_path)?;
     }
 
     Ok(())
@@ -973,6 +1109,162 @@ mod tests {
 
     #[test]
     #[serial]
+    fn global_orphan_cleanup_preserves_configured_skill_links() {
+        let temp = temp_project();
+        let _guard = CurrentDirGuard::new(&temp);
+        let home_temp = temp.join("mock_home");
+        fs::create_dir_all(&home_temp).unwrap();
+        let _home_guard = EnvVarGuard::new("HOME", home_temp.to_str().unwrap());
+        let _xdg_config_guard = EnvVarGuard::new(
+            "XDG_CONFIG_HOME",
+            home_temp.join(".config").to_str().unwrap(),
+        );
+        let _xdg_cache_guard =
+            EnvVarGuard::new("XDG_CACHE_HOME", home_temp.join(".cache").to_str().unwrap());
+
+        let config = SkillsConfig {
+            name: "test-project".to_string(),
+            version: Some("0.1.0".to_string()),
+            agents: vec!["claude".to_string()],
+            skills: vec![crate::config::SkillSpec {
+                name: "software-development/spec".to_string(),
+                version: Some("latest".to_string()),
+                source: Some("default".to_string()),
+                path: None,
+            }],
+            registries: None,
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            workspace: None,
+            trusted_sources: Vec::new(),
+        };
+        config.save_to_file(temp.join("skills.yaml")).unwrap();
+        BaseConfig::new().save().unwrap();
+
+        let source =
+            home_temp.join(".cache/skm/registries/default/skills/software-development/spec/latest");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("SKILL.md"), "# Skill\n").unwrap();
+        let target = home_temp.join(".claude/skills/software-development/spec");
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        linker::symlink_dir(&source, &target).unwrap();
+
+        clean_symlinks(true, false, true, false, false, true, false).unwrap();
+
+        assert!(target.is_symlink());
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn global_orphan_cleanup_removes_unconfigured_cached_skill_links() {
+        let temp = temp_project();
+        let _guard = CurrentDirGuard::new(&temp);
+        let home_temp = temp.join("mock_home");
+        fs::create_dir_all(&home_temp).unwrap();
+        let _home_guard = EnvVarGuard::new("HOME", home_temp.to_str().unwrap());
+        let _xdg_config_guard = EnvVarGuard::new(
+            "XDG_CONFIG_HOME",
+            home_temp.join(".config").to_str().unwrap(),
+        );
+        let _xdg_cache_guard =
+            EnvVarGuard::new("XDG_CACHE_HOME", home_temp.join(".cache").to_str().unwrap());
+
+        let config = SkillsConfig {
+            name: "test-project".to_string(),
+            version: Some("0.1.0".to_string()),
+            agents: Vec::new(),
+            skills: Vec::new(),
+            registries: None,
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            workspace: None,
+            trusted_sources: Vec::new(),
+        };
+        config.save_to_file(temp.join("skills.yaml")).unwrap();
+        BaseConfig::new().save().unwrap();
+
+        let source = home_temp.join(".cache/skm/registries/default/skills/unused/skill/latest");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("SKILL.md"), "# Cached but unconfigured\n").unwrap();
+        let target = home_temp.join(".claude/skills/unused/skill");
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        linker::symlink_dir(&source, &target).unwrap();
+
+        clean_symlinks(true, false, true, false, false, true, false).unwrap();
+
+        assert!(!target.is_symlink());
+        assert!(source.exists());
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn cleanup_and_reset_preserve_agent_skills_root_symlinks() {
+        let temp = temp_project();
+        let _guard = CurrentDirGuard::new(&temp);
+        let home_temp = temp.join("mock_home");
+        fs::create_dir_all(home_temp.join(".claude")).unwrap();
+        let _home_guard = EnvVarGuard::new("HOME", home_temp.to_str().unwrap());
+        let _xdg_config_guard = EnvVarGuard::new(
+            "XDG_CONFIG_HOME",
+            home_temp.join(".config").to_str().unwrap(),
+        );
+        let _xdg_cache_guard =
+            EnvVarGuard::new("XDG_CACHE_HOME", home_temp.join(".cache").to_str().unwrap());
+
+        let config = SkillsConfig {
+            name: "test-project".to_string(),
+            version: Some("0.1.0".to_string()),
+            agents: Vec::new(),
+            skills: Vec::new(),
+            registries: None,
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            workspace: None,
+            trusted_sources: Vec::new(),
+        };
+        config.save_to_file(temp.join("skills.yaml")).unwrap();
+        let external = temp.join("external-skills");
+        fs::create_dir_all(&external).unwrap();
+        fs::write(external.join("keep.txt"), "keep").unwrap();
+        let skills_root = home_temp.join(".claude/skills");
+        linker::symlink_dir(&external, &skills_root).unwrap();
+
+        clean_symlinks(true, false, true, false, false, true, false).unwrap();
+        reset(false, false, true, false, false, None, false, true).unwrap();
+
+        assert!(skills_root.is_symlink());
+        assert_eq!(
+            fs::read_to_string(external.join("keep.txt")).unwrap(),
+            "keep"
+        );
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn orphan_cleanup_without_project_config_fails_without_writes() {
+        let temp = temp_project();
+        let _guard = CurrentDirGuard::new(&temp);
+        let target = temp.join(".codex/skills/orphan");
+        let source = temp.join("source");
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        linker::symlink_dir(&source, &target).unwrap();
+
+        let error = clean_symlinks(false, false, true, false, false, true, false).unwrap_err();
+
+        assert!(error.to_string().contains("without skills.yaml"));
+        assert!(target.is_symlink());
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    #[serial]
     fn test_clean_cache() {
         let temp = temp_project();
         let _guard = CurrentDirGuard::new(&temp);
@@ -1026,6 +1318,73 @@ mod tests {
 
     #[test]
     #[serial]
+    fn old_version_cleanup_preserves_alias_and_manifest_pins() {
+        let temp = temp_project();
+        let _guard = CurrentDirGuard::new(&temp);
+        let home_temp = temp.join("mock_home");
+        fs::create_dir_all(&home_temp).unwrap();
+        let _home_guard = EnvVarGuard::new("HOME", home_temp.to_str().unwrap());
+        let _xdg_config_guard = EnvVarGuard::new(
+            "XDG_CONFIG_HOME",
+            home_temp.join(".config").to_str().unwrap(),
+        );
+        let _xdg_cache_guard =
+            EnvVarGuard::new("XDG_CACHE_HOME", home_temp.join(".cache").to_str().unwrap());
+        BaseConfig::new().save().unwrap();
+
+        let skill_dir = get_cache_dir()
+            .unwrap()
+            .join("registries/default/skills/software-development/spec");
+        for version in ["v1.0.0", "v2.0.0", "v3.0.0"] {
+            let version_dir = skill_dir.join(version);
+            fs::create_dir_all(&version_dir).unwrap();
+            fs::write(version_dir.join("SKILL.md"), format!("# {version}\n")).unwrap();
+        }
+        linker::symlink_dir(&skill_dir.join("v1.0.0"), &skill_dir.join("latest")).unwrap();
+
+        let config = SkillsConfig {
+            name: "pinned-project".to_string(),
+            version: Some("0.1.0".to_string()),
+            agents: Vec::new(),
+            skills: vec![crate::config::SkillSpec {
+                name: "software-development/spec".to_string(),
+                version: Some("v2.0.0".to_string()),
+                source: Some("default".to_string()),
+                path: None,
+            }],
+            registries: None,
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            workspace: None,
+            trusted_sources: Vec::new(),
+        };
+        config.save_to_file(temp.join("skills.yaml")).unwrap();
+
+        let candidates =
+            find_old_version_candidates(&["default".to_string()], 0, Some(&config), false).unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].0, skill_dir.join("v3.0.0"));
+        assert_eq!(
+            candidates.iter().map(|(_, size)| size).sum::<u64>(),
+            calculate_directory_size(&skill_dir.join("v3.0.0")).unwrap()
+        );
+
+        clean_old_versions(&["default".to_string()], 0, true, true, false).unwrap();
+        assert!(skill_dir.join("v3.0.0").exists());
+
+        clean_old_versions(&["default".to_string()], 0, false, true, false).unwrap();
+
+        assert!(skill_dir.join("v1.0.0").exists());
+        assert!(skill_dir.join("v2.0.0").exists());
+        assert!(!skill_dir.join("v3.0.0").exists());
+        assert!(skill_dir.join("latest").is_symlink());
+
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    #[serial]
     fn test_reset() {
         let temp = temp_project();
         let _guard = CurrentDirGuard::new(&temp);
@@ -1070,10 +1429,20 @@ mod tests {
         // Create global & project agent symlink directory (simulated)
         let global_agent_dir = home_temp.join(".claude").join("skills");
         fs::create_dir_all(&global_agent_dir).unwrap();
+        fs::write(global_agent_dir.join("keep.txt"), "keep").unwrap();
+        let global_source = temp.join("global-source");
+        fs::create_dir_all(&global_source).unwrap();
+        let global_link = global_agent_dir.join("managed-skill");
+        linker::symlink_dir(&global_source, &global_link).unwrap();
         assert!(global_agent_dir.exists());
 
         let project_agent_dir = temp.join(".claude").join("skills");
         fs::create_dir_all(&project_agent_dir).unwrap();
+        fs::write(project_agent_dir.join("keep.txt"), "keep").unwrap();
+        let project_source = temp.join("project-source");
+        fs::create_dir_all(&project_source).unwrap();
+        let project_link = project_agent_dir.join("managed-skill");
+        linker::symlink_dir(&project_source, &project_link).unwrap();
         assert!(project_agent_dir.exists());
 
         // Run reset on config files (with backup)
@@ -1099,6 +1468,16 @@ mod tests {
         // Run reset on remaining (cache and symlinks)
         reset(false, true, true, false, false, None, false, true).unwrap();
         assert!(!cache_dir.exists());
+        assert!(!global_link.is_symlink());
+        assert!(!project_link.is_symlink());
+        assert_eq!(
+            fs::read_to_string(global_agent_dir.join("keep.txt")).unwrap(),
+            "keep"
+        );
+        assert_eq!(
+            fs::read_to_string(project_agent_dir.join("keep.txt")).unwrap(),
+            "keep"
+        );
 
         fs::remove_dir_all(temp).unwrap();
     }

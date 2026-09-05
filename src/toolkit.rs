@@ -694,8 +694,13 @@ fn validate_manifest(
         )
         .into());
     }
-    if manifest.workspace_docs_compatibility.as_deref() != Some("4.x") {
-        return Err("toolkit must declare workspace_docs_compatibility: 4.x".into());
+    if !matches!(
+        manifest.workspace_docs_compatibility.as_deref(),
+        Some("4.x" | "5.x")
+    ) {
+        return Err(
+            "toolkit must declare a supported workspace_docs_compatibility: 4.x or 5.x".into(),
+        );
     }
     ensure_unique_ids(manifest.skills.iter().map(|item| item.id.as_str()), "skill")?;
     ensure_unique_ids(
@@ -1588,6 +1593,47 @@ mod tests {
             .is_symlink());
         let second = build_plan(&config, temp.path()).unwrap();
         assert!(second.public.actions.is_empty());
+    }
+
+    #[test]
+    fn accepts_workspace_docs_5_compatible_toolkit() {
+        let (temp, config) = fixture();
+        let manifest_path = temp
+            .path()
+            .join("workspace/instructions/toolkit/manifest.yaml");
+        let manifest = fs::read_to_string(&manifest_path).unwrap();
+        fs::write(
+            manifest_path,
+            manifest.replace(
+                "workspace_docs_compatibility: 4.x",
+                "workspace_docs_compatibility: 5.x",
+            ),
+        )
+        .unwrap();
+
+        assert!(build_plan(&config, temp.path()).is_ok());
+    }
+
+    #[test]
+    fn rejects_unsupported_workspace_docs_compatibility() {
+        let (temp, config) = fixture();
+        let manifest_path = temp
+            .path()
+            .join("workspace/instructions/toolkit/manifest.yaml");
+        let manifest = fs::read_to_string(&manifest_path).unwrap();
+        fs::write(
+            manifest_path,
+            manifest.replace(
+                "workspace_docs_compatibility: 4.x",
+                "workspace_docs_compatibility: 6.x",
+            ),
+        )
+        .unwrap();
+
+        let error = build_plan(&config, temp.path()).err().unwrap();
+        assert!(error
+            .to_string()
+            .contains("supported workspace_docs_compatibility: 4.x or 5.x"));
     }
 
     #[test]
