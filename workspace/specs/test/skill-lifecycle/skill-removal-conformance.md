@@ -2,10 +2,11 @@
 
 ## Status
 
-State: development
+State: test
 
-The released removal command is being brought back into conformance with its
-safety and partial-success requirements.
+The removal command's safety and partial-success corrections were merged into
+the configured `development` integration branch through PR #2 on 2026-09-05 as
+merge commit `d0400bb`; they have not been released through `main`.
 
 ## Problem
 

@@ -2,11 +2,11 @@
 
 ## Status
 
-State: development
+State: test
 
-SKM compatibility support is implemented and locally validated on a feature
-branch. It remains in development until integration through the repository's
-normal branch workflow.
+SKM compatibility support is implemented and validated. PR #2 was merged into
+the configured `development` integration branch on 2026-09-05 as merge commit
+`d0400bb`; the change has not been released through `main`.
 
 ## Problem
 
