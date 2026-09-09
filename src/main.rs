@@ -31,18 +31,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize a skills.yaml configuration interactively or with defaults
+    /// Create or edit skills.yaml with a terminal wizard, or create defaults for scripts
     Init {
-        /// Optional name of the project environment (defaults to current folder name)
+        /// Override the project name (new configurations default to the current folder name)
         #[arg(long)]
         name: Option<String>,
-        /// Run in interactive mode to select skills, agents, and configuration scope
+        /// Open the configuration wizard (the default)
         #[arg(short, long, default_value = "true")]
         interactive: bool,
-        /// Use advanced interactive wizard with more options
+        /// Compatibility alias for the complete configuration wizard
         #[arg(long)]
         advanced: bool,
-        /// Configure for global user directory instead of project-local
+        /// Prepare for global installation; skills.yaml stays in the current directory
         #[arg(short, long)]
         global: bool,
         /// Use non-interactive mode with default values
@@ -676,7 +676,6 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
     match command {
         Commands::Init {
             name,
-            advanced,
             global,
             non_interactive,
             toolkit_manifest,
@@ -690,27 +689,8 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             trusted_source,
             ..
         } => {
-            if config_path.exists() {
-                return Err("skills.yaml already exists in the current directory".into());
-            }
-
-            let mut config = if non_interactive {
-                // Non-interactive mode: use defaults
-                let project_name = name.unwrap_or_else(|| {
-                    current_dir
-                        .file_name()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("my-project")
-                        .to_string()
-                });
-                SkillsConfig::default_init(&project_name)
-            } else if advanced {
-                // Advanced interactive wizard
-                wizard::run_wizard(name, global)?
-            } else {
-                // Default: streamlined interactive wizard
-                wizard::run_streamlined_wizard(name, global)?
-            };
+            let mut document =
+                wizard::Document::load(&config_path, name.as_deref(), non_interactive)?;
 
             if global && toolkit_manifest.is_some() {
                 return Err(
@@ -718,37 +698,47 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 );
             }
             if let Some(manifest) = toolkit_manifest {
-                config.toolkit = Some(config::ToolkitSelection {
+                document.value["toolkit"] = serde_yaml::to_value(config::ToolkitSelection {
                     manifest,
                     version: toolkit_version,
-                });
-                config.bundles = bundle;
-                config.profiles = profile;
+                })?;
+                if !bundle.is_empty() {
+                    document.value["bundles"] = serde_yaml::to_value(bundle)?;
+                }
+                if !profile.is_empty() {
+                    document.value["profiles"] = serde_yaml::to_value(profile)?;
+                }
             } else if !bundle.is_empty() || !profile.is_empty() {
                 return Err("--bundle and --profile require --toolkit-manifest".into());
             }
             if let Some(standard) = workspace_standard {
-                config.workspace = Some(config::WorkspaceSelection {
+                document.value["workspace"] = serde_yaml::to_value(config::WorkspaceSelection {
                     standard,
                     source: workspace_source,
                     revision: workspace_revision,
                     integrity: workspace_integrity,
-                });
+                })?;
             } else if workspace_source.is_some()
                 || workspace_revision.is_some()
                 || workspace_integrity.is_some()
             {
                 return Err("workspace source options require --workspace-standard".into());
             }
-            config.trusted_sources = trusted_source;
-
-            config.save_to_file(&config_path)?;
+            if !trusted_source.is_empty() {
+                document.value["trusted_sources"] = serde_yaml::to_value(trusted_source)?;
+            }
+            if non_interactive {
+                document.save(global)?;
+            } else if !wizard::run_wizard(&mut document, global)? {
+                eprintln!("Configuration cancelled. skills.yaml was not changed.");
+                return Ok(());
+            }
 
             if global {
-                eprintln!("Initialized skills.yaml for GLOBAL user configuration");
+                eprintln!("Saved skills.yaml for GLOBAL user configuration");
             } else {
-                let project_name = config.name;
-                eprintln!("Initialized skills.yaml for project '{}'", project_name);
+                let project_name = document.value["name"].as_str().unwrap_or_default();
+                eprintln!("Saved skills.yaml for project '{}'", project_name);
             }
 
             // Give helpful next steps
@@ -1377,4 +1367,131 @@ fn ensure_registries_cached(config: &SkillsConfig) -> Result<(), Box<dyn std::er
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod init_tests {
+    use super::*;
+    use serial_test::serial;
+    use std::fs;
+    use std::path::PathBuf;
+
+    struct Project {
+        original: PathBuf,
+        directory: tempfile::TempDir,
+    }
+
+    impl Project {
+        fn new() -> Self {
+            let original = env::current_dir().unwrap();
+            let directory = tempfile::tempdir().unwrap();
+            env::set_current_dir(directory.path()).unwrap();
+            Self {
+                original,
+                directory,
+            }
+        }
+
+        fn path(&self) -> PathBuf {
+            self.directory.path().join("skills.yaml")
+        }
+    }
+
+    impl Drop for Project {
+        fn drop(&mut self) {
+            env::set_current_dir(&self.original).unwrap();
+        }
+    }
+
+    fn init(args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
+        let mut command = vec!["skm", "init"];
+        command.extend_from_slice(args);
+        run(Cli::try_parse_from(command)?.command)
+    }
+
+    #[test]
+    #[serial]
+    fn non_interactive_cli_creates_defaults_and_never_overwrites() {
+        let project = Project::new();
+        init(&["--non-interactive", "--name", "cli-project"]).unwrap();
+        let saved = fs::read_to_string(project.path()).unwrap();
+        let config = SkillsConfig::load_from_file(project.path()).unwrap();
+        assert_eq!(config.name, "cli-project");
+        assert_eq!(config.skills[0].name, "software-development/spec");
+        assert!(init(&["--non-interactive", "--name", "overwrite"]).is_err());
+        assert_eq!(fs::read_to_string(project.path()).unwrap(), saved);
+    }
+
+    #[test]
+    #[serial]
+    fn init_flags_are_saved_in_the_reviewed_document() {
+        let project = Project::new();
+        init(&[
+            "--non-interactive",
+            "--name",
+            "toolkit-project",
+            "--toolkit-manifest",
+            "toolkit/manifest.yaml",
+            "--toolkit-version",
+            "0.2.0",
+            "--bundle",
+            "core",
+            "--profile",
+            "reviewer",
+            "--workspace-standard",
+            "workspace-docs@5.0.0",
+            "--workspace-source",
+            "workspace/standards",
+            "--trusted-source",
+            "workspace/standards",
+        ])
+        .unwrap();
+        let config = SkillsConfig::load_from_file(project.path()).unwrap();
+        assert_eq!(config.toolkit.unwrap().version, "0.2.0");
+        assert_eq!(config.bundles, ["core"]);
+        assert_eq!(config.profiles, ["reviewer"]);
+        assert_eq!(
+            config.workspace.unwrap().source.as_deref(),
+            Some("workspace/standards")
+        );
+        assert_eq!(config.trusted_sources, ["workspace/standards"]);
+    }
+
+    #[test]
+    #[serial]
+    fn invalid_flag_combinations_leave_no_manifest() {
+        let project = Project::new();
+        for args in [
+            vec![
+                "--non-interactive",
+                "--global",
+                "--toolkit-manifest",
+                "toolkit.yaml",
+            ],
+            vec!["--non-interactive", "--bundle", "core"],
+            vec![
+                "--non-interactive",
+                "--workspace-source",
+                "workspace/standards",
+            ],
+        ] {
+            assert!(init(&args).is_err());
+            assert!(!project.path().exists());
+        }
+        init(&["--non-interactive", "--global", "--name", "global-config"]).unwrap();
+        assert!(project.path().exists());
+    }
+
+    #[test]
+    fn interactive_aliases_parse_and_help_explains_script_mode() {
+        for option in ["--interactive", "--advanced", "--global"] {
+            assert!(Cli::try_parse_from(["skm", "init", option]).is_ok());
+        }
+        let help = match Cli::try_parse_from(["skm", "init", "--help"]) {
+            Ok(_) => panic!("expected help output"),
+            Err(help) => help.to_string(),
+        };
+        assert!(help.contains("--non-interactive"));
+        assert!(help.contains("terminal wizard"));
+    }
 }

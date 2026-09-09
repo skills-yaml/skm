@@ -423,7 +423,7 @@ pub fn is_supported_agent(agent: &str) -> bool {
     )
 }
 
-fn is_safe_registry_name(name: &str) -> bool {
+pub(crate) fn is_safe_registry_name(name: &str) -> bool {
     !name.is_empty()
         && Path::new(name)
             .components()
