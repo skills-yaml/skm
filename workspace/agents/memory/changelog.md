@@ -140,3 +140,17 @@ Recorded in `workspace/agents/memory/facts.md` that orphan cleanup uses
 authoritative skill and development configuration, old-version cleanup
 preserves aliases and manifest pins, and reset preserves real content and
 agent skills-root symlinks.
+
+## 2026-09-09 - Record init wizard persistence and compatibility
+
+- Type: fact
+- Source: spec
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded the init wizard's existing-file editing, preview, safe-save behavior,
+script compatibility, and Linux terminal test entrypoint in
+`workspace/agents/memory/facts.md`.

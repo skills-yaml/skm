@@ -119,6 +119,33 @@ Create a project manifest:
 skm init
 ```
 
+`init` opens a terminal wizard. It loads `skills.yaml` if present or starts a new
+draft. A live YAML preview stays visible through six steps: project details,
+agents, registries, skills, optional toolkit/workspace settings, and review.
+
+- **Tab / Shift-Tab**: next / previous step; **Up / Down**: select a field.
+- **Enter**: edit a field; **Space**: toggle an agent.
+- **a / d**: add / remove a registry or skill. Removal asks for confirmation.
+- While editing, **Ctrl-U** clears the field, **Enter** keeps it, and **Esc** undoes it.
+- **Page Up / Page Down**: scroll YAML; **[ / ]**: pan long YAML lines.
+- On Review, **Enter** saves. **Esc** outside an edit or **Ctrl-C** cancels.
+
+Cancellation leaves the manifest unchanged. An unchanged save preserves its
+original bytes; edited saves preserve configuration values, including extension
+fields, but may normalize YAML formatting and comments. The wizard refuses to
+replace malformed files, symlinks, or files changed externally while it is open.
+It requires at least 48 columns by 20 rows and stacks its panels on narrow terminals.
+
+For scripts, create a manifest with the existing defaults:
+
+```sh
+skm init --non-interactive --name my-project
+```
+
+Non-interactive initialization refuses to replace an existing manifest.
+`--advanced` opens the same complete wizard. `--global` prepares for global
+installation; `skills.yaml` remains in the current directory.
+
 Install the skills declared in `skills.yaml` into project-local agent folders:
 
 ```sh
@@ -149,7 +176,7 @@ Use `--global` with `install`, `list`, or `check` to work against user-level age
 ## Commands
 
 ```txt
-skm init [--name <name>] [--toolkit-manifest <path>] [--toolkit-version <version>] [--bundle <id>] [--profile <id>] [--workspace-standard <id>] [--workspace-source <path-or-git-url>] [--workspace-revision <commit>] [--workspace-integrity <sha256>] [--trusted-source <source>]
+skm init [--name <name>] [--global] [--non-interactive] [--advanced] [--toolkit-manifest <path>] [--toolkit-version <version>] [--bundle <id>] [--profile <id>] [--workspace-standard <id>] [--workspace-source <path-or-git-url>] [--workspace-revision <commit>] [--workspace-integrity <sha256>] [--trusted-source <source>]
 skm install [--global] [--dry-run] [--json] [--yes]
 skm add <skill-name> [--source <registry>] [--path <local-path>] [--global]
 skm list [--global]
@@ -167,7 +194,8 @@ skm workspace audit [--target <version>] [--source <path-or-git-url>] [--revisio
 skm workspace adopt|upgrade|repair [--target <version>] [--source <path-or-git-url>] [--revision <commit>] [--integrity <sha256>] [--apply] [--yes] [--json]
 ```
 
-- `init`: creates a default `skills.yaml`.
+- `init`: creates or edits `skills.yaml` through a terminal wizard; use
+  `--non-interactive` to create a default manifest for scripts.
 - `install`: resolves configured skills and toolkit bundles once, preflights
   every target, transactionally materializes each adapter, and writes the
   lockfile last.
@@ -325,3 +353,6 @@ task build
 
 `task check` runs formatting checks, Clippy with warnings denied, `cargo check`,
 and the workspace-docs structure, spec-catalog, memory-impact, and privacy gates.
+
+After `task build`, run `task test:tui` for Linux terminal smoke coverage of
+the init wizard, including saving, cancellation, external edits, and terminal restoration.

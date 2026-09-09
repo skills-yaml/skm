@@ -21,7 +21,7 @@ integration or release event in the spec and in this catalog.
 | --- | --- |
 | `workspace-governance` | Workspace adoption, documentation policy, lifecycle governance, and validation. |
 | `workspace-toolkit` | SKM toolkit install, lockfile ownership, and Workspace Docs toolkit compatibility. |
-| `configuration` | Programmatic and global configuration management. |
+| `configuration` | Interactive, programmatic, and global configuration management. |
 | `skill-lifecycle` | Skill removal and version selection. |
 | `local-dev` | Local development skill linking and dev mode. |
 | `registry` | Registry management commands. |
@@ -49,4 +49,5 @@ reopened, is superseded, or materially changes why it is in its state.
 | [skill-removal.md](done/skill-lifecycle/skill-removal.md) | `skill-lifecycle` | `done` | Released through `main`. |
 | [skill-version-management.md](done/skill-lifecycle/skill-version-management.md) | `skill-lifecycle` | `done` | Released through `main`. |
 | [auto-update-notification.md](done/updates/auto-update-notification.md) | `updates` | `done` | Released through `main`. |
+| [init-tui-wizard.md](development/configuration/init-tui-wizard.md) | `configuration` | `development` | Terminal configuration wizard implementation and validation are complete locally; not integrated into `development`. |
 <!-- SPEC-CATALOG:END -->

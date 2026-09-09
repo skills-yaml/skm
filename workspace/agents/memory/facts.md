@@ -46,3 +46,21 @@ scope-matched development configuration; a skill's presence in registry cache
 is not ownership evidence. Old-version cleanup preserves `latest`, `default`,
 and manifest-pinned versions. Reset removes descendant symlink entries while
 preserving agent skills-root symlinks and real files or directories.
+
+## 2026-09-09 - Init edits manifests through a terminal wizard
+
+- Type: fact
+- Source: spec
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+`skm init` opens a six-step terminal wizard with a live YAML preview, loading
+the current directory's existing `skills.yaml` or starting a new draft. Saves
+retain unknown configuration values, use atomic replacement, and check for
+external file edits. Cancellation and unchanged saves preserve original bytes;
+edited saves may normalize comments and formatting. `--non-interactive` remains
+create-only; `--global` keeps the manifest in the current directory. Linux PTY
+coverage runs through `task test:tui` after `task build`.
