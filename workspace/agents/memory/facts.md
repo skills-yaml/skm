@@ -64,3 +64,19 @@ external file edits. Cancellation and unchanged saves preserve original bytes;
 edited saves may normalize comments and formatting. `--non-interactive` remains
 create-only; `--global` keeps the manifest in the current directory. Linux PTY
 coverage runs through `task test:tui` after `task build`.
+
+## 2026-09-09 - SKM 0.3.0 wizard released
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+SKM 0.3.0 introduced the configuration TUI in production via PR #8 and main
+commit `69c0b87a64a65fda391a6c9685a861d0c0a618f1`. Release workflow
+`34411227027` successfully published Linux, macOS Intel/Apple Silicon, and
+Windows packages to `prod-latest`. All downloaded archive checksums matched,
+and the Linux artifact reports `skm 0.3.0`.
