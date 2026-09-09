@@ -154,3 +154,17 @@ Content:
 Recorded the init wizard's existing-file editing, preview, safe-save behavior,
 script compatibility, and Linux terminal test entrypoint in
 `workspace/agents/memory/facts.md`.
+
+## 2026-09-09 - Record SKM 0.3.0 production publication
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded the SKM 0.3.0 production merge, successful platform publication, and
+artifact verification in `workspace/agents/memory/facts.md`. The init wizard
+specification now records its confirmed release in `done`.
