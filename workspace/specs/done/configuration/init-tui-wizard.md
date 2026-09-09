@@ -2,11 +2,11 @@
 
 ## Status
 
-State: test
+State: done
 
-Integrated into `development` by PR #7 on 2026-09-09 at
-`db7d02f44dda9a97def90633bab6d83d07c5e27d`, after CI passed. Production release
-through `main` is pending.
+Released as SKM 0.3.0 through `main` by PR #8 on 2026-09-09 at
+`69c0b87a64a65fda391a6c9685a861d0c0a618f1`. The production workflow published
+all four platform packages and their checksums successfully.
 
 ## Scope
 
@@ -91,3 +91,12 @@ compatibility flags, and terminal test entrypoint in
 - PR: https://github.com/skills-yaml/skm/pull/7
 - Commit: `db7d02f44dda9a97def90633bab6d83d07c5e27d`
 - CI: https://github.com/skills-yaml/skm/actions/runs/34410715962 (passed)
+
+## Production Release Evidence
+
+- PR: https://github.com/skills-yaml/skm/pull/8
+- Commit: `69c0b87a64a65fda391a6c9685a861d0c0a618f1`
+- Release workflow: https://github.com/skills-yaml/skm/actions/runs/34411227027
+- Published release: https://github.com/skills-yaml/skm/releases/tag/prod-latest
+- Linux, macOS Intel/Apple Silicon, and Windows packages all built successfully.
+- All four downloaded archive checksums matched; the Linux binary reports `skm 0.3.0`.

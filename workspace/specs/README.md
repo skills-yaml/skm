@@ -49,5 +49,5 @@ reopened, is superseded, or materially changes why it is in its state.
 | [skill-removal.md](done/skill-lifecycle/skill-removal.md) | `skill-lifecycle` | `done` | Released through `main`. |
 | [skill-version-management.md](done/skill-lifecycle/skill-version-management.md) | `skill-lifecycle` | `done` | Released through `main`. |
 | [auto-update-notification.md](done/updates/auto-update-notification.md) | `updates` | `done` | Released through `main`. |
-| [init-tui-wizard.md](test/configuration/init-tui-wizard.md) | `configuration` | `test` | Integrated into `development` by PR #7 on 2026-09-09 (`db7d02f`) after CI passed; production release is pending. |
+| [init-tui-wizard.md](done/configuration/init-tui-wizard.md) | `configuration` | `done` | Released as SKM 0.3.0 through `main` by PR #8 on 2026-09-09 (`69c0b87`); all production packages and checksums published successfully. |
 <!-- SPEC-CATALOG:END -->
