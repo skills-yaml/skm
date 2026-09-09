@@ -2,10 +2,11 @@
 
 ## Status
 
-State: development
+State: test
 
-Implementation and validation are complete locally; integration into
-`development` and release through `main` have not occurred.
+Integrated into `development` by PR #7 on 2026-09-09 at
+`db7d02f44dda9a97def90633bab6d83d07c5e27d`, after CI passed. Production release
+through `main` is pending.
 
 ## Scope
 
@@ -84,3 +85,9 @@ compatibility flags, and terminal test entrypoint in
   separation, and terminal restoration.
 - `git diff --check`: passed.
 - Interactive terminal behavior on macOS and Windows was not exercised locally.
+
+## Integration Evidence
+
+- PR: https://github.com/skills-yaml/skm/pull/7
+- Commit: `db7d02f44dda9a97def90633bab6d83d07c5e27d`
+- CI: https://github.com/skills-yaml/skm/actions/runs/34410715962 (passed)

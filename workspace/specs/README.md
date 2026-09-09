@@ -49,5 +49,5 @@ reopened, is superseded, or materially changes why it is in its state.
 | [skill-removal.md](done/skill-lifecycle/skill-removal.md) | `skill-lifecycle` | `done` | Released through `main`. |
 | [skill-version-management.md](done/skill-lifecycle/skill-version-management.md) | `skill-lifecycle` | `done` | Released through `main`. |
 | [auto-update-notification.md](done/updates/auto-update-notification.md) | `updates` | `done` | Released through `main`. |
-| [init-tui-wizard.md](development/configuration/init-tui-wizard.md) | `configuration` | `development` | Terminal configuration wizard implementation and validation are complete locally; not integrated into `development`. |
+| [init-tui-wizard.md](test/configuration/init-tui-wizard.md) | `configuration` | `test` | Integrated into `development` by PR #7 on 2026-09-09 (`db7d02f`) after CI passed; production release is pending. |
 <!-- SPEC-CATALOG:END -->
