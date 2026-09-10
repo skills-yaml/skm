@@ -102,3 +102,20 @@ This repository adopts `workspace-docs@5.0.0`. Canonical locations are
 `backlog -> development -> test -> done`. The configured test target is
 `development`; the configured production target is `main`. Generated agent
 context is pinned to `workspace-docs@5.0.0`.
+
+## 2026-09-10 - Resolve Exact Registry Skill Dependencies
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Registry skills may declare exact, same-registry dependencies through the
+string-valued Agent Skills metadata keys `skm-version` and
+`skm-dependencies`. SKM resolves and validates the complete closure before
+writes, rejects cycles and conflicts, and records immutable package versions.
+Codex skill projections use the shared `.agents/skills/` discovery path;
+managed `.codex/skills/` entries are accepted only for safe migration.

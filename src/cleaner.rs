@@ -1250,7 +1250,7 @@ mod tests {
     fn orphan_cleanup_without_project_config_fails_without_writes() {
         let temp = temp_project();
         let _guard = CurrentDirGuard::new(&temp);
-        let target = temp.join(".codex/skills/orphan");
+        let target = temp.join(".agents/skills/orphan");
         let source = temp.join("source");
         fs::create_dir_all(&source).unwrap();
         fs::create_dir_all(target.parent().unwrap()).unwrap();

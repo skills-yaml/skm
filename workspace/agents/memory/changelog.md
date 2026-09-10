@@ -168,3 +168,18 @@ Content:
 Recorded the SKM 0.3.0 production merge, successful platform publication, and
 artifact verification in `workspace/agents/memory/facts.md`. The init wizard
 specification now records its confirmed release in `done`.
+
+## 2026-09-10 - Record Registry Dependency Resolution Contract
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded in `workspace/agents/memory/decisions.md` that SKM resolves exact
+same-registry skill dependency closures before writes and uses
+`.agents/skills/` for Codex while retaining only bounded legacy-lock migration
+support for `.codex/skills/`.
