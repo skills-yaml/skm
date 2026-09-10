@@ -80,3 +80,20 @@ commit `69c0b87a64a65fda391a6c9685a861d0c0a618f1`. Release workflow
 `34411227027` successfully published Linux, macOS Intel/Apple Silicon, and
 Windows packages to `prod-latest`. All downloaded archive checksums matched,
 and the Linux artifact reports `skm 0.3.0`.
+
+## 2026-09-10 - SKM 0.4.0 registry dependencies released
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+SKM 0.4.0 released exact same-registry skill dependency resolution and the
+Codex `.agents/skills/` target through PR #13 and main commit
+`cd3d4a6e5d71dd3f27e8122e8cd8b6b323b15cb4`. CI run `34425103403` and release
+run `34425103415` passed. The `prod-latest` tag points to that commit, all four
+platform packages were published, the downloaded Linux checksum matched, and
+the artifact reports `skm 0.4.0`.
