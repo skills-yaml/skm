@@ -219,7 +219,7 @@ Example `skills.yaml`:
 name: my-project
 version: 0.1.0
 registries:
-  default: git@github.com:skills-yaml/skills-registry.git
+  default: git@github.com:skills-yaml/registry.git
 agents:
   - claude
   - codex
@@ -242,6 +242,24 @@ skills:
 
 Each skill source directory must contain a `SKILL.md` file.
 
+### Registry skill dependencies
+
+SKM 0.4 reads optional exact same-registry dependencies from the Agent Skills
+string metadata map:
+
+```yaml
+metadata:
+  skm-version: "0.1.0"
+  skm-dependencies: "workspace/write-spec@0.2.0, workspace/review-changes@0.2.0"
+```
+
+Dependencies must use `namespace/name@MAJOR.MINOR.PATCH`. Resolution inherits
+the selected trusted registry, expands the complete closure before writes, and
+rejects missing packages, malformed or duplicate declarations, cycles, and
+conflicting exact versions. Local-path skills cannot declare registry
+dependencies. When a `latest` or `default` package declares `skm-version`, the
+lockfile records that immutable version instead of the moving alias.
+
 ### Workspace toolkit configuration
 
 Toolkit fields are optional, so existing skills-only manifests remain valid:
@@ -255,7 +273,7 @@ agents:
 skills: []
 toolkit:
   manifest: workspace/instructions/toolkit/manifest.yaml
-  version: 0.2.0
+  version: 0.3.0
 bundles:
   - development-core
 profiles:
@@ -272,8 +290,10 @@ contain symlinks. The committed `skills.lock.yaml` records toolkit and workspace
 versions and integrity, resolved skill and profile versions and integrity,
 adapter versions and capabilities, and every managed output.
 
-SKM 0.2.1 accepts toolkit packages targeting Workspace Docs 4.x or 5.x. The
-current toolkit uses the 5.x `backlog -> development -> test -> done`
+SKM 0.4 accepts toolkit packages targeting Workspace Docs 4.x or 5.x and
+toolkit skill entries with dependency IDs. Selected bundles expand the complete
+toolkit dependency closure. The current Workspace toolkit uses the 5.x
+`backlog -> development -> test -> done`
 lifecycle; `develop` and `main` are conventional targets that repositories may
 replace with explicitly documented equivalents.
 
@@ -287,7 +307,7 @@ Project-local mode links skills under the current project:
 
 ```txt
 .claude/skills
-.codex/skills
+.agents/skills              # Codex and other Agent Skills clients
 .cursor/skills
 .github/skills
 .grok/skills
@@ -298,7 +318,7 @@ Global mode links under the current user's home directory:
 
 ```txt
 ~/.claude/skills
-~/.codex/skills
+~/.agents/skills             # Codex and other Agent Skills clients
 ~/.cursor/skills
 ~/.copilot/skills
 ~/.grok/skills

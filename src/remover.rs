@@ -185,7 +185,7 @@ mod tests {
     fn test_remove_skill_success() {
         let (project, _) = configured_project();
         let config_path = project.join("skills.yaml");
-        let codex_target = project.join(".codex").join("skills").join("test-skill");
+        let codex_target = project.join(".agents").join("skills").join("test-skill");
         let cursor_target = project.join(".cursor").join("skills").join("test-skill");
         assert!(codex_target.is_symlink());
         assert!(cursor_target.is_symlink());
@@ -208,7 +208,7 @@ mod tests {
     fn declining_confirmation_leaves_config_and_links_unchanged() {
         let (project, _) = configured_project();
         let config_path = project.join("skills.yaml");
-        let target = project.join(".codex").join("skills").join("test-skill");
+        let target = project.join(".agents").join("skills").join("test-skill");
 
         remove_skill_with_confirmation(
             "test-skill",
@@ -258,7 +258,7 @@ mod tests {
     fn unexpected_symlink_fails_before_config_or_link_changes() {
         let (project, _) = configured_project();
         let config_path = project.join("skills.yaml");
-        let codex_target = project.join(".codex/skills/test-skill");
+        let codex_target = project.join(".agents/skills/test-skill");
         let cursor_target = project.join(".cursor/skills/test-skill");
         let unexpected = project.join("unexpected");
         fs::create_dir_all(&unexpected).unwrap();
@@ -286,9 +286,9 @@ mod tests {
     fn non_symlink_fails_without_force_and_is_removed_with_force() {
         let (project, _) = configured_project();
         let config_path = project.join("skills.yaml");
-        let codex_target = project.join(".codex/skills/test-skill");
+        let codex_target = project.join(".agents/skills/test-skill");
         let cursor_target = project.join(".cursor/skills/test-skill");
-        let sibling = project.join(".codex/skills/keep.txt");
+        let sibling = project.join(".agents/skills/keep.txt");
         fs::remove_file(&codex_target).unwrap();
         fs::create_dir_all(&codex_target).unwrap();
         fs::write(codex_target.join("content.txt"), "content").unwrap();
@@ -324,7 +324,7 @@ mod tests {
     fn unlink_failure_is_reported_after_later_targets_are_attempted() {
         let (project, _) = configured_project();
         let config_path = project.join("skills.yaml");
-        let codex_target = project.join(".codex/skills/test-skill");
+        let codex_target = project.join(".agents/skills/test-skill");
         let cursor_target = project.join(".cursor/skills/test-skill");
         let target_to_change = codex_target.clone();
 

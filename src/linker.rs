@@ -1,7 +1,24 @@
 use crate::config::SkillSpec;
+use serde::Deserialize;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
+
+const VERSION_METADATA_KEY: &str = "skm-version";
+const DEPENDENCIES_METADATA_KEY: &str = "skm-dependencies";
+
+#[derive(Debug, Deserialize)]
+struct SkillFrontmatter {
+    name: String,
+    #[serde(default)]
+    metadata: BTreeMap<String, String>,
+}
+
+struct SkillPackageMetadata {
+    published_version: Option<String>,
+    dependencies: Vec<(String, String)>,
+}
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum UnlinkTargetKind {
@@ -32,22 +49,22 @@ pub struct UnlinkResult {
 
 pub fn get_global_agent_skills_dir(agent: &str) -> Option<PathBuf> {
     let home = dirs::home_dir()?;
-    let dir_name = match agent {
-        "claude" => ".claude",
-        "codex" => ".codex",
-        "cursor" => ".cursor",
-        "copilot" => ".copilot",
-        "grok" => ".grok",
-        "hermes" => ".hermes",
+    let relative = match agent {
+        "claude" => ".claude/skills",
+        "codex" => ".agents/skills",
+        "cursor" => ".cursor/skills",
+        "copilot" => ".copilot/skills",
+        "grok" => ".grok/skills",
+        "hermes" => ".hermes/skills",
         _ => return None,
     };
-    Some(home.join(dir_name).join("skills"))
+    Some(home.join(relative))
 }
 
 pub fn get_project_agent_skills_dir(agent: &str, project_root: &Path) -> Option<PathBuf> {
     let rel_path = match agent {
         "claude" => ".claude/skills",
-        "codex" => ".codex/skills",
+        "codex" => ".agents/skills",
         "cursor" => ".cursor/skills",
         "copilot" => ".github/skills",
         "grok" => ".grok/skills",
@@ -55,6 +72,238 @@ pub fn get_project_agent_skills_dir(agent: &str, project_root: &Path) -> Option<
         _ => return None,
     };
     Some(project_root.join(rel_path))
+}
+
+/// Resolve the complete, exact dependency closure for configured skills.
+///
+/// Registry packages declare same-registry dependencies through the
+/// string-valued Agent Skills metadata key `skm-dependencies`. Each dependency
+/// uses `namespace/name@MAJOR.MINOR.PATCH`; comma-separated entries are
+/// supported. Packages can declare their exact published version through
+/// `skm-version`, allowing `latest` and `default` selections to become exact in
+/// lockfiles and dependency comparisons.
+pub fn resolve_skill_dependency_closure(
+    skills: &[SkillSpec],
+    project_root: &Path,
+) -> Result<Vec<SkillSpec>, Box<dyn std::error::Error>> {
+    resolve_skill_dependency_closure_with(skills, project_root, resolve_skill_source_dir)
+}
+
+fn resolve_skill_dependency_closure_with<F>(
+    skills: &[SkillSpec],
+    project_root: &Path,
+    resolve_source: F,
+) -> Result<Vec<SkillSpec>, Box<dyn std::error::Error>>
+where
+    F: Fn(&SkillSpec, &Path) -> Result<PathBuf, Box<dyn std::error::Error>>,
+{
+    let mut resolved = BTreeMap::new();
+    let mut active = BTreeMap::new();
+    let mut stack = Vec::new();
+    for skill in skills {
+        resolve_skill_dependency(
+            skill,
+            project_root,
+            &resolve_source,
+            &mut resolved,
+            &mut active,
+            &mut stack,
+        )?;
+    }
+    Ok(resolved.into_values().collect())
+}
+
+fn resolve_skill_dependency<F>(
+    requested: &SkillSpec,
+    project_root: &Path,
+    resolve_source: &F,
+    resolved: &mut BTreeMap<String, SkillSpec>,
+    active: &mut BTreeMap<String, SkillSpec>,
+    stack: &mut Vec<String>,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    F: Fn(&SkillSpec, &Path) -> Result<PathBuf, Box<dyn std::error::Error>>,
+{
+    validate_skill_name(&requested.name)?;
+    let source = resolve_source(requested, project_root)?;
+    if !source.is_dir() {
+        return Err(format!("Skill source path does not exist: {}", source.display()).into());
+    }
+    let metadata = read_skill_package_metadata(&source, &requested.name)?;
+    let normalized = normalize_published_skill(requested, metadata.published_version.as_deref())?;
+
+    if let Some(existing) = resolved.get(&normalized.name) {
+        return ensure_compatible_skill_requests(existing, &normalized);
+    }
+    if let Some(existing) = active.get(&normalized.name) {
+        ensure_compatible_skill_requests(existing, &normalized)?;
+        stack.push(normalized.name.clone());
+        let cycle = stack.join(" -> ");
+        stack.pop();
+        return Err(format!("registry skill dependency cycle: {cycle}").into());
+    }
+
+    active.insert(normalized.name.clone(), normalized.clone());
+    stack.push(normalized.name.clone());
+    for (dependency_name, dependency_version) in metadata.dependencies {
+        if normalized.path.is_some() {
+            return Err(format!(
+                "local skill {} cannot declare registry dependencies",
+                normalized.name
+            )
+            .into());
+        }
+        let dependency = SkillSpec {
+            name: dependency_name,
+            version: Some(dependency_version),
+            source: normalized.source.clone(),
+            path: None,
+        };
+        resolve_skill_dependency(
+            &dependency,
+            project_root,
+            resolve_source,
+            resolved,
+            active,
+            stack,
+        )?;
+    }
+    stack.pop();
+    active.remove(&normalized.name);
+    resolved.insert(normalized.name.clone(), normalized);
+    Ok(())
+}
+
+fn read_skill_package_metadata(
+    source: &Path,
+    requested_name: &str,
+) -> Result<SkillPackageMetadata, Box<dyn std::error::Error>> {
+    let skill_path = source.join("SKILL.md");
+    let content = fs::read_to_string(&skill_path)?;
+    let Some(rest) = content.strip_prefix("---\n") else {
+        return Err(format!("{} has invalid SKILL.md frontmatter", source.display()).into());
+    };
+    let Some((frontmatter, _)) = rest.split_once("\n---") else {
+        return Err(format!("{} has unclosed SKILL.md frontmatter", source.display()).into());
+    };
+    let metadata: SkillFrontmatter = serde_yaml::from_str(frontmatter)?;
+    let expected_name = requested_name
+        .rsplit('/')
+        .next()
+        .ok_or("skill name has no final component")?;
+    if metadata.name != expected_name {
+        return Err(format!(
+            "skill identity mismatch: requested {requested_name}, package declares {}",
+            metadata.name
+        )
+        .into());
+    }
+
+    let published_version = metadata.metadata.get(VERSION_METADATA_KEY).cloned();
+    if let Some(version) = &published_version {
+        validate_exact_version(version)?;
+    }
+    let dependencies = parse_skill_dependencies(
+        metadata
+            .metadata
+            .get(DEPENDENCIES_METADATA_KEY)
+            .map(String::as_str),
+    )?;
+    Ok(SkillPackageMetadata {
+        published_version,
+        dependencies,
+    })
+}
+
+fn normalize_published_skill(
+    requested: &SkillSpec,
+    published_version: Option<&str>,
+) -> Result<SkillSpec, Box<dyn std::error::Error>> {
+    let requested_version = requested.version.as_deref().unwrap_or("latest");
+    let version = if let Some(published) = published_version {
+        let requested_exact = requested_version.trim_start_matches('v');
+        if !matches!(requested_version, "latest" | "default") && requested_exact != published {
+            return Err(format!(
+                "skill {} requested version {}, package declares {}",
+                requested.name, requested_version, published
+            )
+            .into());
+        }
+        published.to_string()
+    } else {
+        requested_version.to_string()
+    };
+    Ok(SkillSpec {
+        name: requested.name.clone(),
+        version: Some(version),
+        source: requested.source.clone(),
+        path: requested.path.clone(),
+    })
+}
+
+fn parse_skill_dependencies(
+    raw: Option<&str>,
+) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
+    let Some(raw) = raw else {
+        return Ok(Vec::new());
+    };
+    let mut dependencies = Vec::new();
+    let mut names = BTreeSet::new();
+    for value in raw.split(',').map(str::trim) {
+        if value.is_empty() {
+            return Err("skm-dependencies contains an empty entry".into());
+        }
+        let (name, version) = value
+            .rsplit_once('@')
+            .ok_or_else(|| format!("invalid registry skill dependency: {value}"))?;
+        validate_skill_name(name)?;
+        validate_exact_version(version)?;
+        if !names.insert(name.to_string()) {
+            return Err(format!("duplicate registry skill dependency: {name}").into());
+        }
+        dependencies.push((name.to_string(), version.to_string()));
+    }
+    Ok(dependencies)
+}
+
+fn validate_exact_version(version: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let version = version.strip_prefix('v').unwrap_or(version);
+    let parts: Vec<_> = version.split('.').collect();
+    let valid = parts.len() == 3
+        && parts.iter().all(|part| {
+            !part.is_empty()
+                && part.bytes().all(|byte| byte.is_ascii_digit())
+                && (part == &"0" || !part.starts_with('0'))
+        });
+    if !valid {
+        return Err(
+            format!("dependency version must be exact semantic versioning: {version}").into(),
+        );
+    }
+    Ok(())
+}
+
+fn ensure_compatible_skill_requests(
+    existing: &SkillSpec,
+    requested: &SkillSpec,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let existing_source = existing.source.as_deref().unwrap_or("default");
+    let requested_source = requested.source.as_deref().unwrap_or("default");
+    if existing.version != requested.version
+        || existing_source != requested_source
+        || existing.path != requested.path
+    {
+        return Err(format!(
+            "conflicting registry skill requirements for {}: {} from {} versus {} from {}",
+            requested.name,
+            existing.version.as_deref().unwrap_or("latest"),
+            existing_source,
+            requested.version.as_deref().unwrap_or("latest"),
+            requested_source
+        )
+        .into());
+    }
+    Ok(())
 }
 
 pub fn resolve_registry_path(name: &str) -> Option<PathBuf> {
@@ -98,12 +347,102 @@ pub fn resolve_skill_source_dir(
         let reg_path = resolve_registry_path(registry_name)
             .ok_or_else(|| format!("Could not resolve path for registry: {}", registry_name))?;
 
+        let package_root = reg_path.join("skills").join(&skill_path);
+        validate_registry_package_root(&reg_path, &skill_path, &package_root)?;
+
         // Resolve version path
         let version_path = resolve_version_path(skill)?;
-
-        // Append "skills" directory to registry path
-        Ok(reg_path.join("skills").join(skill_path).join(version_path))
+        let source = package_root.join(&version_path);
+        validate_registry_version_path(&package_root, &source, &version_path)?;
+        Ok(source)
     }
+}
+
+fn validate_registry_package_root(
+    registry_root: &Path,
+    skill_path: &Path,
+    package_root: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut current = registry_root.join("skills");
+    for component in skill_path.components() {
+        let Component::Normal(part) = component else {
+            return Err("registry skill path is invalid".into());
+        };
+        current.push(part);
+        let metadata = fs::symlink_metadata(&current)?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(format!(
+                "registry skill package path must contain only real directories: {}",
+                package_root.display()
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
+fn validate_registry_version_path(
+    package_root: &Path,
+    source: &Path,
+    version_path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let version = version_path
+        .to_str()
+        .ok_or("registry skill version path contains non-UTF-8 data")?;
+    let metadata = fs::symlink_metadata(source)?;
+    let alias = matches!(version, "latest" | "default");
+    if alias != metadata.file_type().is_symlink() {
+        return Err(format!(
+            "registry skill version '{}' must {}be a symlink",
+            version,
+            if alias { "" } else { "not " }
+        )
+        .into());
+    }
+    let canonical_package = fs::canonicalize(package_root)?;
+    let canonical_source = fs::canonicalize(source)?;
+    if !canonical_source.is_dir() || canonical_source.parent() != Some(&canonical_package) {
+        return Err(format!(
+            "registry skill version escapes its package: {}",
+            source.display()
+        )
+        .into());
+    }
+    let resolved_version = canonical_source
+        .file_name()
+        .and_then(|value| value.to_str())
+        .and_then(|value| value.strip_prefix('v'))
+        .ok_or("registry skill version target must use vMAJOR.MINOR.PATCH")?;
+    validate_exact_version(resolved_version)?;
+    if !alias && version.strip_prefix('v') != Some(resolved_version) {
+        return Err("registry skill version path does not match its resolved version".into());
+    }
+    Ok(())
+}
+
+pub(crate) fn parse_registry_lock_target(
+    target: &str,
+) -> Result<SkillSpec, Box<dyn std::error::Error>> {
+    let value = target
+        .strip_prefix("registry:")
+        .ok_or("registry lock target has an invalid prefix")?;
+    let (source, package) = value
+        .split_once('/')
+        .ok_or("registry lock target is missing its source")?;
+    if !is_safe_registry_name(source) {
+        return Err("registry lock target has an invalid source".into());
+    }
+    let (name, version) = package
+        .rsplit_once('@')
+        .ok_or("registry lock target is missing its exact version")?;
+    validate_skill_name(name)?;
+    validate_exact_version(version)?;
+    Ok(SkillSpec {
+        name: name.to_string(),
+        version: Some(version.to_string()),
+        source: Some(source.to_string()),
+        path: None,
+    })
 }
 
 /// Resolves the version component of a skill path.
@@ -495,6 +834,256 @@ mod tests {
         }
     }
 
+    fn write_registry_skill(
+        registry: &Path,
+        name: &str,
+        version: &str,
+        dependencies: Option<&str>,
+    ) -> PathBuf {
+        let path = registry.join(name).join(format!("v{version}"));
+        fs::create_dir_all(&path).unwrap();
+        let declared_name = name.rsplit('/').next().unwrap();
+        let dependency_metadata = dependencies
+            .map(|value| format!("  skm-dependencies: \"{value}\"\n"))
+            .unwrap_or_default();
+        fs::write(
+            path.join("SKILL.md"),
+            format!(
+                "---\nname: {declared_name}\ndescription: Registry test skill.\nmetadata:\n  skm-version: \"{version}\"\n{dependency_metadata}---\n\n# Test\n"
+            ),
+        )
+        .unwrap();
+        path
+    }
+
+    fn registry_resolver<'a>(
+        registry: &'a Path,
+    ) -> impl Fn(&SkillSpec, &Path) -> Result<PathBuf, Box<dyn std::error::Error>> + 'a {
+        move |skill, _| {
+            let version = skill.version.as_deref().unwrap_or("latest");
+            Ok(registry
+                .join(&skill.name)
+                .join(if version.starts_with('v') {
+                    version.to_string()
+                } else {
+                    format!("v{version}")
+                }))
+        }
+    }
+
+    #[test]
+    fn resolves_exact_registry_skill_dependency_closure() {
+        let project = temp_project();
+        let registry = project.join("registry");
+        write_registry_skill(&registry, "workspace/write-spec", "0.2.0", None);
+        write_registry_skill(
+            &registry,
+            "workspace/wk-spec",
+            "0.1.0",
+            Some("workspace/write-spec@0.2.0"),
+        );
+        let requested = vec![SkillSpec {
+            name: "workspace/wk-spec".to_string(),
+            version: Some("0.1.0".to_string()),
+            source: Some("default".to_string()),
+            path: None,
+        }];
+
+        let resolved = resolve_skill_dependency_closure_with(
+            &requested,
+            &project,
+            registry_resolver(&registry),
+        )
+        .unwrap();
+
+        assert_eq!(resolved.len(), 2);
+        assert_eq!(resolved[0].name, "workspace/wk-spec");
+        assert_eq!(resolved[0].version.as_deref(), Some("0.1.0"));
+        assert_eq!(resolved[1].name, "workspace/write-spec");
+        assert_eq!(resolved[1].version.as_deref(), Some("0.2.0"));
+        fs::remove_dir_all(project).unwrap();
+    }
+
+    #[test]
+    fn resolves_latest_alias_to_published_metadata_version() {
+        let project = temp_project();
+        let registry = project.join("registry");
+        let published = write_registry_skill(&registry, "workspace/wk-review", "0.1.0", None);
+        let requested = vec![SkillSpec {
+            name: "workspace/wk-review".to_string(),
+            version: Some("latest".to_string()),
+            source: None,
+            path: None,
+        }];
+
+        let resolved = resolve_skill_dependency_closure_with(&requested, &project, move |_, _| {
+            Ok(published.clone())
+        })
+        .unwrap();
+
+        assert_eq!(resolved[0].version.as_deref(), Some("0.1.0"));
+        fs::remove_dir_all(project).unwrap();
+    }
+
+    #[test]
+    fn rejects_registry_dependency_cycle() {
+        let project = temp_project();
+        let registry = project.join("registry");
+        write_registry_skill(
+            &registry,
+            "workspace/wk-plan",
+            "0.1.0",
+            Some("workspace/wk-spec@0.1.0"),
+        );
+        write_registry_skill(
+            &registry,
+            "workspace/wk-spec",
+            "0.1.0",
+            Some("workspace/wk-plan@0.1.0"),
+        );
+        let requested = vec![SkillSpec {
+            name: "workspace/wk-plan".to_string(),
+            version: Some("0.1.0".to_string()),
+            source: None,
+            path: None,
+        }];
+
+        let error = resolve_skill_dependency_closure_with(
+            &requested,
+            &project,
+            registry_resolver(&registry),
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("dependency cycle"));
+        fs::remove_dir_all(project).unwrap();
+    }
+
+    #[test]
+    fn rejects_conflicting_registry_dependency_versions() {
+        let project = temp_project();
+        let registry = project.join("registry");
+        write_registry_skill(&registry, "workspace/shared", "1.0.0", None);
+        write_registry_skill(&registry, "workspace/shared", "2.0.0", None);
+        let requested = vec![
+            SkillSpec {
+                name: "workspace/shared".to_string(),
+                version: Some("1.0.0".to_string()),
+                source: None,
+                path: None,
+            },
+            SkillSpec {
+                name: "workspace/shared".to_string(),
+                version: Some("2.0.0".to_string()),
+                source: None,
+                path: None,
+            },
+        ];
+
+        let error = resolve_skill_dependency_closure_with(
+            &requested,
+            &project,
+            registry_resolver(&registry),
+        )
+        .unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("conflicting registry skill requirements"));
+        fs::remove_dir_all(project).unwrap();
+    }
+
+    #[test]
+    fn rejects_malformed_or_local_registry_dependencies() {
+        let project = temp_project();
+        let registry = project.join("registry");
+        write_registry_skill(
+            &registry,
+            "workspace/wk-spec",
+            "0.1.0",
+            Some("workspace/write-spec@latest"),
+        );
+        let requested = vec![SkillSpec {
+            name: "workspace/wk-spec".to_string(),
+            version: Some("0.1.0".to_string()),
+            source: None,
+            path: None,
+        }];
+        let error = resolve_skill_dependency_closure_with(
+            &requested,
+            &project,
+            registry_resolver(&registry),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("exact semantic versioning"));
+
+        write_registry_skill(
+            &registry,
+            "workspace/local",
+            "0.1.0",
+            Some("workspace/write-spec@0.2.0"),
+        );
+        let local = vec![SkillSpec {
+            name: "workspace/local".to_string(),
+            version: Some("0.1.0".to_string()),
+            source: None,
+            path: Some("local".to_string()),
+        }];
+        let error =
+            resolve_skill_dependency_closure_with(&local, &project, registry_resolver(&registry))
+                .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("cannot declare registry dependencies"));
+        fs::remove_dir_all(project).unwrap();
+    }
+
+    #[test]
+    fn parses_exact_registry_lock_target() {
+        let skill =
+            parse_registry_lock_target("registry:default/workspace/write-spec@0.2.0").unwrap();
+        assert_eq!(skill.name, "workspace/write-spec");
+        assert_eq!(skill.version.as_deref(), Some("0.2.0"));
+        assert_eq!(skill.source.as_deref(), Some("default"));
+        assert!(
+            parse_registry_lock_target("registry:default/workspace/write-spec@latest").is_err()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_registry_version_symlinks_that_escape_or_replace_exact_versions() {
+        let project = temp_project();
+        let package = project.join("registry/skills/workspace/example");
+        let outside = project.join("outside");
+        fs::create_dir_all(&package).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, package.join("latest")).unwrap();
+        let error =
+            validate_registry_version_path(&package, &package.join("latest"), Path::new("latest"))
+                .unwrap_err();
+        assert!(error.to_string().contains("escapes its package"));
+
+        std::os::unix::fs::symlink(&outside, package.join("v0.1.0")).unwrap();
+        let error =
+            validate_registry_version_path(&package, &package.join("v0.1.0"), Path::new("v0.1.0"))
+                .unwrap_err();
+        assert!(error.to_string().contains("must not be a symlink"));
+        fs::remove_dir_all(project).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn accepts_registry_alias_to_real_version_inside_package() {
+        let project = temp_project();
+        let package = project.join("registry/skills/workspace/example");
+        fs::create_dir_all(package.join("v0.1.0")).unwrap();
+        std::os::unix::fs::symlink("v0.1.0", package.join("latest")).unwrap();
+        validate_registry_version_path(&package, &package.join("latest"), Path::new("latest"))
+            .unwrap();
+        fs::remove_dir_all(project).unwrap();
+    }
+
     #[test]
     fn rejects_unsafe_skill_names() {
         for name in ["", ".", "../escape", "foo/../../escape", "/tmp/escape"] {
@@ -507,7 +1096,7 @@ mod tests {
         let project = temp_project();
         let skill = local_skill(&project, "foo");
         let agents = vec!["codex".to_string()];
-        let existing = project.join(".codex").join("skills").join("foo");
+        let existing = project.join(".agents").join("skills").join("foo");
         fs::create_dir_all(&existing).unwrap();
         fs::write(existing.join("keep.txt"), "keep").unwrap();
 
@@ -525,7 +1114,7 @@ mod tests {
         let other = project.join("other");
         fs::create_dir_all(&other).unwrap();
         let agents = vec!["codex".to_string()];
-        let target = project.join(".codex").join("skills").join("foo");
+        let target = project.join(".agents").join("skills").join("foo");
         fs::create_dir_all(target.parent().unwrap()).unwrap();
         symlink_dir(&other, &target).unwrap();
 
@@ -547,7 +1136,7 @@ mod tests {
         let project = temp_project();
         let skill = local_skill(&project, "foo");
         let agents = vec!["codex".to_string()];
-        let target = project.join(".codex").join("skills").join("foo");
+        let target = project.join(".agents").join("skills").join("foo");
 
         link_skill(&skill, &project, &agents, false).unwrap();
         assert!(target.exists() || target.is_symlink());
@@ -574,7 +1163,7 @@ mod tests {
         let agents = vec!["codex".to_string()];
         let unexpected = project.join("unexpected");
         fs::create_dir_all(&unexpected).unwrap();
-        let target = project.join(".codex").join("skills").join("foo");
+        let target = project.join(".agents").join("skills").join("foo");
         fs::create_dir_all(target.parent().unwrap()).unwrap();
         symlink_dir(&unexpected, &target).unwrap();
 
@@ -597,7 +1186,7 @@ mod tests {
         let external = project.join("external");
         fs::create_dir_all(&external).unwrap();
         fs::write(external.join("keep.txt"), "keep").unwrap();
-        let namespace = project.join(".codex/skills/group");
+        let namespace = project.join(".agents/skills/group");
         fs::create_dir_all(namespace.parent().unwrap()).unwrap();
         symlink_dir(&external, &namespace).unwrap();
 

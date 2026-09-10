@@ -10,7 +10,7 @@ use walkdir::WalkDir;
 
 const LOCKFILE_NAME: &str = "skills.lock.yaml";
 const TRANSACTION_PATH: &str = ".skm/transactions/current";
-const ADAPTER_VERSION: &str = "1.0.0";
+const ADAPTER_VERSION: &str = "2.0.0";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -32,6 +32,8 @@ struct ToolkitSkill {
     id: String,
     version: String,
     path: String,
+    #[serde(default)]
+    dependencies: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -323,6 +325,7 @@ fn build_plan(
         .iter()
         .map(|skill| (skill.id.as_str(), skill))
         .collect();
+    expand_toolkit_skill_dependencies(&mut selected_skill_ids, &skill_refs)?;
     let mut skills = Vec::new();
     for skill_id in &selected_skill_ids {
         let skill_ref = skill_refs
@@ -342,7 +345,8 @@ fn build_plan(
         });
     }
 
-    for skill in &config.skills {
+    let configured_skills = linker::resolve_skill_dependency_closure(&config.skills, project_root)?;
+    for skill in &configured_skills {
         if skills.iter().any(|existing| existing.lock.id == skill.name) {
             return Err(format!("duplicate resolved skill id: {}", skill.name).into());
         }
@@ -723,7 +727,17 @@ fn validate_manifest(
         .collect();
     for skill in &manifest.skills {
         parse_semver(&skill.version)?;
+        for dependency in &skill.dependencies {
+            if !skill_ids.contains(dependency.as_str()) {
+                return Err(format!(
+                    "skill {} references unknown dependency {dependency}",
+                    skill.id
+                )
+                .into());
+            }
+        }
     }
+    ensure_acyclic_toolkit_dependencies(manifest)?;
     for profile in &manifest.profiles {
         parse_semver(&profile.version)?;
     }
@@ -743,6 +757,70 @@ fn validate_manifest(
             }
         }
     }
+    Ok(())
+}
+
+fn expand_toolkit_skill_dependencies<'a>(
+    selected: &mut BTreeSet<String>,
+    skills: &BTreeMap<&'a str, &'a ToolkitSkill>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut pending: Vec<_> = selected.iter().cloned().collect();
+    while let Some(skill_id) = pending.pop() {
+        let skill = skills
+            .get(skill_id.as_str())
+            .ok_or_else(|| format!("unknown toolkit skill: {skill_id}"))?;
+        for dependency in &skill.dependencies {
+            if selected.insert(dependency.clone()) {
+                pending.push(dependency.clone());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn ensure_acyclic_toolkit_dependencies(
+    manifest: &ToolkitManifest,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let skills: BTreeMap<_, _> = manifest
+        .skills
+        .iter()
+        .map(|skill| (skill.id.as_str(), skill))
+        .collect();
+    let mut complete = BTreeSet::new();
+    let mut active = BTreeSet::new();
+    let mut stack = Vec::new();
+    for skill in &manifest.skills {
+        visit_toolkit_dependency(&skill.id, &skills, &mut complete, &mut active, &mut stack)?;
+    }
+    Ok(())
+}
+
+fn visit_toolkit_dependency<'a>(
+    skill_id: &str,
+    skills: &BTreeMap<&'a str, &'a ToolkitSkill>,
+    complete: &mut BTreeSet<String>,
+    active: &mut BTreeSet<String>,
+    stack: &mut Vec<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if complete.contains(skill_id) {
+        return Ok(());
+    }
+    if !active.insert(skill_id.to_string()) {
+        stack.push(skill_id.to_string());
+        let cycle = stack.join(" -> ");
+        stack.pop();
+        return Err(format!("toolkit skill dependency cycle: {cycle}").into());
+    }
+    stack.push(skill_id.to_string());
+    let skill = skills
+        .get(skill_id)
+        .ok_or_else(|| format!("unknown toolkit skill: {skill_id}"))?;
+    for dependency in &skill.dependencies {
+        visit_toolkit_dependency(dependency, skills, complete, active, stack)?;
+    }
+    stack.pop();
+    active.remove(skill_id);
+    complete.insert(skill_id.to_string());
     Ok(())
 }
 
@@ -1058,12 +1136,17 @@ fn locked_output_matches(
             if !metadata.file_type().is_symlink() {
                 return Ok(false);
             }
-            if let Some(target) = output
-                .target
-                .as_deref()
-                .filter(|target| !target.starts_with("registry:"))
-            {
-                if !linker::symlink_points_to(&path, &project_root.join(target))? {
+            if let Some(target) = output.target.as_deref() {
+                let expected = if target.starts_with("registry:") {
+                    let skill = linker::parse_registry_lock_target(target)?;
+                    linker::resolve_skill_source_dir(&skill, project_root)?
+                } else {
+                    project_root.join(target)
+                };
+                if !linker::symlink_points_to(&path, &expected)? {
+                    return Ok(false);
+                }
+                if hash_directory_allow_root_symlink(&expected)? != output.integrity {
                     return Ok(false);
                 }
             }
@@ -1330,6 +1413,18 @@ fn load_previous_lock(
     let mut seen: Vec<&Path> = Vec::new();
     for output in &lock.outputs {
         validate_locked_output(output)?;
+        if output.agent == "codex"
+            && output.kind == "skill-link"
+            && Path::new(&output.path).starts_with(".codex/skills")
+            && !lock
+                .agents
+                .iter()
+                .any(|agent| agent.id == "codex" && agent.adapter_version == "1.0.0")
+        {
+            return Err(
+                "legacy .codex/skills ownership requires the Codex 1.0.0 adapter record".into(),
+            );
+        }
         let path = Path::new(&output.path);
         if seen.iter().any(|existing| {
             path == *existing || path.starts_with(existing) || existing.starts_with(path)
@@ -1354,21 +1449,24 @@ fn validate_locked_output(output: &LockedOutput) -> Result<(), Box<dyn std::erro
     }
     match output.kind.as_str() {
         "skill-link" => {
-            let prefix = match output.agent.as_str() {
-                "claude" => Path::new(".claude/skills"),
-                "codex" => Path::new(".codex/skills"),
-                "cursor" => Path::new(".cursor/skills"),
-                "copilot" => Path::new(".github/skills"),
-                "grok" => Path::new(".grok/skills"),
-                "hermes" => Path::new(".hermes/skills"),
+            let prefixes: &[&Path] = match output.agent.as_str() {
+                "claude" => &[Path::new(".claude/skills")],
+                "codex" => &[Path::new(".agents/skills"), Path::new(".codex/skills")],
+                "cursor" => &[Path::new(".cursor/skills")],
+                "copilot" => &[Path::new(".github/skills")],
+                "grok" => &[Path::new(".grok/skills")],
+                "hermes" => &[Path::new(".hermes/skills")],
                 agent => return Err(format!("unknown lockfile adapter: {agent}").into()),
             };
-            let skill = path.strip_prefix(prefix).map_err(|_| {
-                format!(
-                    "skill output is outside the {} adapter namespace",
-                    output.agent
-                )
-            })?;
+            let skill = prefixes
+                .iter()
+                .find_map(|prefix| path.strip_prefix(prefix).ok())
+                .ok_or_else(|| {
+                    format!(
+                        "skill output is outside the {} adapter namespace",
+                        output.agent
+                    )
+                })?;
             linker::validated_skill_path(
                 skill
                     .to_str()
@@ -1582,7 +1680,7 @@ mod tests {
         let first = build_plan(&config, temp.path()).unwrap();
         assert!(first.public.actions.len() >= 6);
         apply_plan(temp.path(), first, None).unwrap();
-        assert!(temp.path().join(".codex/skills/write-spec").is_symlink());
+        assert!(temp.path().join(".agents/skills/write-spec").is_symlink());
         assert!(temp
             .path()
             .join(".codex/agents/delivery-planner.toml")
@@ -1593,6 +1691,146 @@ mod tests {
             .is_symlink());
         let second = build_plan(&config, temp.path()).unwrap();
         assert!(second.public.actions.is_empty());
+    }
+
+    #[test]
+    fn toolkit_bundle_expands_transitive_skill_dependencies() {
+        let (temp, mut config) = fixture();
+        let root = temp.path();
+        fs::create_dir_all(root.join("workspace/instructions/skills/wk-spec/agents")).unwrap();
+        fs::write(
+            root.join("workspace/instructions/skills/wk-spec/SKILL.md"),
+            "---\nname: wk-spec\ndescription: Route specification work.\n---\n\n# wk.spec\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("workspace/instructions/skills/wk-spec/agents/openai.yaml"),
+            "interface: {}\n",
+        )
+        .unwrap();
+        let manifest_path = root.join("workspace/instructions/toolkit/manifest.yaml");
+        let manifest = fs::read_to_string(&manifest_path).unwrap();
+        let manifest = manifest
+            .replace(
+                "profiles:\n  - id: delivery-planner",
+                "  - id: wk-spec\n    version: 0.1.0\n    path: workspace/instructions/skills/wk-spec\n    dependencies:\n      - write-spec\nprofiles:\n  - id: delivery-planner",
+            )
+            .replace(
+                "    skills:\n      - write-spec\n    profiles:\n      - delivery-planner",
+                "    skills:\n      - wk-spec\n    profiles: []",
+            );
+        fs::write(manifest_path, manifest).unwrap();
+        config.profiles.clear();
+
+        let plan = build_plan(&config, root).unwrap();
+        let ids: Vec<_> = plan
+            .lock
+            .skills
+            .iter()
+            .map(|skill| skill.id.as_str())
+            .collect();
+
+        assert_eq!(ids, ["wk-spec", "write-spec"]);
+        assert!(plan
+            .public
+            .actions
+            .iter()
+            .any(|action| action.path == ".agents/skills/wk-spec"));
+        assert!(plan
+            .public
+            .actions
+            .iter()
+            .any(|action| action.path == ".agents/skills/write-spec"));
+    }
+
+    #[test]
+    fn rejects_toolkit_skill_dependency_cycle_before_writes() {
+        let (temp, config) = fixture();
+        let root = temp.path();
+        fs::create_dir_all(root.join("workspace/instructions/skills/wk-spec")).unwrap();
+        fs::write(
+            root.join("workspace/instructions/skills/wk-spec/SKILL.md"),
+            "---\nname: wk-spec\ndescription: Route specification work.\n---\n\n# wk.spec\n",
+        )
+        .unwrap();
+        let manifest_path = root.join("workspace/instructions/toolkit/manifest.yaml");
+        let manifest = fs::read_to_string(&manifest_path).unwrap();
+        let manifest = manifest
+            .replace(
+                "    path: workspace/instructions/skills/write-spec",
+                "    path: workspace/instructions/skills/write-spec\n    dependencies:\n      - wk-spec",
+            )
+            .replace(
+                "profiles:\n  - id: delivery-planner",
+                "  - id: wk-spec\n    version: 0.1.0\n    path: workspace/instructions/skills/wk-spec\n    dependencies:\n      - write-spec\nprofiles:\n  - id: delivery-planner",
+            );
+        fs::write(manifest_path, manifest).unwrap();
+
+        let error = build_plan(&config, root).err().unwrap();
+
+        assert!(error.to_string().contains("dependency cycle"));
+        assert!(!root.join(LOCKFILE_NAME).exists());
+        assert!(!root.join(".agents/skills/write-spec").exists());
+    }
+
+    #[test]
+    fn migrates_owned_legacy_codex_skill_output() {
+        let (temp, config) = fixture();
+        let root = temp.path();
+        apply_plan(root, build_plan(&config, root).unwrap(), None).unwrap();
+        let current = root.join(".agents/skills/write-spec");
+        let legacy = root.join(".codex/skills/write-spec");
+        fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        fs::rename(&current, &legacy).unwrap();
+
+        let lock_path = root.join(LOCKFILE_NAME);
+        let mut lock: SkillsLock = serde_yaml::from_slice(&fs::read(&lock_path).unwrap()).unwrap();
+        lock.agents
+            .iter_mut()
+            .find(|agent| agent.id == "codex")
+            .unwrap()
+            .adapter_version = "1.0.0".to_string();
+        lock.outputs
+            .iter_mut()
+            .find(|output| output.agent == "codex" && output.kind == "skill-link")
+            .unwrap()
+            .path = ".codex/skills/write-spec".to_string();
+        fs::write(&lock_path, serde_yaml::to_string(&lock).unwrap()).unwrap();
+
+        let plan = build_plan(&config, root).unwrap();
+        assert!(plan
+            .public
+            .actions
+            .iter()
+            .any(|action| action.action == "remove" && action.path == ".codex/skills/write-spec"));
+        assert!(plan
+            .public
+            .actions
+            .iter()
+            .any(|action| action.path == ".agents/skills/write-spec"));
+        apply_plan(root, plan, None).unwrap();
+        assert!(!legacy.exists() && !legacy.is_symlink());
+        assert!(current.is_symlink());
+    }
+
+    #[test]
+    fn rejects_legacy_codex_skill_claim_from_current_adapter() {
+        let (temp, config) = fixture();
+        let root = temp.path();
+        apply_plan(root, build_plan(&config, root).unwrap(), None).unwrap();
+        let lock_path = root.join(LOCKFILE_NAME);
+        let mut lock: SkillsLock = serde_yaml::from_slice(&fs::read(&lock_path).unwrap()).unwrap();
+        lock.outputs
+            .iter_mut()
+            .find(|output| output.agent == "codex" && output.kind == "skill-link")
+            .unwrap()
+            .path = ".codex/skills/write-spec".to_string();
+        fs::write(&lock_path, serde_yaml::to_string(&lock).unwrap()).unwrap();
+
+        let error = build_plan(&config, root).err().unwrap();
+        assert!(error
+            .to_string()
+            .contains("requires the Codex 1.0.0 adapter"));
     }
 
     #[test]
@@ -1639,7 +1877,7 @@ mod tests {
     #[test]
     fn dry_plan_rejects_unmanaged_collision_before_writes() {
         let (temp, config) = fixture();
-        let collision = temp.path().join(".codex/skills/write-spec");
+        let collision = temp.path().join(".agents/skills/write-spec");
         fs::create_dir_all(&collision).unwrap();
         fs::write(collision.join("keep"), "user data").unwrap();
         let error = build_plan(&config, temp.path()).err().unwrap();
@@ -1670,18 +1908,18 @@ mod tests {
         let error = apply_plan(temp.path(), plan, Some(2)).unwrap_err();
         assert!(error.to_string().contains("rollback succeeded"));
         assert!(!temp.path().join(LOCKFILE_NAME).exists());
-        assert!(!temp.path().join(".codex/skills/write-spec").exists());
+        assert!(!temp.path().join(".agents/skills/write-spec").exists());
     }
 
     #[test]
     fn rollback_preserves_preexisting_empty_adapter_directories() {
         let (temp, config) = fixture();
-        fs::create_dir_all(temp.path().join(".codex/skills")).unwrap();
+        fs::create_dir_all(temp.path().join(".agents/skills")).unwrap();
         fs::create_dir_all(temp.path().join(".cursor/skills")).unwrap();
         let plan = build_plan(&config, temp.path()).unwrap();
         let error = apply_plan(temp.path(), plan, Some(2)).unwrap_err();
         assert!(error.to_string().contains("rollback succeeded"));
-        assert!(temp.path().join(".codex/skills").is_dir());
+        assert!(temp.path().join(".agents/skills").is_dir());
         assert!(temp.path().join(".cursor/skills").is_dir());
     }
 
@@ -1690,7 +1928,7 @@ mod tests {
     fn rejects_symlinked_managed_parent_without_external_writes() {
         let (temp, config) = fixture();
         let outside = tempfile::tempdir().unwrap();
-        std::os::unix::fs::symlink(outside.path(), temp.path().join(".codex")).unwrap();
+        std::os::unix::fs::symlink(outside.path(), temp.path().join(".agents")).unwrap();
         let error = build_plan(&config, temp.path()).err().unwrap();
         assert!(error
             .to_string()
@@ -1710,7 +1948,7 @@ mod tests {
             .iter()
             .any(|action| action.action == "remove" && action.path.starts_with(".cursor/")));
         apply_plan(temp.path(), removal, None).unwrap();
-        assert!(temp.path().join(".codex/skills/write-spec").is_symlink());
+        assert!(temp.path().join(".agents/skills/write-spec").is_symlink());
         assert!(!temp.path().join(".cursor/skills/write-spec").exists());
         assert!(!temp
             .path()
@@ -1759,7 +1997,7 @@ mod tests {
     fn malicious_lock_cannot_claim_and_remove_user_adapter_content() {
         let (temp, config) = fixture();
         apply_plan(temp.path(), build_plan(&config, temp.path()).unwrap(), None).unwrap();
-        let user_owned = temp.path().join(".codex/skills/user-owned");
+        let user_owned = temp.path().join(".agents/skills/user-owned");
         fs::create_dir_all(&user_owned).unwrap();
         fs::write(user_owned.join("keep.txt"), "keep me\n").unwrap();
 
@@ -1771,7 +2009,7 @@ mod tests {
             .find(|output| output.kind == "skill-link" && output.agent == "codex")
             .unwrap()
             .clone();
-        claim.path = ".codex/skills/user-owned".to_string();
+        claim.path = ".agents/skills/user-owned".to_string();
         lock.outputs.push(claim);
         fs::write(&lock_path, serde_yaml::to_string(&lock).unwrap()).unwrap();
 

@@ -4,7 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 
 /// Default registry URL
-pub const DEFAULT_REGISTRY_URL: &str = "git@github.com:skills-yaml/skills-registry.git";
+pub const DEFAULT_REGISTRY_URL: &str = "git@github.com:skills-yaml/registry.git";
 
 /// Get the SKM config directory path
 pub fn get_config_dir() -> Option<PathBuf> {
