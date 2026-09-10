@@ -435,7 +435,7 @@ mod tests {
         fs::create_dir_all(&config_dir).unwrap();
         fs::write(
             config_dir.join("config.yaml"),
-            "default_registry: default\nregistries:\n  default: git@github.com:skills-yaml/skills-registry.git\n",
+            "default_registry: default\nregistries:\n  default: git@github.com:skills-yaml/registry.git\n",
         )
         .unwrap();
 

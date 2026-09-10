@@ -760,6 +760,10 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let config = load_config(&config_path)?;
             validate_config(&config)?;
 
+            if config.skills.iter().any(|skill| skill.path.is_none()) {
+                ensure_registries_cached(&config)?;
+            }
+
             if config.toolkit.is_some() {
                 if global {
                     return Err(
@@ -780,11 +784,10 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 if dry_run || json {
                     return Err("--dry-run and --json require a configured toolkit".into());
                 }
-                if config.skills.iter().any(|skill| skill.path.is_none()) {
-                    ensure_registries_cached(&config)?;
-                }
                 eprintln!("Installing skills for agents: {:?}", config.agents);
-                for skill in &config.skills {
+                let resolved =
+                    linker::resolve_skill_dependency_closure(&config.skills, &current_dir)?;
+                for skill in &resolved {
                     linker::link_skill(skill, &current_dir, &config.agents, global)?;
                 }
                 eprintln!("Successfully installed all skills.");
@@ -812,12 +815,14 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 path,
             };
 
-            config.skills.push(new_skill.clone());
+            config.skills.push(new_skill);
+            ensure_registries_cached(&config)?;
+            let resolved = linker::resolve_skill_dependency_closure(&config.skills, &current_dir)?;
             config.save_to_file(&config_path)?;
             eprintln!("Added skill '{}' to skills.yaml", skill_name);
-
-            ensure_registries_cached(&config)?;
-            linker::link_skill(&new_skill, &current_dir, &config.agents, global)?;
+            for skill in &resolved {
+                linker::link_skill(skill, &current_dir, &config.agents, global)?;
+            }
         }
         Commands::Remove {
             skill_name,
@@ -842,7 +847,8 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             validate_config(&config)?;
             eprintln!("Listing skills for project '{}':", config.name);
 
-            for skill in &config.skills {
+            let resolved = linker::resolve_skill_dependency_closure(&config.skills, &current_dir)?;
+            for skill in &resolved {
                 let mut status = "OK".to_string();
                 let mut linked_agents = Vec::new();
                 let mut bad_links = Vec::new();
@@ -883,7 +889,8 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             validate_config(&config)?;
             let mut all_ok = true;
 
-            for skill in &config.skills {
+            let resolved = linker::resolve_skill_dependency_closure(&config.skills, &current_dir)?;
+            for skill in &resolved {
                 // Verify source path
                 let source_dir = linker::resolve_skill_source_dir(skill, &current_dir)?;
 

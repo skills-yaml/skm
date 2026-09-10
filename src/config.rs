@@ -89,7 +89,7 @@ impl SkillsConfig {
         let mut registries = HashMap::new();
         registries.insert(
             "default".to_string(),
-            "git@github.com:skills-yaml/skills-registry.git".to_string(),
+            "git@github.com:skills-yaml/registry.git".to_string(),
         );
 
         SkillsConfig {
