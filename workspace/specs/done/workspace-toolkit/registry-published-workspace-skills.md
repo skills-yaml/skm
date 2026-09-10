@@ -1,13 +1,15 @@
-# Test Spec: Resolve Registry-Published Workspace Skills
+# Done Spec: Resolve Registry-Published Workspace Skills
 
 ## Status
 
-State: `test`
+State: `done`
 
-Rationale: PR #11 passed the configured validation workflow and merged into the
-`development` test target on 2026-09-10 at merge commit
-`6008aca7ca2f7fb86e71ed60092b33b39076f21c`. Production release through
-`main` remains pending.
+Rationale: PR #11 passed validation and integrated the implementation into the
+`development` test target at `6008aca7ca2f7fb86e71ed60092b33b39076f21c`.
+PR #13 released it through `main` at
+`cd3d4a6e5d71dd3f27e8122e8cd8b6b323b15cb4`. CI run `34425103403` and release
+run `34425103415` passed; the published Linux checksum matched and the artifact
+reports `skm 0.4.0`.
 
 ## Problem
 
@@ -108,5 +110,5 @@ Status: `updated`
 Rationale: The exact same-registry dependency contract and shared Codex skill
 path are durable package-management decisions. They are recorded in
 `workspace/agents/memory/decisions.md` and
-`workspace/agents/memory/changelog.md`. Production publication evidence will
-be added to `workspace/agents/memory/facts.md` after release.
+`workspace/agents/memory/changelog.md`. Production publication evidence is
+recorded in `workspace/agents/memory/facts.md`.

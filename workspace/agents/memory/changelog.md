@@ -183,3 +183,18 @@ Recorded in `workspace/agents/memory/decisions.md` that SKM resolves exact
 same-registry skill dependency closures before writes and uses
 `.agents/skills/` for Codex while retaining only bounded legacy-lock migration
 support for `.codex/skills/`.
+
+## 2026-09-10 - Record SKM 0.4.0 production publication
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded the SKM 0.4.0 production merge, successful CI and platform release,
+verified Linux checksum and binary version in `workspace/agents/memory/facts.md`.
+The registry dependency specification now records its confirmed release in
+`done`.
