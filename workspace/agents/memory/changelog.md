@@ -195,6 +195,6 @@ support for `.codex/skills/`.
 Content:
 
 Recorded the SKM 0.4.0 production merge, successful CI and platform release,
-verified Linux checksum and binary version, and `prod-latest` tag target in
-`workspace/agents/memory/facts.md`. The registry dependency specification now
-records its confirmed release in `done`.
+verified Linux checksum and binary version in `workspace/agents/memory/facts.md`.
+The registry dependency specification now records its confirmed release in
+`done`.

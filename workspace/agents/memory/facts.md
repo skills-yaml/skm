@@ -94,6 +94,5 @@ Content:
 SKM 0.4.0 released exact same-registry skill dependency resolution and the
 Codex `.agents/skills/` target through PR #13 and main commit
 `cd3d4a6e5d71dd3f27e8122e8cd8b6b323b15cb4`. CI run `34425103403` and release
-run `34425103415` passed. The `prod-latest` tag points to that commit, all four
-platform packages were published, the downloaded Linux checksum matched, and
-the artifact reports `skm 0.4.0`.
+run `34425103415` passed. All four platform packages were published, the
+downloaded Linux checksum matched, and the artifact reports `skm 0.4.0`.
