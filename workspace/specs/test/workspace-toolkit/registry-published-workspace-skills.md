@@ -1,12 +1,13 @@
-# Development Spec: Resolve Registry-Published Workspace Skills
+# Test Spec: Resolve Registry-Published Workspace Skills
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: Implementation is active as the SKM integration required by the
-approved Workspace registry-publication contract. Integration into
-`development` and release through `main` remain pending.
+Rationale: PR #11 passed the configured validation workflow and merged into the
+`development` test target on 2026-09-10 at merge commit
+`6008aca7ca2f7fb86e71ed60092b33b39076f21c`. Production release through
+`main` remains pending.
 
 ## Problem
 

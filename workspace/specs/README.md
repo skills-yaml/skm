@@ -38,7 +38,7 @@ reopened, is superseded, or materially changes why it is in its state.
 | --- | --- | --- | --- |
 | [adopt-workspace-docs-5.md](done/workspace-governance/adopt-workspace-docs-5.md) | `workspace-governance` | `done` | Released through `main` by PR #4 on 2026-09-05 (`e12ba7d`); `prod-latest` artifacts published successfully. |
 | [workspace-docs-5-compatibility.md](done/workspace-toolkit/workspace-docs-5-compatibility.md) | `workspace-toolkit` | `done` | Released through `main` by PR #4 on 2026-09-05 (`e12ba7d`); `prod-latest` artifacts published successfully. |
-| [registry-published-workspace-skills.md](development/workspace-toolkit/registry-published-workspace-skills.md) | `workspace-toolkit` | `development` | Registry dependency resolution and the current Codex skill adapter are being implemented for the Workspace publication contract. |
+| [registry-published-workspace-skills.md](test/workspace-toolkit/registry-published-workspace-skills.md) | `workspace-toolkit` | `test` | PR #11 passed validation and merged into `development` at `6008aca7ca2f7fb86e71ed60092b33b39076f21c`; production release remains pending. |
 | [skill-removal-conformance.md](done/skill-lifecycle/skill-removal-conformance.md) | `skill-lifecycle` | `done` | Released through `main` by PR #4 on 2026-09-05 (`e12ba7d`); `prod-latest` artifacts published successfully. |
 | [cleanup-safety-conformance.md](done/maintenance/cleanup-safety-conformance.md) | `maintenance` | `done` | Released through `main` by PR #4 on 2026-09-05 (`e12ba7d`); `prod-latest` artifacts published successfully. |
 | [workspace-toolkit-manager.md](done/workspace-toolkit/workspace-toolkit-manager.md) | `workspace-toolkit` | `done` | Released through `main` in SKM 0.2.0. |
