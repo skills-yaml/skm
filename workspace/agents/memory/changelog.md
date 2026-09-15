@@ -183,3 +183,17 @@ Recorded in `workspace/agents/memory/decisions.md` that SKM resolves exact
 same-registry skill dependency closures before writes and uses
 `.agents/skills/` for Codex while retaining only bounded legacy-lock migration
 support for `.codex/skills/`.
+
+## 2026-09-15 - Record standalone registry skill search
+
+- Type: fact
+- Source: spec
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded the SKM 0.5.0 `skm search` lookup, deterministic output controls,
+temporary remote discovery, and dependency-aware unambiguous `--add` contract
+in `workspace/agents/memory/facts.md`.

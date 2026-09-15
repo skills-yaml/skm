@@ -80,3 +80,21 @@ commit `69c0b87a64a65fda391a6c9685a861d0c0a618f1`. Release workflow
 `34411227027` successfully published Linux, macOS Intel/Apple Silicon, and
 Windows packages to `prod-latest`. All downloaded archive checksums matched,
 and the Linux artifact reports `skm 0.3.0`.
+
+## 2026-09-15 - Standalone registry search adds unique results
+
+- Type: fact
+- Source: spec
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+SKM 0.5.0 adds `skm search <query>` for case-insensitive canonical-name search
+across project and inherited global registries. Results contain the registry,
+available version, and copyable add command; `--registry`, `--limit`, and
+`--json` support narrowing and automation. `--add` uses the discovered source
+and version only for one exact or otherwise unique result, then runs the normal
+dependency-aware validation and linking path. Ambiguous matches and missing
+project manifests fail without adding a skill.

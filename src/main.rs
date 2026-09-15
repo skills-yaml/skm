@@ -6,6 +6,7 @@ mod dev;
 mod linker;
 mod registry;
 mod remover;
+mod search;
 mod toolkit;
 mod updater;
 mod version_manager;
@@ -104,6 +105,26 @@ enum Commands {
         /// Link skills globally instead of project-local
         #[arg(short, long)]
         global: bool,
+    },
+    /// Search configured registries for skills by name
+    Search {
+        /// Skill name or part of a skill name
+        query: String,
+        /// Search only this configured registry
+        #[arg(short, long)]
+        registry: Option<String>,
+        /// Add and link the result when the search identifies one skill
+        #[arg(long)]
+        add: bool,
+        /// Link an added skill globally instead of project-local
+        #[arg(short, long, requires = "add")]
+        global: bool,
+        /// Emit deterministic JSON search results
+        #[arg(long)]
+        json: bool,
+        /// Maximum number of results to display
+        #[arg(short, long, default_value_t = 50)]
+        limit: usize,
     },
     /// Remove a skill from skills.yaml and unlink it from agent directories
     Remove {
@@ -799,29 +820,60 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             path,
             global,
         } => {
-            let mut config = load_config(&config_path)?;
-            validate_config(&config)?;
-            linker::validate_skill_name(&skill_name)?;
-
-            // Check if skill already exists
-            if config.skills.iter().any(|s| s.name == skill_name) {
-                return Err(format!("Skill '{}' already exists in skills.yaml", skill_name).into());
+            add_skill(
+                &config_path,
+                &current_dir,
+                SkillSpec {
+                    name: skill_name,
+                    version: Some("latest".to_string()),
+                    source,
+                    path,
+                },
+                global,
+            )?;
+        }
+        Commands::Search {
+            query,
+            registry,
+            add,
+            global,
+            json,
+            limit,
+        } => {
+            if query.trim().is_empty() {
+                return Err("Search query must not be empty".into());
             }
-
-            let new_skill = SkillSpec {
-                name: skill_name.clone(),
-                version: Some("latest".to_string()),
-                source,
-                path,
+            if limit == 0 {
+                return Err("--limit must be greater than zero".into());
+            }
+            let config = match std::fs::symlink_metadata(&config_path) {
+                Ok(_) => Some(load_config(&config_path)?),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+                Err(error) => return Err(error.into()),
             };
-
-            config.skills.push(new_skill);
-            ensure_registries_cached(&config)?;
-            let resolved = linker::resolve_skill_dependency_closure(&config.skills, &current_dir)?;
-            config.save_to_file(&config_path)?;
-            eprintln!("Added skill '{}' to skills.yaml", skill_name);
-            for skill in &resolved {
-                linker::link_skill(skill, &current_dir, &config.agents, global)?;
+            if add && config.is_none() {
+                return Err(
+                    "skills.yaml file not found. Run 'skm init' before adding a skill.".into(),
+                );
+            }
+            let discovery = search::discover(config.as_ref(), &current_dir, registry.as_deref())
+                .map_err(|error| format!("Could not search registries: {error}"))?;
+            let matches = search::matching_entries(&discovery.entries, &query)
+                .map_err(|error| format!("Could not search registries: {error}"))?;
+            search::print_results(&query, &matches, &discovery.warnings, limit, json)?;
+            if add {
+                let selected = search::select_for_add(&matches, &query)?;
+                add_skill(
+                    &config_path,
+                    &current_dir,
+                    SkillSpec {
+                        name: selected.name,
+                        version: Some(selected.version),
+                        source: Some(selected.registry),
+                        path: None,
+                    },
+                    global,
+                )?;
             }
         }
         Commands::Remove {
@@ -1336,6 +1388,35 @@ fn validate_config(config: &SkillsConfig) -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
+fn add_skill(
+    config_path: &Path,
+    project_root: &Path,
+    new_skill: SkillSpec,
+    global: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = load_config(config_path)?;
+    validate_config(&config)?;
+    linker::validate_skill_name(&new_skill.name)?;
+    if config
+        .skills
+        .iter()
+        .any(|skill| skill.name == new_skill.name)
+    {
+        return Err(format!("Skill '{}' already exists in skills.yaml", new_skill.name).into());
+    }
+
+    let skill_name = new_skill.name.clone();
+    config.skills.push(new_skill);
+    ensure_registries_cached(&config)?;
+    let resolved = linker::resolve_skill_dependency_closure(&config.skills, project_root)?;
+    config.save_to_file(config_path)?;
+    eprintln!("Added skill '{}' to skills.yaml", skill_name);
+    for skill in &resolved {
+        linker::link_skill(skill, project_root, &config.agents, global)?;
+    }
+    Ok(())
+}
+
 fn ensure_registries_cached(config: &SkillsConfig) -> Result<(), Box<dyn std::error::Error>> {
     // First, try to use the base config registries
     let base_config = config_manager::ensure_base_config()?;
@@ -1500,5 +1581,170 @@ mod init_tests {
         };
         assert!(help.contains("--non-interactive"));
         assert!(help.contains("terminal wizard"));
+    }
+}
+
+#[cfg(all(test, unix))]
+mod search_cli_tests {
+    use super::*;
+    use crate::config_manager::BaseConfig;
+    use serial_test::serial;
+    use std::collections::HashMap;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+
+    struct Environment {
+        original_dir: PathBuf,
+        original_home: Option<String>,
+        original_config_home: Option<String>,
+        root: tempfile::TempDir,
+    }
+
+    impl Environment {
+        fn new() -> Self {
+            let original_dir = env::current_dir().unwrap();
+            let original_home = env::var("HOME").ok();
+            let original_config_home = env::var("XDG_CONFIG_HOME").ok();
+            let root = tempfile::tempdir().unwrap();
+            let project = root.path().join("project");
+            let home = root.path().join("home");
+            let config_home = root.path().join("config");
+            fs::create_dir_all(&project).unwrap();
+            fs::create_dir_all(&home).unwrap();
+            fs::create_dir_all(&config_home).unwrap();
+            env::set_current_dir(project).unwrap();
+            env::set_var("HOME", home);
+            env::set_var("XDG_CONFIG_HOME", config_home);
+            Self {
+                original_dir,
+                original_home,
+                original_config_home,
+                root,
+            }
+        }
+
+        fn project(&self) -> PathBuf {
+            self.root.path().join("project")
+        }
+
+        fn registry(&self) -> PathBuf {
+            self.root.path().join("registry")
+        }
+    }
+
+    impl Drop for Environment {
+        fn drop(&mut self) {
+            env::set_current_dir(&self.original_dir).unwrap();
+            if let Some(home) = &self.original_home {
+                env::set_var("HOME", home);
+            } else {
+                env::remove_var("HOME");
+            }
+            if let Some(config_home) = &self.original_config_home {
+                env::set_var("XDG_CONFIG_HOME", config_home);
+            } else {
+                env::remove_var("XDG_CONFIG_HOME");
+            }
+        }
+    }
+
+    fn git(repository: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(repository)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn search_is_read_only_and_adds_and_links_a_unique_registry_skill() {
+        let environment = Environment::new();
+        let registry = environment.registry();
+        let skill = registry.join("skills/software/spec/v1.2.0");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(
+            skill.join("SKILL.md"),
+            "---\nname: spec\ndescription: Search fixture.\nmetadata:\n  skm-version: \"1.2.0\"\n---\n\n# Search fixture\n",
+        )
+        .unwrap();
+        git(&registry, &["init", "--quiet"]);
+        git(&registry, &["add", "."]);
+        git(
+            &registry,
+            &[
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-qm",
+                "fixture",
+            ],
+        );
+
+        let registries =
+            HashMap::from([("local".to_string(), registry.to_string_lossy().into_owned())]);
+        BaseConfig {
+            default_registry: "local".into(),
+            registries: registries.clone(),
+            check_for_updates: false,
+        }
+        .save()
+        .unwrap();
+        let manifest = environment.project().join("skills.yaml");
+        SkillsConfig {
+            name: "search-test".into(),
+            version: Some("0.1.0".into()),
+            registries: Some(registries),
+            agents: vec!["codex".into()],
+            skills: Vec::new(),
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            workspace: None,
+            trusted_sources: Vec::new(),
+        }
+        .save_to_file(&manifest)
+        .unwrap();
+        let original = fs::read(&manifest).unwrap();
+
+        run(Commands::Search {
+            query: "SPEC".into(),
+            registry: Some("local".into()),
+            add: false,
+            global: false,
+            json: false,
+            limit: 50,
+        })
+        .unwrap();
+        assert_eq!(fs::read(&manifest).unwrap(), original);
+        assert!(!linker::resolve_registry_path("local").unwrap().exists());
+
+        run(Commands::Search {
+            query: "software/spec".into(),
+            registry: Some("local".into()),
+            add: true,
+            global: false,
+            json: false,
+            limit: 50,
+        })
+        .unwrap();
+        let saved = SkillsConfig::load_from_file(&manifest).unwrap();
+        assert_eq!(saved.skills.len(), 1);
+        assert_eq!(saved.skills[0].name, "software/spec");
+        assert_eq!(saved.skills[0].version.as_deref(), Some("v1.2.0"));
+        assert_eq!(saved.skills[0].source.as_deref(), Some("local"));
+        assert!(environment
+            .project()
+            .join(".agents/skills/software/spec")
+            .is_symlink());
     }
 }
