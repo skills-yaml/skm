@@ -2,10 +2,13 @@
 
 ## Status
 
-State: development
+State: test
 
-Implementation and validation are complete locally for SKM 0.5.0; integration
-into `development` and release through `main` have not occurred.
+PR #15 passed validation and merged into `development` at
+`bd8dc5228d2bacb8d4db6b47c71bfe4f746671fc` on 2026-09-15. Development CI
+run `35031426208` passed, and release run `35031426172` published verified
+SKM 0.5.0 artifacts to `development-latest`. Production release through
+`main` remains pending.
 
 ## Scope
 
@@ -58,12 +61,14 @@ uncached Git registries in bounded temporary clones. Results are filtered by
 canonical skill name and include the discovered version and source. `--add`
 uses the existing dependency-aware add path after resolving one result.
 
-- `task check`: formatting, warnings-free Clippy, compilation, and workspace
-  documentation gates passed.
-- `task test`: 105 Rust tests and 6 documentation validator tests passed,
+- Local `task check`: passed formatting, warnings-free Clippy, compilation,
+  and workspace documentation gates.
+- Local `task test`: passed 105 Rust tests and 6 documentation validator tests,
   including isolated search-only and search/add/link coverage.
-- `task build`: produced the locked optimized SKM 0.5.0 binary.
-- `git diff --check`: passed.
+- Local `task build`: produced the locked optimized SKM 0.5.0 binary.
+- PR #15 and post-merge `development` CI: passed.
+- `development-latest`: published Linux, macOS Intel/Apple Silicon, and Windows
+  packages with checksums. The downloaded Linux checksum matched and its binary
+  reports `skm 0.5.0` with the expected `search` help.
 
-The spec remains in development until confirmed integration into the shared
-`development` branch.
+The spec remains in test until confirmed release through `main`.
