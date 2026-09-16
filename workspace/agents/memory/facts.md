@@ -114,3 +114,20 @@ available version, and copyable add command; `--registry`, `--limit`, and
 and version only for one exact or otherwise unique result, then runs the normal
 dependency-aware validation and linking path. Ambiguous matches and missing
 project manifests fail without adding a skill.
+
+## 2026-09-16 - SKM 0.5.0 registry search released
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+SKM 0.5.0 released registry skill search through PR #18 and main commit
+`488860f8fa078729879680c70f1075fdd9a3d3f2`. CI run `35151714476` and release
+run `35151714469` passed. Linux, macOS Intel/Apple Silicon, and Windows packages
+with checksums were published to `prod-latest`. The downloaded Linux package
+matched its checksum, and its binary reports `skm 0.5.0` with the expected
+`search` help.

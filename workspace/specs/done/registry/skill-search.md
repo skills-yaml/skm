@@ -2,13 +2,14 @@
 
 ## Status
 
-State: test
+State: done
 
 PR #15 passed validation and merged into `development` at
 `bd8dc5228d2bacb8d4db6b47c71bfe4f746671fc` on 2026-09-15. Development CI
 run `35031426208` passed, and release run `35031426172` published verified
-SKM 0.5.0 artifacts to `development-latest`. Production release through
-`main` remains pending.
+SKM 0.5.0 artifacts to `development-latest`. PR #18 released the feature
+through `main` at `488860f8fa078729879680c70f1075fdd9a3d3f2` on 2026-09-16.
+Production CI run `35151714476` and release run `35151714469` passed.
 
 ## Scope
 
@@ -70,5 +71,11 @@ uses the existing dependency-aware add path after resolving one result.
 - `development-latest`: published Linux, macOS Intel/Apple Silicon, and Windows
   packages with checksums. The downloaded Linux checksum matched and its binary
   reports `skm 0.5.0` with the expected `search` help.
+- PR #18 and production `main` CI: passed.
+- `prod-latest`: points to the production merge and contains Linux, macOS
+  Intel/Apple Silicon, and Windows packages with checksums. The downloaded
+  Linux package matched checksum
+  `e7c28b111b91df17e7d1c42dcf6668d768de4336c74006a7b3d6a24bdc91325c`;
+  its binary reports `skm 0.5.0` and exposes the expected `search` help.
 
-The spec remains in test until confirmed release through `main`.
+The feature is released through `main`, so this spec is complete.
