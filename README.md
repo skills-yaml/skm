@@ -146,6 +146,22 @@ Non-interactive initialization refuses to replace an existing manifest.
 `--advanced` opens the same complete wizard. `--global` prepares for global
 installation; `skills.yaml` remains in the current directory.
 
+Search configured project and inherited global registries by skill name:
+
+```sh
+skm search spec
+```
+
+Each result includes its registry, available version, and a command that adds
+and links it. Add a unique result directly with:
+
+```sh
+skm search software-development/spec --registry default --add
+```
+
+Use `--json` for machine-readable results and `--limit <number>` to bound the
+result list.
+
 Install the skills declared in `skills.yaml` into project-local agent folders:
 
 ```sh
@@ -179,6 +195,7 @@ Use `--global` with `install`, `list`, or `check` to work against user-level age
 skm init [--name <name>] [--global] [--non-interactive] [--advanced] [--toolkit-manifest <path>] [--toolkit-version <version>] [--bundle <id>] [--profile <id>] [--workspace-standard <id>] [--workspace-source <path-or-git-url>] [--workspace-revision <commit>] [--workspace-integrity <sha256>] [--trusted-source <source>]
 skm install [--global] [--dry-run] [--json] [--yes]
 skm add <skill-name> [--source <registry>] [--path <local-path>] [--global]
+skm search <query> [--registry <registry>] [--add] [--global] [--json] [--limit <limit>]
 skm list [--global]
 skm check [--global]
 skm update [--channel prod|development] [--check] [--yes]
@@ -200,6 +217,8 @@ skm workspace adopt|upgrade|repair [--target <version>] [--source <path-or-git-u
   every target, transactionally materializes each adapter, and writes the
   lockfile last.
 - `add`: adds one skill to `skills.yaml`, then links it.
+- `search`: searches configured registries by skill name and can add and link
+  one unambiguous result with `--add`.
 - `list`: reports current link status, including missing sources and bad links.
 - `check`: verifies source directories, `SKILL.md`, symlink existence, and symlink targets; intended for CI.
 - `update`: checks the selected release channel and installs the latest release artifact.

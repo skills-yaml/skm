@@ -198,3 +198,17 @@ Recorded the SKM 0.4.0 production merge, successful CI and platform release,
 verified Linux checksum and binary version in `workspace/agents/memory/facts.md`.
 The registry dependency specification now records its confirmed release in
 `done`.
+
+## 2026-09-15 - Record standalone registry skill search
+
+- Type: fact
+- Source: spec
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded the SKM 0.5.0 `skm search` lookup, deterministic output controls,
+temporary remote discovery, and dependency-aware unambiguous `--add` contract
+in `workspace/agents/memory/facts.md`.
