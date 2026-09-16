@@ -96,3 +96,21 @@ Codex `.agents/skills/` target through PR #13 and main commit
 `cd3d4a6e5d71dd3f27e8122e8cd8b6b323b15cb4`. CI run `34425103403` and release
 run `34425103415` passed. All four platform packages were published, the
 downloaded Linux checksum matched, and the artifact reports `skm 0.4.0`.
+
+## 2026-09-15 - Standalone registry search adds unique results
+
+- Type: fact
+- Source: spec
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+SKM 0.5.0 adds `skm search <query>` for case-insensitive canonical-name search
+across project and inherited global registries. Results contain the registry,
+available version, and copyable add command; `--registry`, `--limit`, and
+`--json` support narrowing and automation. `--add` uses the discovered source
+and version only for one exact or otherwise unique result, then runs the normal
+dependency-aware validation and linking path. Ambiguous matches and missing
+project manifests fail without adding a skill.
