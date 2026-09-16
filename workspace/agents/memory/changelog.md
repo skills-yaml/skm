@@ -212,3 +212,18 @@ Content:
 Recorded the SKM 0.5.0 `skm search` lookup, deterministic output controls,
 temporary remote discovery, and dependency-aware unambiguous `--add` contract
 in `workspace/agents/memory/facts.md`.
+
+## 2026-09-16 - Record SKM 0.5.0 production publication
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded the SKM 0.5.0 production merge, successful CI and four-platform
+release, and verified Linux checksum, binary version, and search help in
+`workspace/agents/memory/facts.md`. The registry search specification now
+records its confirmed release in `done`.
