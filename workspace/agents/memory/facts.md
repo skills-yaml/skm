@@ -81,6 +81,22 @@ commit `69c0b87a64a65fda391a6c9685a861d0c0a618f1`. Release workflow
 Windows packages to `prod-latest`. All downloaded archive checksums matched,
 and the Linux artifact reports `skm 0.3.0`.
 
+## 2026-09-10 - SKM 0.4.0 registry dependencies released
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+SKM 0.4.0 released exact same-registry skill dependency resolution and the
+Codex `.agents/skills/` target through PR #13 and main commit
+`cd3d4a6e5d71dd3f27e8122e8cd8b6b323b15cb4`. CI run `34425103403` and release
+run `34425103415` passed. All four platform packages were published, the
+downloaded Linux checksum matched, and the artifact reports `skm 0.4.0`.
+
 ## 2026-09-15 - Standalone registry search adds unique results
 
 - Type: fact
@@ -98,3 +114,20 @@ available version, and copyable add command; `--registry`, `--limit`, and
 and version only for one exact or otherwise unique result, then runs the normal
 dependency-aware validation and linking path. Ambiguous matches and missing
 project manifests fail without adding a skill.
+
+## 2026-09-16 - SKM 0.5.0 registry search released
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+SKM 0.5.0 released registry skill search through PR #18 and main commit
+`488860f8fa078729879680c70f1075fdd9a3d3f2`. CI run `35151714476` and release
+run `35151714469` passed. Linux, macOS Intel/Apple Silicon, and Windows packages
+with checksums were published to `prod-latest`. The downloaded Linux package
+matched its checksum, and its binary reports `skm 0.5.0` with the expected
+`search` help.
