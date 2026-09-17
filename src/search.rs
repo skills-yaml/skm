@@ -303,27 +303,6 @@ pub fn matching_entries(entries: &[Entry], query: &str) -> Result<Vec<Entry>, St
         .collect())
 }
 
-pub fn select_for_add(matches: &[Entry], query: &str) -> Result<Entry, String> {
-    let exact: Vec<_> = matches
-        .iter()
-        .filter(|entry| entry.name.eq_ignore_ascii_case(query.trim()))
-        .collect();
-    match exact.as_slice() {
-        [entry] => return Ok((*entry).clone()),
-        [_, _, ..] => {
-            return Err(
-                "The skill exists in multiple registries; choose one with --registry".into(),
-            )
-        }
-        [] => {}
-    }
-    match matches {
-        [entry] => Ok(entry.clone()),
-        [] => Err(format!("No skill found matching '{}'", query.trim())),
-        _ => Err("Multiple skills match; refine the query before using --add".into()),
-    }
-}
-
 pub fn print_results(
     query: &str,
     matches: &[Entry],
@@ -378,10 +357,7 @@ pub fn print_results(
 }
 
 fn add_command(entry: &Entry) -> String {
-    format!(
-        "skm search {} --registry {} --add",
-        entry.name, entry.registry
-    )
+    format!("skm add {} --source {}", entry.name, entry.registry)
 }
 
 #[cfg(test)]
@@ -423,7 +399,7 @@ mod tests {
     }
 
     #[test]
-    fn name_search_and_add_selection_handle_case_and_ambiguity() {
+    fn name_search_is_case_insensitive() {
         let company = entry("software/spec", "company");
         let default = entry("software/spec", "default");
         let entries = vec![
@@ -433,14 +409,6 @@ mod tests {
         ];
         assert_eq!(matching_entries(&entries, "SPEC").unwrap().len(), 2);
         assert!(matching_entries(&entries, " ").is_err());
-        assert!(select_for_add(&[company.clone(), default], "software/spec").is_err());
-        assert_eq!(
-            select_for_add(std::slice::from_ref(&company), "spec")
-                .unwrap()
-                .registry,
-            "company"
-        );
-        assert!(select_for_add(&[], "missing").is_err());
     }
 
     #[test]
@@ -490,7 +458,7 @@ mod tests {
         assert_eq!(json["matches"][0]["name"], "software/review");
         assert_eq!(
             json["matches"][0]["add_command"],
-            "skm search software/review --registry company --add"
+            "skm add software/review --source company"
         );
     }
 }

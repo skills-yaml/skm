@@ -119,3 +119,18 @@ string-valued Agent Skills metadata keys `skm-version` and
 writes, rejects cycles and conflicts, and records immutable package versions.
 Codex skill projections use the shared `.agents/skills/` discovery path;
 managed `.codex/skills/` entries are accepted only for safe migration.
+
+## 2026-09-17 - Keep Search Read-Only
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: 2026-09-15 - Standalone registry search adds unique results (installation behavior only)
+
+Content:
+
+`skm search` is a discovery-only command and must not install or link skills.
+It does not expose `--add` or the add-only `--global` option. Search results
+direct users to `skm add <skill-name> --source <registry>`, which remains the
+command responsible for manifest changes and skill linking.

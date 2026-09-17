@@ -113,12 +113,6 @@ enum Commands {
         /// Search only this configured registry
         #[arg(short, long)]
         registry: Option<String>,
-        /// Add and link the result when the search identifies one skill
-        #[arg(long)]
-        add: bool,
-        /// Link an added skill globally instead of project-local
-        #[arg(short, long, requires = "add")]
-        global: bool,
         /// Emit deterministic JSON search results
         #[arg(long)]
         json: bool,
@@ -835,8 +829,6 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
         Commands::Search {
             query,
             registry,
-            add,
-            global,
             json,
             limit,
         } => {
@@ -851,30 +843,11 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
                 Err(error) => return Err(error.into()),
             };
-            if add && config.is_none() {
-                return Err(
-                    "skills.yaml file not found. Run 'skm init' before adding a skill.".into(),
-                );
-            }
             let discovery = search::discover(config.as_ref(), &current_dir, registry.as_deref())
                 .map_err(|error| format!("Could not search registries: {error}"))?;
             let matches = search::matching_entries(&discovery.entries, &query)
                 .map_err(|error| format!("Could not search registries: {error}"))?;
             search::print_results(&query, &matches, &discovery.warnings, limit, json)?;
-            if add {
-                let selected = search::select_for_add(&matches, &query)?;
-                add_skill(
-                    &config_path,
-                    &current_dir,
-                    SkillSpec {
-                        name: selected.name,
-                        version: Some(selected.version),
-                        source: Some(selected.registry),
-                        path: None,
-                    },
-                    global,
-                )?;
-            }
         }
         Commands::Remove {
             skill_name,
@@ -1665,7 +1638,10 @@ mod search_cli_tests {
 
     #[test]
     #[serial]
-    fn search_is_read_only_and_adds_and_links_a_unique_registry_skill() {
+    fn search_is_read_only_and_rejects_mutation_flags() {
+        assert!(Cli::try_parse_from(["skm", "search", "spec", "--add"]).is_err());
+        assert!(Cli::try_parse_from(["skm", "search", "spec", "--global"]).is_err());
+
         let environment = Environment::new();
         let registry = environment.registry();
         let skill = registry.join("skills/software/spec/v1.2.0");
@@ -1719,32 +1695,11 @@ mod search_cli_tests {
         run(Commands::Search {
             query: "SPEC".into(),
             registry: Some("local".into()),
-            add: false,
-            global: false,
             json: false,
             limit: 50,
         })
         .unwrap();
         assert_eq!(fs::read(&manifest).unwrap(), original);
         assert!(!linker::resolve_registry_path("local").unwrap().exists());
-
-        run(Commands::Search {
-            query: "software/spec".into(),
-            registry: Some("local".into()),
-            add: true,
-            global: false,
-            json: false,
-            limit: 50,
-        })
-        .unwrap();
-        let saved = SkillsConfig::load_from_file(&manifest).unwrap();
-        assert_eq!(saved.skills.len(), 1);
-        assert_eq!(saved.skills[0].name, "software/spec");
-        assert_eq!(saved.skills[0].version.as_deref(), Some("v1.2.0"));
-        assert_eq!(saved.skills[0].source.as_deref(), Some("local"));
-        assert!(environment
-            .project()
-            .join(".agents/skills/software/spec")
-            .is_symlink());
     }
 }

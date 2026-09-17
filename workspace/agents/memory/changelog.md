@@ -227,3 +227,16 @@ Recorded the SKM 0.5.0 production merge, successful CI and four-platform
 release, and verified Linux checksum, binary version, and search help in
 `workspace/agents/memory/facts.md`. The registry search specification now
 records its confirmed release in `done`.
+
+## 2026-09-17 - Record Read-Only Search Command Boundary
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: 2026-09-15 - Record standalone registry skill search (installation behavior only)
+
+Content:
+
+Recorded in `workspace/agents/memory/decisions.md` that `skm search` is always
+read-only and delegates installation to the dedicated `skm add` command.
