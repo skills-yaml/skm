@@ -153,14 +153,15 @@ skm search spec
 ```
 
 Each result includes its registry, available version, and a command that adds
-and links it. Add a unique result directly with:
+and links it. Use the dedicated add command from a result:
 
 ```sh
-skm search software-development/spec --registry default --add
+skm add software-development/spec --source default
 ```
 
 Use `--json` for machine-readable results and `--limit <number>` to bound the
-result list.
+result list. Search is read-only; use `skm add` when you want to update the
+manifest and link a skill.
 
 Install the skills declared in `skills.yaml` into project-local agent folders:
 
@@ -195,7 +196,7 @@ Use `--global` with `install`, `list`, or `check` to work against user-level age
 skm init [--name <name>] [--global] [--non-interactive] [--advanced] [--toolkit-manifest <path>] [--toolkit-version <version>] [--bundle <id>] [--profile <id>] [--workspace-standard <id>] [--workspace-source <path-or-git-url>] [--workspace-revision <commit>] [--workspace-integrity <sha256>] [--trusted-source <source>]
 skm install [--global] [--dry-run] [--json] [--yes]
 skm add <skill-name> [--source <registry>] [--path <local-path>] [--global]
-skm search <query> [--registry <registry>] [--add] [--global] [--json] [--limit <limit>]
+skm search <query> [--registry <registry>] [--json] [--limit <limit>]
 skm list [--global]
 skm check [--global]
 skm update [--channel prod|development] [--check] [--yes]
@@ -217,8 +218,8 @@ skm workspace adopt|upgrade|repair [--target <version>] [--source <path-or-git-u
   every target, transactionally materializes each adapter, and writes the
   lockfile last.
 - `add`: adds one skill to `skills.yaml`, then links it.
-- `search`: searches configured registries by skill name and can add and link
-  one unambiguous result with `--add`.
+- `search`: searches configured registries by skill name and prints a dedicated
+  `skm add` command for each result without changing project state.
 - `list`: reports current link status, including missing sources and bad links.
 - `check`: verifies source directories, `SKILL.md`, symlink existence, and symlink targets; intended for CI.
 - `update`: checks the selected release channel and installs the latest release artifact.
