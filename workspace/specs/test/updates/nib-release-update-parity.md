@@ -109,7 +109,14 @@ assets remain installable until a newly published manifest is used.
 
 Merged into the configured `development` test branch through PR #23 on
 2026-09-19 at `7abc8435049ba55923b19df3f3fa0ef340150a16`. The PR Validate
-workflow passed before merge. The change remains unreleased from `main`.
+workflow passed before merge. PR #26 supplied the Windows-only UUID dependency
+used by the replacement path after the first native Windows release build
+exposed the missing declaration. CI run `35471263033` and Release Artifacts run
+`35471263031` then passed at
+`b25954d74445e51c797de102054c4f744a0ed1f7`; the published
+`development-latest` archive checksum, binary identity, and manifest were
+verified. Cross-release self-update qualification and production publication
+remain pending.
 
 ## Memory Impact
 
@@ -118,4 +125,3 @@ Rationale: SKM's release trust and publication contract is now a durable
 project decision.
 Memory: `workspace/agents/memory/facts.md` and
 `workspace/agents/memory/changelog.md`
-

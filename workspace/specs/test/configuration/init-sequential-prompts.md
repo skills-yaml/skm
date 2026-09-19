@@ -2,10 +2,11 @@
 
 ## Status
 
-State: development
+State: test
 
-Implementation and validation are complete locally. This specification
-supersedes the full-screen interaction released in
+Implementation is integrated into the shared development channel and the
+prerelease artifacts are verified. This specification supersedes the
+full-screen interaction released in
 `workspace/specs/done/configuration/init-tui-wizard.md` and adds an explicit,
 on-demand interaction over the released standalone registry search support.
 
@@ -157,8 +158,20 @@ raw-terminal smoke harness were removed.
   harness also rejects terminal control sequences and stdout prompt output.
 - `git diff --check`: passed.
 
-The spec remains in development until confirmed integration into the shared
-`development` branch.
+- PR #25 merged the implementation into `development` on 2026-09-19 at
+  `4e6db2b6b2665cecb337f50d410ac3bdf7d06186` after its CI validation passed.
+- PR #26 fixed the Windows-only updater dependency discovered by the release
+  matrix and merged at
+  `b25954d74445e51c797de102054c4f744a0ed1f7`.
+- CI run `35471263033` passed on that development commit.
+- Release Artifacts run `35471263031` built and published all four supported
+  platform archives, checksums, and `skm-release.json` to
+  `development-latest`.
+- The downloaded Linux archive passed its published SHA-256 check and reported
+  `skm 0.6.0 (development - b25954d74445e51c797de102054c4f744a0ed1f7)`;
+  the manifest reported the same version, channel, and commit.
+
+The spec remains in test until a confirmed production release from `main`.
 
 ## Open Questions
 
