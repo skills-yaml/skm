@@ -1,8 +1,8 @@
 mod draft;
-mod ui;
+mod prompt;
 
 pub use draft::Document;
-pub use ui::run_wizard;
+pub use prompt::run_wizard;
 
 const KNOWN_AGENTS: &[&str] = &["claude", "codex", "cursor", "copilot", "grok", "hermes"];
 

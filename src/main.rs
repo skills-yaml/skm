@@ -33,15 +33,15 @@ struct Cli {
 enum Commands {
     /// Show the installed version and managed build identity
     Version,
-    /// Create or edit skills.yaml with a terminal wizard, or create defaults for scripts
+    /// Create or edit skills.yaml with sequential prompts, or create defaults for scripts
     Init {
         /// Override the project name (new configurations default to the current folder name)
         #[arg(long)]
         name: Option<String>,
-        /// Open the configuration wizard (the default)
+        /// Open the interactive prompts (the default)
         #[arg(short, long, default_value = "true")]
         interactive: bool,
-        /// Compatibility alias for the complete configuration wizard
+        /// Compatibility alias for the complete interactive prompt flow
         #[arg(long)]
         advanced: bool,
         /// Prepare for global installation; skills.yaml stays in the current directory
@@ -1512,7 +1512,7 @@ mod init_tests {
             Err(help) => help.to_string(),
         };
         assert!(help.contains("--non-interactive"));
-        assert!(help.contains("terminal wizard"));
+        assert!(help.contains("sequential prompts"));
     }
 }
 

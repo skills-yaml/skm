@@ -149,7 +149,8 @@ impl Document {
     fn check_unchanged(&self) -> Result<()> {
         if read_manifest(&self.path)? != self.original {
             return Err(
-                "skills.yaml changed outside the wizard; cancel and reopen it to reload".into(),
+                "skills.yaml changed outside the prompt flow; cancel and reopen it to reload"
+                    .into(),
             );
         }
         Ok(())
@@ -189,165 +190,6 @@ pub enum Target {
     Nested(&'static str, &'static str),
     Registry(usize, bool), // index, editing the name rather than the URL
     Skill(usize, &'static str),
-    Agent(String),
-}
-
-pub struct Field {
-    pub label: String,
-    pub hint: &'static str,
-    pub target: Target,
-}
-
-impl Field {
-    fn new(label: impl Into<String>, hint: &'static str, target: Target) -> Self {
-        Self {
-            label: label.into(),
-            hint,
-            target,
-        }
-    }
-}
-
-pub fn fields(value: &Value, step: usize) -> Vec<Field> {
-    match step {
-        0 => vec![
-            Field::new(
-                "Project name",
-                "Required. Give this configuration a name.",
-                Target::Field("name"),
-            ),
-            Field::new(
-                "Project version",
-                "Optional project version, for example 0.1.0.",
-                Target::Field("version"),
-            ),
-        ],
-        1 => {
-            let mut names: Vec<String> =
-                super::KNOWN_AGENTS.iter().map(|s| s.to_string()).collect();
-            if let Some(agents) = value["agents"].as_sequence() {
-                for agent in agents.iter().filter_map(Value::as_str) {
-                    if !names.iter().any(|n| n == agent) {
-                        names.push(agent.to_owned());
-                    }
-                }
-            }
-            names
-                .into_iter()
-                .map(|name| {
-                    Field::new(
-                        name.clone(),
-                        "Space toggles this agent. All supported agents are available.",
-                        Target::Agent(name),
-                    )
-                })
-                .collect()
-        }
-        2 => value["registries"]
-            .as_mapping()
-            .map(|registries| {
-                registries
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(i, _)| {
-                        [
-                            Field::new(
-                                format!("Registry {} name", i + 1),
-                                "Use letters, numbers, hyphens, or underscores.",
-                                Target::Registry(i, true),
-                            ),
-                            Field::new(
-                                "  URL / path",
-                                "Git registry URL or local registry path.",
-                                Target::Registry(i, false),
-                            ),
-                        ]
-                    })
-                    .collect()
-            })
-            .unwrap_or_default(),
-        3 => value["skills"]
-            .as_sequence()
-            .map(|skills| {
-                skills
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(i, _)| {
-                        [
-                            Field::new(
-                                format!("Skill {} name", i + 1),
-                                "Skill name, for example software-development/spec.",
-                                Target::Skill(i, "name"),
-                            ),
-                            Field::new(
-                                "  Version",
-                                "Optional version or latest.",
-                                Target::Skill(i, "version"),
-                            ),
-                            Field::new(
-                                "  Registry source",
-                                "Registry name; blank uses default. Local path takes precedence.",
-                                Target::Skill(i, "source"),
-                            ),
-                            Field::new(
-                                "  Local path",
-                                "Optional local skill directory; leave blank for registry skills.",
-                                Target::Skill(i, "path"),
-                            ),
-                        ]
-                    })
-                    .collect()
-            })
-            .unwrap_or_default(),
-        4 => vec![
-            Field::new(
-                "Toolkit manifest",
-                "Optional repository-relative manifest. Clear to remove the toolkit selection.",
-                Target::Nested("toolkit", "manifest"),
-            ),
-            Field::new(
-                "Toolkit version",
-                "Pin the selected toolkit version.",
-                Target::Nested("toolkit", "version"),
-            ),
-            Field::new(
-                "Bundles",
-                "Comma-separated bundle IDs; requires a toolkit manifest.",
-                Target::Field("bundles"),
-            ),
-            Field::new(
-                "Profiles",
-                "Comma-separated profile IDs; requires a toolkit manifest.",
-                Target::Field("profiles"),
-            ),
-            Field::new(
-                "Workspace standard",
-                "Optional, e.g. workspace-docs@5.0.0. Clear to remove workspace selection.",
-                Target::Nested("workspace", "standard"),
-            ),
-            Field::new(
-                "Workspace source",
-                "Local package path or Git URL.",
-                Target::Nested("workspace", "source"),
-            ),
-            Field::new(
-                "Workspace revision",
-                "Full Git commit for a remote package.",
-                Target::Nested("workspace", "revision"),
-            ),
-            Field::new(
-                "Workspace integrity",
-                "Expected sha256: digest for a remote package.",
-                Target::Nested("workspace", "integrity"),
-            ),
-            Field::new(
-                "Trusted sources",
-                "Comma-separated authorized package paths or Git URLs.",
-                Target::Field("trusted_sources"),
-            ),
-        ],
-        _ => Vec::new(),
-    }
 }
 
 impl Target {
@@ -364,17 +206,6 @@ impl Target {
                     .and_then(Value::as_str)
                     .unwrap_or("")
                     .to_owned();
-            }
-            Self::Agent(name) => {
-                return if value["agents"]
-                    .as_sequence()
-                    .is_some_and(|a| a.contains(&Value::String(name.clone())))
-                {
-                    "[x]"
-                } else {
-                    "[ ]"
-                }
-                .into();
             }
         };
         if let Some(values) = field.as_sequence() {
@@ -440,18 +271,6 @@ impl Target {
                     }
                 }
                 *registries = entries.into_iter().collect();
-            }
-            Self::Agent(name) => {
-                if !value["agents"].is_sequence() {
-                    value["agents"] = Value::Sequence(Vec::new());
-                }
-                let agents = value["agents"].as_sequence_mut().unwrap();
-                let agent = Value::String(name.clone());
-                if agents.contains(&agent) {
-                    agents.retain(|a| a != &agent);
-                } else {
-                    agents.push(agent);
-                }
             }
         }
         Ok(())
@@ -729,9 +548,10 @@ mod tests {
             assert_eq!(fs::read_to_string(&document.path).unwrap(), EXISTING);
         }
         document.value = original.clone();
-        Target::Agent("unsupported".into())
-            .write(&mut document.value, "")
-            .unwrap();
+        document.value["agents"]
+            .as_sequence_mut()
+            .unwrap()
+            .push(Value::String("unsupported".into()));
         assert!(document.validate(false).is_err());
         document.value = original;
         assert!(document.validate(true).is_err());
@@ -745,20 +565,6 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Duplicate"));
-    }
-
-    #[test]
-    fn agents_include_all_supported_choices_and_keep_existing_selection() {
-        let (_dir, mut document) = existing();
-        let choices = fields(&document.value, 1);
-        assert_eq!(choices.len(), 6);
-        assert_eq!(Target::Agent("copilot".into()).read(&document.value), "[x]");
-        let target = Target::Agent("claude".into());
-        target.write(&mut document.value, "").unwrap();
-        assert_eq!(target.read(&document.value), "[x]");
-        target.write(&mut document.value, "").unwrap();
-        assert_eq!(target.read(&document.value), "[ ]");
-        assert_eq!(document.value["agents"], document.initial["agents"]);
     }
 
     #[cfg(unix)]
