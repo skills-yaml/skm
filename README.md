@@ -84,11 +84,21 @@ The release workflow publishes two moving release channels:
 - `main` publishes production artifacts to the `prod-latest` GitHub Release.
 - `development` publishes prerelease artifacts to the `development-latest` GitHub Release.
 
-Both channels also upload the same packaged binaries as workflow artifacts for each run. Production installers use `prod-latest` by default; pass `development` to install from `development-latest`.
+Both channels publish the four packaged binaries, their SHA-256 files, and a
+strict `skm-release.json` manifest. The manifest binds the channel, tag,
+version, commit, archive names, archive sizes, and checksums. Publication is a
+recoverable transaction, so a moving tag never intentionally exposes a partial
+release asset set. Production installers use `prod-latest` by default; pass
+`development` to install from `development-latest`.
 
 ## Updates
 
-Release builds embed the Git commit and release channel they were built from. `skm update` compares that commit with the current channel tag on GitHub.
+Release builds embed the Git commit and release channel they were built from.
+`skm update` reads the selected channel's release manifest over HTTPS, verifies
+the exact platform archive against both its checksum file and manifest digest,
+extracts one expected binary, verifies its embedded identity, then replaces the
+installed regular file using a guarded update transaction. Local builds are not
+self-update managed; reinstall them with Cargo or the official installer.
 
 Check for a production update:
 
@@ -109,7 +119,11 @@ skm update --channel development --check
 skm update --channel development --yes
 ```
 
-On macOS and Linux, `skm update` runs the shell installer directly. On Windows, it starts a separate PowerShell updater so the currently running `skm.exe` can exit before the binary is replaced.
+`--check` retains compatibility for scripts and reports whether the managed
+channel has a newer build. `--yes` is accepted for compatibility with older
+automation. Use `skm version` to print the embedded version, channel, and
+commit. Set `SKM_NO_UPDATE_CHECK=1` to suppress best-effort terminal startup
+notices.
 
 ## Quick Start
 

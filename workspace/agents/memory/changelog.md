@@ -1,5 +1,19 @@
 # Memory Changelog
 
+## 2026-09-19 - Record managed release update contract
+
+- Type: fact
+- Source: spec
+- Confidence: high
+- Review: required before the first production release
+- Supersedes: tag-only self-update discovery
+
+Content:
+
+Recorded the SKM release manifest, verified self-update, transactional
+publication, and held-production qualification contract in
+`workspace/agents/memory/facts.md`.
+
 ## 2026-06-17 - Initialize Agent Memory
 
 - Type: fact

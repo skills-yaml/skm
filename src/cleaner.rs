@@ -1045,7 +1045,7 @@ mod tests {
             workspace: None,
             trusted_sources: Vec::new(),
         };
-        config.save_to_file(&temp.join("skills.yaml")).unwrap();
+        config.save_to_file(temp.join("skills.yaml")).unwrap();
 
         // Create simulated agent skill directories
         let agent_dir = temp

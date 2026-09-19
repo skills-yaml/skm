@@ -398,9 +398,9 @@ mod tests {
             .join("registries")
             .join("default");
         let skill_reg_path = registry_path.join("skills").join("test-skill");
-        fs::create_dir_all(&skill_reg_path.join("v1.0.0")).unwrap();
-        fs::create_dir_all(&skill_reg_path.join("v1.1.0")).unwrap();
-        fs::create_dir_all(&skill_reg_path.join("latest")).unwrap();
+        fs::create_dir_all(skill_reg_path.join("v1.0.0")).unwrap();
+        fs::create_dir_all(skill_reg_path.join("v1.1.0")).unwrap();
+        fs::create_dir_all(skill_reg_path.join("latest")).unwrap();
         fs::write(skill_reg_path.join("v1.0.0").join("SKILL.md"), "# v1.0.0").unwrap();
         fs::write(skill_reg_path.join("v1.1.0").join("SKILL.md"), "# v1.1.0").unwrap();
         fs::write(skill_reg_path.join("latest").join("SKILL.md"), "# latest").unwrap();

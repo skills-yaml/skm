@@ -1,5 +1,22 @@
 # Facts
 
+## 2026-09-19 - Managed release updates use a strict release manifest
+
+- Type: fact
+- Source: spec
+- Confidence: high
+- Review: required before the first production release
+- Supersedes: tag-only self-update discovery
+
+Content:
+
+SKM self-updates only official managed `prod` or `development` builds. It
+requires `skm-release.json` to bind the channel, tag, version, commit, exact
+platform archive set, sizes, and SHA-256 digests; it also requires the release
+checksum asset and downloaded archive to agree. Publication stages a
+recoverable release transaction, and production publication is held by the
+`release-prod` environment until development update qualification completes.
+
 ## 2026-08-19 - Workspace lifecycle targets
 
 - Type: fact

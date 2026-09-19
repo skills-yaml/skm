@@ -9,6 +9,7 @@ mod remover;
 mod search;
 mod toolkit;
 mod updater;
+mod version;
 mod version_manager;
 mod wizard;
 mod workspace;
@@ -17,9 +18,7 @@ use clap::{Parser, Subcommand};
 use config::{SkillSpec, SkillsConfig};
 use config_manager::{ensure_global_env, first_time_setup};
 use std::env;
-use std::io::{self, Write};
 use std::path::Path;
-use updater::{check_and_notify_update, UpdateChannel};
 
 #[derive(Parser)]
 #[command(name = "skm")]
@@ -32,6 +31,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Show the installed version and managed build identity
+    Version,
     /// Create or edit skills.yaml with a terminal wizard, or create defaults for scripts
     Init {
         /// Override the project name (new configurations default to the current folder name)
@@ -152,18 +153,8 @@ enum Commands {
         #[arg(short, long)]
         global: bool,
     },
-    /// Check for and install skm release updates
-    Update {
-        /// Release channel to use: prod or development
-        #[arg(long, default_value = "prod")]
-        channel: String,
-        /// Only check whether an update is available
-        #[arg(long)]
-        check: bool,
-        /// Install without prompting for confirmation
-        #[arg(short, long)]
-        yes: bool,
-    },
+    /// Check for or install a verified SKM release update
+    Update(updater::UpdateArgs),
     /// Update local cache of skill registries
     CacheUpdate {
         /// Specific registry to update (updates all if not specified)
@@ -675,8 +666,8 @@ fn main() {
         eprintln!("SKM may not function correctly. Run 'skm setup' to manually configure.");
     }
 
-    // Check for updates at launch
-    let _ = check_and_notify_update();
+    // Managed releases check their own channel in the background of normal commands.
+    updater::maybe_print_startup_notice();
 
     if let Err(e) = run(cli.command) {
         eprintln!("Error: {}", e);
@@ -965,31 +956,9 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 return Err("Validation checks failed. Some skills or links are missing.".into());
             }
         }
-        Commands::Update {
-            channel,
-            check,
-            yes,
-        } => {
-            let channel = UpdateChannel::parse(&channel)?;
-            let update_available = updater::check_for_update(channel)?;
-
-            if check {
-                return Ok(());
-            }
-
-            if !update_available {
-                eprintln!("You are already on the latest version.");
-                if !yes && !confirm_update()? {
-                    return Ok(());
-                }
-            } else {
-                if !yes && !confirm_update()? {
-                    eprintln!("Update cancelled.");
-                    return Ok(());
-                }
-            }
-
-            updater::install_update(channel)?;
+        Commands::Version => version::show_version(),
+        Commands::Update(args) => {
+            println!("{}", updater::run_update(&args)?);
         }
         Commands::CacheUpdate { registry } => {
             config_manager::update_cache(registry.as_deref())?;
@@ -1322,16 +1291,6 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
-}
-
-fn confirm_update() -> Result<bool, Box<dyn std::error::Error>> {
-    eprint!("Install this update now? [y/N] ");
-    io::stderr().flush()?;
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-
-    Ok(matches!(input.trim(), "y" | "Y" | "yes" | "YES"))
 }
 
 fn load_config(path: &Path) -> Result<SkillsConfig, Box<dyn std::error::Error>> {
