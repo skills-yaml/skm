@@ -36,6 +36,7 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
+| [nib-release-update-parity.md](development/updates/nib-release-update-parity.md) | `updates` | `development` | NIB's managed update and transactional release system is being ported to SKM; implementation and validation are active. |
 | [adopt-workspace-docs-5.md](done/workspace-governance/adopt-workspace-docs-5.md) | `workspace-governance` | `done` | Released through `main` by PR #4 on 2026-09-05 (`e12ba7d`); `prod-latest` artifacts published successfully. |
 | [workspace-docs-5-compatibility.md](done/workspace-toolkit/workspace-docs-5-compatibility.md) | `workspace-toolkit` | `done` | Released through `main` by PR #4 on 2026-09-05 (`e12ba7d`); `prod-latest` artifacts published successfully. |
 | [registry-published-workspace-skills.md](done/workspace-toolkit/registry-published-workspace-skills.md) | `workspace-toolkit` | `done` | PR #13 released SKM 0.4.0 through `main` at `cd3d4a6e5d71dd3f27e8122e8cd8b6b323b15cb4`; CI and platform publication passed, and the Linux checksum and version were verified. |

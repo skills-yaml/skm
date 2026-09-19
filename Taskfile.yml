@@ -4,10 +4,22 @@ tasks:
   check:
     desc: Run formatting, compilation, and workspace documentation checks
     cmds:
+      - task: installers:check
       - cargo fmt -- --check
-      - cargo clippy -- -D warnings
+      - cargo clippy --all-targets --all-features -- -D warnings
       - cargo check
       - task: workspace:check
+
+  installers:check:
+    desc: Validate installer, release, and qualification scripts
+    cmds:
+      - sh -n scripts/install.sh
+      - bash -n scripts/publish-release.sh
+      - bash -n scripts/qualify-release-update.sh
+      - grep -Fq 'skills-yaml/skm' scripts/install.sh
+      - grep -Fq 'skills-yaml/skm' scripts/install.ps1
+      - grep -Fq 'sha256' scripts/install.sh
+      - grep -Fiq 'sha256' scripts/install.ps1
 
   workspace:check:
     desc: Validate workspace-docs structure, spec catalog, memory impact, and privacy
@@ -30,6 +42,43 @@ tasks:
     desc: Build optimized release binary
     cmds:
       - cargo build --locked --release {{if .TARGET}}--target {{.TARGET}}{{end}}
+
+  test:updater:
+    desc: Run self-update unit and command tests
+    cmds:
+      - cargo test --bin skm updater::tests -- --test-threads=1
+      - cargo test --test updater -- --test-threads=1
+
+  test:release-contract:
+    desc: Validate release workflow, manifest publisher, and qualification contracts
+    cmds:
+      - cargo test --test release_contract -- --test-threads=1
+
+  qualify:release-update:unix:
+    desc: Qualify a published development self-update on a native Unix runner
+    platforms: [linux, darwin]
+    requires:
+      vars: [BOOTSTRAP_ARCHIVE, BOOTSTRAP_COMMIT, CANDIDATE_COMMIT, CANDIDATE_VERSION]
+    cmds:
+      - >-
+        scripts/qualify-release-update.sh
+        "{{.BOOTSTRAP_ARCHIVE}}"
+        "{{.BOOTSTRAP_COMMIT}}"
+        "{{.CANDIDATE_COMMIT}}"
+        "{{.CANDIDATE_VERSION}}"
+
+  qualify:release-update:windows:
+    desc: Qualify a published development self-update on a native Windows runner
+    platforms: [windows]
+    requires:
+      vars: [BOOTSTRAP_ARCHIVE, BOOTSTRAP_COMMIT, CANDIDATE_COMMIT, CANDIDATE_VERSION]
+    cmds:
+      - >-
+        pwsh -NoLogo -NoProfile -File scripts/qualify-release-update.ps1
+        -BootstrapArchive "{{.BOOTSTRAP_ARCHIVE}}"
+        -BootstrapCommit "{{.BOOTSTRAP_COMMIT}}"
+        -CandidateCommit "{{.CANDIDATE_COMMIT}}"
+        -ExpectedCandidateVersion "{{.CANDIDATE_VERSION}}"
 
   test:tui:
     desc: Smoke-test the release wizard in a Linux PTY (run task build first)
