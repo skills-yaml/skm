@@ -1,6 +1,6 @@
 # NIB release and self-update parity
 
-State: development
+State: test
 
 ## Status
 
@@ -105,6 +105,12 @@ environments before merging this change, run a development release pair and
 qualification workflow, then approve the held production run. Existing release
 assets remain installable until a newly published manifest is used.
 
+## Integration evidence
+
+Merged into the configured `development` test branch through PR #23 on
+2026-09-19 at `7abc8435049ba55923b19df3f3fa0ef340150a16`. The PR Validate
+workflow passed before merge. The change remains unreleased from `main`.
+
 ## Memory Impact
 
 Status: updated
@@ -112,3 +118,4 @@ Rationale: SKM's release trust and publication contract is now a durable
 project decision.
 Memory: `workspace/agents/memory/facts.md` and
 `workspace/agents/memory/changelog.md`
+
