@@ -254,3 +254,18 @@ Content:
 
 Recorded in `workspace/agents/memory/decisions.md` that `skm search` is always
 read-only and delegates installation to the dedicated `skm add` command.
+
+## 2026-09-19 - Record sequential init interaction
+
+- Type: fact
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: 2026-09-09 - Record init wizard persistence and compatibility
+
+Content:
+
+Recorded the decision to replace the full-screen init TUI with sequential
+prompts in `workspace/agents/memory/decisions.md`, and recorded on-demand
+registry discovery and numbered selection in
+`workspace/agents/memory/facts.md`.

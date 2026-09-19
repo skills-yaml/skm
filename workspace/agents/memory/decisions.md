@@ -134,3 +134,21 @@ Content:
 It does not expose `--add` or the add-only `--global` option. Search results
 direct users to `skm add <skill-name> --source <registry>`, which remains the
 command responsible for manifest changes and skill linking.
+
+## 2026-09-19 - Use sequential prompts for init
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: 2026-09-09 - Init edits manifests through a terminal wizard
+
+Content:
+
+`skm init` uses ordinary cooked-terminal, line-by-line prompts instead of a
+full-screen TUI. Enter keeps the displayed value, `-` clears an optional value,
+and `:q` cancels without writing. Small numbered menus cover agents,
+registries, and skills; advanced toolkit/workspace fields are opt-in; and the
+complete YAML is shown before save. Existing-file preservation, validation,
+atomic replacement, concurrent-edit detection, and non-interactive creation
+remain part of the contract.

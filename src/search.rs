@@ -43,19 +43,29 @@ pub fn discover(
     project: &Path,
     registry: Option<&str>,
 ) -> Result<Discovery, String> {
+    discover_with_refresh(config, project, registry, false)
+}
+
+pub fn discover_with_refresh(
+    config: Option<&SkillsConfig>,
+    project: &Path,
+    registry: Option<&str>,
+    refresh: bool,
+) -> Result<Discovery, String> {
     let base =
         BaseConfig::load().map_err(|error| format!("Cannot read global registries: {error}"))?;
     let mut registries: BTreeMap<_, _> = base.registries.into_iter().collect();
     if let Some(project_registries) = config.and_then(|config| config.registries.as_ref()) {
         registries.extend(project_registries.clone());
     }
-    discover_locations(registries, project, registry)
+    discover_locations(registries, project, registry, refresh)
 }
 
 fn discover_locations(
     mut registries: BTreeMap<String, String>,
     project: &Path,
     registry: Option<&str>,
+    refresh: bool,
 ) -> Result<Discovery, String> {
     if let Some(registry) = registry {
         let location = registries
@@ -67,7 +77,7 @@ fn discover_locations(
 
     let mut discovery = Discovery::default();
     for (name, location) in registries {
-        match load_registry(&name, &location, project) {
+        match load_registry(&name, &location, project, refresh) {
             Ok(entries) => discovery.entries.extend(entries),
             Err(message) => discovery.warnings.push(format!("{name}: {message}")),
         }
@@ -78,7 +88,12 @@ fn discover_locations(
     Ok(discovery)
 }
 
-fn load_registry(name: &str, location: &str, project: &Path) -> Result<Vec<Entry>, String> {
+fn load_registry(
+    name: &str,
+    location: &str,
+    project: &Path,
+    refresh: bool,
+) -> Result<Vec<Entry>, String> {
     if crate::linker::resolve_registry_path(name).is_none() {
         return Err("Invalid registry name".into());
     }
@@ -93,9 +108,11 @@ fn load_registry(name: &str, location: &str, project: &Path) -> Result<Vec<Entry
     if !is_git_url(location) {
         return Err("Local registry path does not exist, or URL scheme is unsupported".into());
     }
-    if let Some(cache) = crate::linker::resolve_registry_path(name) {
-        if cache_matches(&cache, location) {
-            return scan_local(name, &cache);
+    if !refresh {
+        if let Some(cache) = crate::linker::resolve_registry_path(name) {
+            if cache_matches(&cache, location) {
+                return scan_local(name, &cache);
+            }
         }
     }
     scan_remote(name, location)
@@ -386,16 +403,17 @@ mod tests {
             ("available".into(), "available".into()),
             ("missing".into(), "missing".into()),
         ]);
-        let all = discover_locations(registries.clone(), project.path(), None).unwrap();
+        let all = discover_locations(registries.clone(), project.path(), None, false).unwrap();
         assert_eq!(all.entries.len(), 1);
         assert_eq!(all.entries[0].name, "software/spec");
         assert_eq!(all.entries[0].version, "v1.2.0");
         assert_eq!(all.warnings.len(), 1);
         let filtered =
-            discover_locations(registries.clone(), project.path(), Some("available")).unwrap();
+            discover_locations(registries.clone(), project.path(), Some("available"), false)
+                .unwrap();
         assert_eq!(filtered.entries.len(), 1);
         assert!(filtered.warnings.is_empty());
-        assert!(discover_locations(registries, project.path(), Some("unknown")).is_err());
+        assert!(discover_locations(registries, project.path(), Some("unknown"), false).is_err());
     }
 
     #[test]

@@ -133,22 +133,35 @@ Create a project manifest:
 skm init
 ```
 
-`init` opens a terminal wizard. It loads `skills.yaml` if present or starts a new
-draft. A live YAML preview stays visible through six steps: project details,
-agents, registries, skills, optional toolkit/workspace settings, and review.
+`init` loads `skills.yaml` if present, or starts a new draft, and then walks
+through ordinary line-by-line prompts for project details, agents, registries,
+skills, optional toolkit/workspace settings, and final review.
 
-- **Tab / Shift-Tab**: next / previous step; **Up / Down**: select a field.
-- **Enter**: edit a field; **Space**: toggle an agent.
-- **a / d**: add / remove a registry or skill. Removal asks for confirmation.
-- While editing, **Ctrl-U** clears the field, **Enter** keeps it, and **Esc** undoes it.
-- **Page Up / Page Down**: scroll YAML; **[ / ]**: pan long YAML lines.
-- On Review, **Enter** saves. **Esc** outside an edit or **Ctrl-C** cancels.
+- Press **Enter** to keep the value shown in a prompt.
+- Enter **-** to clear an optional text value.
+- Enter **:q** at any prompt to cancel without writing.
+- Select agents by number or name, or enter **all** or **none**.
+- Registry and skill sections use short action commands such as **a** to add,
+  **e 2** to edit item 2, and **d 2** to remove item 2 with confirmation.
 
-Cancellation leaves the manifest unchanged. An unchanged save preserves its
-original bytes; edited saves preserve configuration values, including extension
-fields, but may normalize YAML formatting and comments. The wizard refuses to
-replace malformed files, symlinks, or files changed externally while it is open.
-It requires at least 48 columns by 20 rows and stacks its panels on narrow terminals.
+The skill section loads configured project and inherited global registries only
+when you enter **s** to search or **r** to refresh and search. Enter a query,
+then toggle numbered results. Matches are case-insensitive and show the skill's
+registry and available version. Existing pins and extension fields stay intact;
+a same-name skill from another source must be edited explicitly. Use **a** for
+manual registry or local-path entries.
+
+Local registries and matching cached Git registries load directly. Uncached Git
+registries are inspected in temporary storage without a checkout or
+installation. A refreshed search fetches current remote contents. One failing
+registry is reported without hiding results from the others.
+
+After the optional settings question, `init` validates and prints the complete
+YAML before asking whether to save. Cancellation and end-of-input leave the
+manifest unchanged. An unchanged save preserves its original bytes; edited
+saves preserve configuration values, including extension fields, but may
+normalize YAML formatting and comments. The prompt flow refuses to replace
+malformed files, symlinks, or files changed externally while it is open.
 
 For scripts, create a manifest with the existing defaults:
 
@@ -157,8 +170,9 @@ skm init --non-interactive --name my-project
 ```
 
 Non-interactive initialization refuses to replace an existing manifest.
-`--advanced` opens the same complete wizard. `--global` prepares for global
-installation; `skills.yaml` remains in the current directory.
+`--advanced` is a compatibility alias for the same complete prompt flow.
+`--global` prepares for global installation; `skills.yaml` remains in the
+current directory.
 
 Search configured project and inherited global registries by skill name:
 
@@ -226,7 +240,7 @@ skm workspace audit [--target <version>] [--source <path-or-git-url>] [--revisio
 skm workspace adopt|upgrade|repair [--target <version>] [--source <path-or-git-url>] [--revision <commit>] [--integrity <sha256>] [--apply] [--yes] [--json]
 ```
 
-- `init`: creates or edits `skills.yaml` through a terminal wizard; use
+- `init`: creates or edits `skills.yaml` through sequential prompts; use
   `--non-interactive` to create a default manifest for scripts.
 - `install`: resolves configured skills and toolkit bundles once, preflights
   every target, transactionally materializes each adapter, and writes the
@@ -408,5 +422,6 @@ task build
 `task check` runs formatting checks, Clippy with warnings denied, `cargo check`,
 and the workspace-docs structure, spec-catalog, memory-impact, and privacy gates.
 
-After `task build`, run `task test:tui` for Linux terminal smoke coverage of
-the init wizard, including saving, cancellation, external edits, and terminal restoration.
+After `task build`, run `task test:init` for Linux terminal smoke coverage of
+the sequential init prompts, including registry search, saving, cancellation,
+external edits, and cooked-terminal behavior.

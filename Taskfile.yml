@@ -80,7 +80,7 @@ tasks:
         -CandidateCommit "{{.CANDIDATE_COMMIT}}"
         -ExpectedCandidateVersion "{{.CANDIDATE_VERSION}}"
 
-  test:tui:
-    desc: Smoke-test the release wizard in a Linux PTY (run task build first)
+  test:init:
+    desc: Smoke-test sequential init prompts in a Linux PTY (run task build first)
     cmds:
-      - python3 -B scripts/test_init_tui.py
+      - python3 -B scripts/test_init_prompts.py

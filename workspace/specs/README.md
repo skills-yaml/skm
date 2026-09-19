@@ -36,6 +36,7 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
+| [init-sequential-prompts.md](development/configuration/init-sequential-prompts.md) | `configuration` | `development` | Sequential prompts are implemented and validated locally; not integrated into `development`. |
 | [nib-release-update-parity.md](test/updates/nib-release-update-parity.md) | `updates` | `test` | Merged into the configured `development` test branch through PR #23 at `7abc843` on 2026-09-19; production release remains pending. |
 | [adopt-workspace-docs-5.md](done/workspace-governance/adopt-workspace-docs-5.md) | `workspace-governance` | `done` | Released through `main` by PR #4 on 2026-09-05 (`e12ba7d`); `prod-latest` artifacts published successfully. |
 | [workspace-docs-5-compatibility.md](done/workspace-toolkit/workspace-docs-5-compatibility.md) | `workspace-toolkit` | `done` | Released through `main` by PR #4 on 2026-09-05 (`e12ba7d`); `prod-latest` artifacts published successfully. |

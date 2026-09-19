@@ -148,3 +148,20 @@ run `35151714469` passed. Linux, macOS Intel/Apple Silicon, and Windows packages
 with checksums were published to `prod-latest`. The downloaded Linux package
 matched its checksum, and its binary reports `skm 0.5.0` with the expected
 `search` help.
+
+## 2026-09-19 - Init searches registries on demand
+
+- Type: fact
+- Source: spec
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+The sequential init flow discovers project and inherited global registry
+skills only after the user chooses search or refresh. Search matches names,
+registries, and versions; numbered results retain source/version metadata and
+reject same-name source collisions. Local and matching cached registries are
+read directly, while uncached or refreshed Git sources are inspected in
+temporary storage without installing skills or mutating the registry cache.
