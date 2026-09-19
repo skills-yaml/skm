@@ -17,6 +17,7 @@ same-file = "1.0"
 thiserror = "2.0"
 
 [target.'cfg(windows)'.dependencies]
+uuid = { version = "1", features = ["v4"] }
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 windows-sys = { version = "0.61", features = [
     "Wdk_Storage_FileSystem",
