@@ -52,5 +52,5 @@ reopened, is superseded, or materially changes why it is in its state.
 | [auto-update-notification.md](done/updates/auto-update-notification.md) | `updates` | `done` | Released through `main`. |
 | [init-tui-wizard.md](done/configuration/init-tui-wizard.md) | `configuration` | `done` | Released as SKM 0.3.0 through `main` by PR #8 on 2026-09-09 (`69c0b87`); all production packages and checksums published successfully. |
 | [skill-search.md](done/registry/skill-search.md) | `registry` | `done` | PR #18 released SKM 0.5.0 through `main` at `488860f`; production CI and all platform packages passed, and the Linux checksum, version, and search help were verified. |
-| [search-dedicated-add.md](development/registry/search-dedicated-add.md) | `registry` | `development` | Read-only search and dedicated `skm add` suggestions are implemented and validated locally; integration into `development` is pending. |
+| [search-dedicated-add.md](test/registry/search-dedicated-add.md) | `registry` | `test` | PR #21 merged into `development` at `a92cd4e`; CI and verified `development-latest` artifacts passed, while production release remains pending. |
 <!-- SPEC-CATALOG:END -->

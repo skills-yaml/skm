@@ -2,10 +2,13 @@
 
 ## Status
 
-State: development
+State: test
 
-Implementation and local validation are complete. Integration into
-`development` and release through `main` have not occurred.
+PR #21 merged into `development` at
+`a92cd4e49619a84f32c74e9772f37bb98da36621` on 2026-09-17. Development CI
+run `35271724502` passed. Release run `35271724528` published all platform
+artifacts successfully after retrying a transient GitHub asset-upload error.
+Release through `main` has not occurred.
 
 ## Scope
 
@@ -61,3 +64,12 @@ options are rejected by argument parsing.
 - Built CLI help lists only search options, and direct checks confirmed that
   `search --add` and `search --global` exit with argument errors.
 - `git diff --check`: passed.
+- PR #21 and post-merge development CI passed.
+- `development-latest` points to the development merge and contains Linux,
+  macOS Intel/Apple Silicon, and Windows packages with checksums. The downloaded
+  Linux package matched checksum
+  `d82961df5bed149f4ea0231f6a6c20ce8e2f6db2a084c830d3d477c0e2e06f45`;
+  its binary exposes only the discovery options and rejects `search --add` and
+  `search --global`.
+
+The spec remains in test until confirmed release through `main`.
