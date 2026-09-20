@@ -2,13 +2,17 @@
 
 ## Status
 
-State: test
+State: done
 
 PR #21 merged into `development` at
 `a92cd4e49619a84f32c74e9772f37bb98da36621` on 2026-09-17. Development CI
 run `35271724502` passed. Release run `35271724528` published all platform
 artifacts successfully after retrying a transient GitHub asset-upload error.
-Release through `main` has not occurred.
+PR #32 released the change in SKM 0.6.0 through `main` at
+`769f5a433c635a56b86e744513dd71d7a42a181c`. Production CI run `35496461707`,
+four-platform update qualification run `35496742318`, and Release Artifacts
+run `35496461689` passed. The downloaded Linux production archive matched its
+checksum and reported the expected version and commit.
 
 ## Scope
 
@@ -72,4 +76,6 @@ options are rejected by argument parsing.
   its binary exposes only the discovery options and rejects `search --add` and
   `search --global`.
 
-The spec remains in test until confirmed release through `main`.
+The production manifest reports version `0.6.0`, channel `prod`, commit
+`769f5a433c635a56b86e744513dd71d7a42a181c`, and all four supported platform
+assets. The specification is complete.

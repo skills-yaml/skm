@@ -269,3 +269,20 @@ Recorded the decision to replace the full-screen init TUI with sequential
 prompts in `workspace/agents/memory/decisions.md`, and recorded on-demand
 registry discovery and numbered selection in
 `workspace/agents/memory/facts.md`.
+
+## 2026-09-20 - Record SKM 0.6.0 production publication
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded the SKM 0.6.0 exact-commit production promotion, required-reviewer
+release hold, successful four-platform self-update qualification, publication,
+and checksum, binary identity, tag, and manifest verification in
+`workspace/agents/memory/facts.md`. The sequential init, trusted updater, and
+dedicated search-add specifications now record their confirmed release in
+`done`.
