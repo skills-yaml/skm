@@ -115,8 +115,16 @@ exposed the missing declaration. CI run `35471263033` and Release Artifacts run
 `35471263031` then passed at
 `b25954d74445e51c797de102054c4f744a0ed1f7`; the published
 `development-latest` archive checksum, binary identity, and manifest were
-verified. Cross-release self-update qualification and production publication
-remain pending.
+verified. Cross-release self-update qualification and a gate-verified
+production publication remain pending.
+
+Production Release Artifacts run `35472043086` published commit
+`73826b7c0d3fb7fed296fa5e6d07c74088da6346` before the newly created
+`release-prod` environment had a required-reviewer rule, so the run could not
+serve as the held production input required by the qualification workflow. The
+environment now requires reviewer approval. A subsequent exact-commit
+production run must remain pending while qualification runs, then be approved
+and verified before this specification can move to done.
 
 ## Memory Impact
 

@@ -37,7 +37,7 @@ reopened, is superseded, or materially changes why it is in its state.
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
 | [init-sequential-prompts.md](test/configuration/init-sequential-prompts.md) | `configuration` | `test` | PR #25 merged into `development`; CI and the four-platform `development-latest` release passed at `b25954d`, while production release remains pending. |
-| [nib-release-update-parity.md](test/updates/nib-release-update-parity.md) | `updates` | `test` | PR #23 and the Windows dependency fix are integrated; CI and `development-latest` passed at `b25954d`, while cross-release qualification and production release remain pending. |
+| [nib-release-update-parity.md](test/updates/nib-release-update-parity.md) | `updates` | `test` | CI and prerelease publication passed; `release-prod` now requires review after the first production run exposed its missing hold, so held-run qualification and final verification remain pending. |
 | [adopt-workspace-docs-5.md](done/workspace-governance/adopt-workspace-docs-5.md) | `workspace-governance` | `done` | Released through `main` by PR #4 on 2026-09-05 (`e12ba7d`); `prod-latest` artifacts published successfully. |
 | [workspace-docs-5-compatibility.md](done/workspace-toolkit/workspace-docs-5-compatibility.md) | `workspace-toolkit` | `done` | Released through `main` by PR #4 on 2026-09-05 (`e12ba7d`); `prod-latest` artifacts published successfully. |
 | [registry-published-workspace-skills.md](done/workspace-toolkit/registry-published-workspace-skills.md) | `workspace-toolkit` | `done` | PR #13 released SKM 0.4.0 through `main` at `cd3d4a6e5d71dd3f27e8122e8cd8b6b323b15cb4`; CI and platform publication passed, and the Linux checksum and version were verified. |
