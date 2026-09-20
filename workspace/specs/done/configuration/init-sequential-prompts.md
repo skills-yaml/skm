@@ -2,11 +2,11 @@
 
 ## Status
 
-State: test
+State: done
 
-Implementation is integrated into the shared development channel and the
-prerelease artifacts are verified. This specification supersedes the
-full-screen interaction released in
+Released in SKM 0.6.0 through `main` at
+`769f5a433c635a56b86e744513dd71d7a42a181c`. This specification supersedes
+the full-screen interaction released in
 `workspace/specs/done/configuration/init-tui-wizard.md` and adds an explicit,
 on-demand interaction over the released standalone registry search support.
 
@@ -171,7 +171,15 @@ raw-terminal smoke harness were removed.
   `skm 0.6.0 (development - b25954d74445e51c797de102054c4f744a0ed1f7)`;
   the manifest reported the same version, channel, and commit.
 
-The spec remains in test until a confirmed production release from `main`.
+PR #32 promoted the exact qualified development commit to `main`. Production
+CI run `35496461707` passed, qualification run `35496742318` exercised
+notification, replacement identity, and the idempotent no-op path on Linux,
+macOS Intel, macOS Apple Silicon, and Windows while publication remained held,
+and Release Artifacts run `35496461689` published after reviewer approval. The
+downloaded Linux archive passed its SHA-256 check and reported
+`skm 0.6.0 (prod - 769f5a433c635a56b86e744513dd71d7a42a181c)`;
+`skm-release.json` reported the same version, channel, and commit with all four
+supported platform assets. The specification is complete.
 
 ## Open Questions
 

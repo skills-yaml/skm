@@ -1,6 +1,6 @@
 # NIB release and self-update parity
 
-State: test
+State: done
 
 ## Status
 
@@ -115,21 +115,33 @@ exposed the missing declaration. CI run `35471263033` and Release Artifacts run
 `35471263031` then passed at
 `b25954d74445e51c797de102054c4f744a0ed1f7`; the published
 `development-latest` archive checksum, binary identity, and manifest were
-verified. Cross-release self-update qualification and a gate-verified
-production publication remain pending.
+verified.
 
 Production Release Artifacts run `35472043086` published commit
 `73826b7c0d3fb7fed296fa5e6d07c74088da6346` before the newly created
 `release-prod` environment had a required-reviewer rule, so the run could not
 serve as the held production input required by the qualification workflow. The
-environment now requires reviewer approval. A subsequent exact-commit
-production run must remain pending while qualification runs, then be approved
-and verified before this specification can move to done.
+environment now requires reviewer approval. PR #29 recorded that protection in
+the repository release contract. The first held qualification exposed that the
+private Windows replacement worker was dispatched after Clap parsing; PR #31
+moved worker dispatch ahead of CLI parsing and added regression coverage.
+
+PR #32 then promoted the corrected development commit
+`769f5a433c635a56b86e744513dd71d7a42a181c` exactly to `main`. Production CI
+run `35496461707` passed. Release Artifacts run `35496461689` remained held at
+`release-prod` while qualification run `35496742318` proved notification,
+replacement identity, and idempotent no-op behavior on Linux, macOS Intel,
+macOS Apple Silicon, and Windows. After reviewer approval, the release run
+published all four archives, matching checksum files, and
+`skm-release.json`. The downloaded Linux archive passed its published SHA-256
+check, its binary reported the expected production version and commit, and the
+manifest matched version `0.6.0`, channel `prod`, the release commit, and the
+complete platform asset set.
 
 ## Memory Impact
 
 Status: updated
-Rationale: SKM's release trust and publication contract is now a durable
-project decision.
+Rationale: SKM's release trust and publication contract and its qualified
+production rollout are durable project facts.
 Memory: `workspace/agents/memory/facts.md` and
 `workspace/agents/memory/changelog.md`

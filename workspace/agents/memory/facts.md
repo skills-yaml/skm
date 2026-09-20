@@ -165,3 +165,23 @@ registries, and versions; numbered results retain source/version metadata and
 reject same-name source collisions. Local and matching cached registries are
 read directly, while uncached or refreshed Git sources are inspected in
 temporary storage without installing skills or mutating the registry cache.
+
+## 2026-09-20 - SKM 0.6.0 sequential init and trusted updater released
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+SKM 0.6.0 released sequential cooked-terminal init prompts, the read-only
+`skm search` boundary, and manifest-bound transactional self-updates through
+PR #32 and main commit `769f5a433c635a56b86e744513dd71d7a42a181c`.
+Production CI run `35496461707` passed. Qualification run `35496742318`
+verified a real update and idempotent no-op on Linux, macOS Intel, macOS Apple
+Silicon, and Windows while Release Artifacts run `35496461689` remained held
+for required reviewer approval. The approved run published all four archives,
+checksums, and `skm-release.json`; the Linux checksum, production binary
+identity, release tag, and manifest were verified against the exact commit.
