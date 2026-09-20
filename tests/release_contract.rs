@@ -37,3 +37,19 @@ fn release_workflows_gate_and_qualify_publication() {
     assert!(qualification.contains("qualify:release-update:unix"));
     assert!(qualification.contains("qualify:release-update:windows"));
 }
+
+#[test]
+fn windows_update_worker_dispatch_precedes_cli_parsing() {
+    let main = repository_text("src/main.rs");
+    let worker_dispatch = main
+        .find("updater::run_windows_update_worker_if_requested()")
+        .expect("main must dispatch the private Windows updater worker");
+    let cli_parsing = main
+        .find("let cli = Cli::parse();")
+        .expect("main must parse the public CLI");
+
+    assert!(
+        worker_dispatch < cli_parsing,
+        "the argument-free Windows updater helper must run before Clap parsing"
+    );
+}
