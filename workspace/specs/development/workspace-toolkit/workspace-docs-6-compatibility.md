@@ -2,11 +2,11 @@
 
 ## Status
 
-State: backlog
+State: development
 
-Status rationale: SKM 0.6.0 rejects toolkit manifests declaring
-`workspace_docs_compatibility: 6.x`. The compatibility extension and its
-end-to-end installation evidence are specified but not yet implemented.
+Status rationale: Implementation and local validation are complete on
+`feat/backlog-specs-implementation`. The spec remains in `development` until
+the branch is integrated into the configured `development` test target.
 
 Primary feature: `workspace-toolkit`
 
@@ -178,14 +178,32 @@ release assets.
 
 - Which next SKM version will carry the additive compatibility support? Select
   it when implementation begins under the repository's current release plan.
-- Should the representative Workspace Docs 6 toolkit fixture be maintained
-  entirely in SKM or generated from a pinned public toolkit revision? Prefer a
-  deterministic local fixture unless cross-repository validation can remain
-  immutable, offline, and reviewable.
+- Resolved for implementation: keep the representative Workspace Docs 6
+  fixture deterministic and local. A temporary-project CLI run provides an
+  additional built-binary integration check without making the regression
+  suite network-dependent.
 
 ## Memory Impact
 
-Status: pending
+Status: updated
 
-Rationale: Resolve during implementation after the supported-major contract,
-release version, and durable compatibility evidence are finalized.
+Rationale: `workspace/agents/memory/facts.md` records the explicit 4.x, 5.x,
+and 6.x supported-major allowlist and its fail-closed behavior. The
+corresponding record was appended to `workspace/agents/memory/changelog.md`.
+
+## Implementation Evidence
+
+Completed locally on 2026-09-22 in `feat/backlog-specs-implementation`:
+
+- Compatibility validation accepts exactly `4.x`, `5.x`, and `6.x`; missing,
+  malformed, and future-major declarations fail before writes with the current
+  supported-values diagnostic.
+- `minimum_skm_version` remains an independent gate.
+- A deterministic Workspace Docs 6 fixture covers planning, installation,
+  lockfile generation, agent projection, `skm check`, and byte-idempotence.
+- A release-binary temporary-project run confirmed non-mutating JSON dry-run,
+  install, check, no-op reinstall, byte-identical lockfile, one shared target,
+  and all four `.agents/skills` claimants in the lockfile.
+- `task check`, `task test`, `task build`, `task test:init`, and
+  `git diff --check` passed. The Rust suite passed 129 tests, and workspace
+  validation passed all six tests.

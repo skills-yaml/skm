@@ -4,7 +4,7 @@ mod prompt;
 pub use draft::Document;
 pub use prompt::run_wizard;
 
-const KNOWN_AGENTS: &[&str] = &["claude", "codex", "cursor", "copilot", "grok", "hermes"];
+const KNOWN_AGENTS: &[&str] = crate::linker::SUPPORTED_AGENTS;
 
 /// Returns a list of agents that are actually available in the user's environment
 pub fn detect_available_agents() -> Vec<String> {
@@ -35,6 +35,15 @@ fn is_agent_available(agent: &str) -> bool {
         }
         "grok" => home.join(".grok"),
         "hermes" => home.join(".hermes"),
+        "antigravity" | "gemini-cli" => home.join(".gemini"),
+        "pi" => home.join(".pi"),
+        "opencode" => home.join(".config/opencode"),
+        "cline" => home.join(".cline"),
+        "kilo" => home.join(".kilo"),
+        "goose" => home.join(".agents"),
+        "crush" => home.join(".config/crush"),
+        "openhands" => home.join(".openhands"),
+        "qwen" => home.join(".qwen"),
         _ => return false,
     };
 

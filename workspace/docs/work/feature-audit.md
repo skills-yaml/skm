@@ -53,7 +53,7 @@
 | Feature | Description | Status |
 |---------|-------------|--------|
 | Symlink creation | Create symlinks from cache to agent dirs | ✅ Implemented |
-| Multiple agents | Support for claude, cursor, codex, copilot, grok, hermes | ✅ Implemented |
+| Multiple agents | Explicit project/global paths for sixteen agents, with shared-target deduplication | ✅ Implemented |
 | Global linking | Link to user home directory | ✅ Implemented |
 | Project linking | Link to project directory | ✅ Implemented |
 | Safety checks | Don't overwrite existing directories | ✅ Implemented |

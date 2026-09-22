@@ -185,3 +185,34 @@ Silicon, and Windows while Release Artifacts run `35496461689` remained held
 for required reviewer approval. The approved run published all four archives,
 checksums, and `skm-release.json`; the Linux checksum, production binary
 identity, release tag, and manifest were verified against the exact commit.
+
+## 2026-09-22 - Agent skill targets cover sixteen agents
+
+- Type: fact
+- Source: spec
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+SKM supports Claude, Codex, Copilot, Cursor, Antigravity, Pi, OpenCode, Cline,
+Kilo Code, Gemini CLI, Goose, Crush, OpenHands, Grok, Qwen Code, and Hermes.
+Codex uses project and global `.agents/skills`; it does not use
+`.codex/skills`. Hermes uses global `~/.hermes/skills` and has no project-local
+target. Codex, Antigravity, Goose, and OpenHands share project
+`.agents/skills`, which SKM deduplicates.
+
+## 2026-09-22 - Workspace Docs 6 toolkit manifests are supported
+
+- Type: fact
+- Source: spec
+- Confidence: high
+- Review: before the first production release containing this change
+- Supersedes: 2026-08-19 - Support Workspace Docs 5 Toolkits (supported-major set only)
+
+Content:
+
+SKM's explicit toolkit compatibility allowlist accepts Workspace Docs `4.x`,
+`5.x`, and `6.x`. Missing, malformed, and future-major declarations remain
+fail-closed, and `minimum_skm_version` is enforced independently.

@@ -80,7 +80,7 @@ pub fn clean_symlinks(
 
     // Find all symlinks
     let agents = if global {
-        ["claude", "cursor", "codex", "copilot", "grok", "hermes"]
+        linker::SUPPORTED_AGENTS
             .iter()
             .map(|s| s.to_string())
             .collect()
@@ -93,16 +93,9 @@ pub fn clean_symlinks(
 
     let mut symlinks_to_clean: Vec<SymlinkInfo> = Vec::new();
 
-    for agent in &agents {
-        let base_dir = if global {
-            linker::get_global_agent_skills_dir(agent)
-        } else {
-            linker::get_project_agent_skills_dir(agent, &current_dir)
-        };
-
-        let Some(base_dir) = base_dir else {
-            continue;
-        };
+    for target_group in linker::resolve_agent_skill_targets(&agents, &current_dir, global)? {
+        let base_dir = target_group.path;
+        let agent = target_group.agents.join(", ");
 
         if !base_dir.exists() {
             if verbose {
@@ -655,15 +648,23 @@ pub fn reset(
     }
 
     if reset_symlinks {
-        let agents = ["claude", "cursor", "codex", "copilot", "grok", "hermes"];
-        for agent in &agents {
-            if let Some(dir) = linker::get_global_agent_skills_dir(agent) {
-                collect_reset_symlinks(&dir, &format!("Global {agent}"), &mut items)?;
-            }
-
-            if let Some(dir) = linker::get_project_agent_skills_dir(agent, &current_dir) {
-                collect_reset_symlinks(&dir, &format!("Project {agent}"), &mut items)?;
-            }
+        let agents = linker::SUPPORTED_AGENTS
+            .iter()
+            .map(|agent| (*agent).to_string())
+            .collect::<Vec<_>>();
+        for target in linker::resolve_agent_skill_targets(&agents, &current_dir, true)? {
+            collect_reset_symlinks(
+                &target.path,
+                &format!("Global {}", target.agents.join(", ")),
+                &mut items,
+            )?;
+        }
+        for target in linker::resolve_agent_skill_targets(&agents, &current_dir, false)? {
+            collect_reset_symlinks(
+                &target.path,
+                &format!("Project {}", target.agents.join(", ")),
+                &mut items,
+            )?;
         }
     }
 

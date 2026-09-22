@@ -47,31 +47,101 @@ pub struct UnlinkResult {
     pub failures: Vec<UnlinkFailure>,
 }
 
-pub fn get_global_agent_skills_dir(agent: &str) -> Option<PathBuf> {
-    let home = dirs::home_dir()?;
-    let relative = match agent {
-        "claude" => ".claude/skills",
-        "codex" => ".agents/skills",
-        "cursor" => ".cursor/skills",
-        "copilot" => ".copilot/skills",
-        "grok" => ".grok/skills",
-        "hermes" => ".hermes/skills",
-        _ => return None,
-    };
-    Some(home.join(relative))
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct AgentSkillTarget {
+    pub path: PathBuf,
+    pub agents: Vec<String>,
 }
 
-pub fn get_project_agent_skills_dir(agent: &str, project_root: &Path) -> Option<PathBuf> {
-    let rel_path = match agent {
-        "claude" => ".claude/skills",
-        "codex" => ".agents/skills",
-        "cursor" => ".cursor/skills",
-        "copilot" => ".github/skills",
-        "grok" => ".grok/skills",
-        "hermes" => ".hermes/skills",
+pub const SUPPORTED_AGENTS: &[&str] = &[
+    "claude",
+    "codex",
+    "copilot",
+    "cursor",
+    "antigravity",
+    "pi",
+    "opencode",
+    "cline",
+    "kilo",
+    "gemini-cli",
+    "goose",
+    "crush",
+    "openhands",
+    "grok",
+    "qwen",
+    "hermes",
+];
+
+fn agent_skill_paths(agent: &str, global: bool) -> Option<&'static [&'static str]> {
+    let paths: &[&str] = match (agent, global) {
+        ("claude", _) => &[".claude/skills"],
+        ("codex", _) => &[".agents/skills"],
+        ("copilot", false) => &[".github/skills"],
+        ("copilot", true) => &[".copilot/skills"],
+        ("cursor", _) => &[".cursor/skills"],
+        ("antigravity", false) => &[".agents/skills"],
+        ("antigravity", true) => &[".gemini/config/skills"],
+        ("pi", false) => &[".pi/skills"],
+        ("pi", true) => &[".pi/agent/skills"],
+        ("opencode", false) => &[".opencode/skills"],
+        ("opencode", true) => &[".config/opencode/skills"],
+        ("cline", _) => &[".cline/skills"],
+        ("kilo", _) => &[".kilo/skills"],
+        ("gemini-cli", _) => &[".gemini/skills"],
+        ("goose", _) => &[".agents/skills"],
+        ("crush", false) => &[".crush/skills"],
+        ("crush", true) => &[".config/crush/skills"],
+        ("openhands", false) => &[".agents/skills"],
+        ("openhands", true) => &[".openhands/skills"],
+        ("grok", _) => &[".grok/skills"],
+        ("qwen", _) => &[".qwen/skills"],
+        ("hermes", false) => &[],
+        ("hermes", true) => &[".hermes/skills"],
         _ => return None,
     };
-    Some(project_root.join(rel_path))
+    Some(paths)
+}
+
+pub(crate) fn project_agent_skill_paths(agent: &str) -> Option<&'static [&'static str]> {
+    agent_skill_paths(agent, false)
+}
+
+pub fn get_global_agent_skills_dirs(agent: &str) -> Option<Vec<PathBuf>> {
+    let home = dirs::home_dir()?;
+    agent_skill_paths(agent, true).map(|paths| paths.iter().map(|path| home.join(path)).collect())
+}
+
+pub fn get_project_agent_skills_dirs(agent: &str, project_root: &Path) -> Option<Vec<PathBuf>> {
+    agent_skill_paths(agent, false)
+        .map(|paths| paths.iter().map(|path| project_root.join(path)).collect())
+}
+
+pub fn resolve_agent_skill_targets(
+    agents: &[String],
+    project_root: &Path,
+    global: bool,
+) -> Result<Vec<AgentSkillTarget>, Box<dyn std::error::Error>> {
+    validate_agents(agents)?;
+    let mut targets: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
+    for agent in agents {
+        let paths = if global {
+            get_global_agent_skills_dirs(agent)
+                .ok_or_else(|| format!("Could not determine skills directory for '{agent}'"))?
+        } else {
+            get_project_agent_skills_dirs(agent, project_root)
+                .ok_or_else(|| format!("Could not determine skills directory for '{agent}'"))?
+        };
+        for path in paths {
+            let claimants = targets.entry(path).or_default();
+            if !claimants.contains(agent) {
+                claimants.push(agent.clone());
+            }
+        }
+    }
+    Ok(targets
+        .into_iter()
+        .map(|(path, agents)| AgentSkillTarget { path, agents })
+        .collect())
 }
 
 /// Resolve the complete, exact dependency closure for configured skills.
@@ -323,7 +393,12 @@ pub fn resolve_registry_path(name: &str) -> Option<PathBuf> {
 pub fn validate_agents(agents: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     for agent in agents {
         if !is_supported_agent(agent) {
-            return Err(format!("Unsupported agent '{}'", agent).into());
+            return Err(format!(
+                "Unsupported agent '{}'. Supported agents: {}",
+                agent,
+                SUPPORTED_AGENTS.join(", ")
+            )
+            .into());
         }
     }
 
@@ -481,25 +556,6 @@ fn is_safe_version_path(path: &Path) -> bool {
     path.components().all(|c| matches!(c, Component::Normal(_)))
 }
 
-pub fn get_agent_skills_dir(
-    agent: &str,
-    project_root: &Path,
-    global: bool,
-) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    if !is_supported_agent(agent) {
-        return Err(format!("Unsupported agent '{}'", agent).into());
-    }
-
-    let target_base = if global {
-        get_global_agent_skills_dir(agent)
-    } else {
-        get_project_agent_skills_dir(agent, project_root)
-    };
-
-    target_base
-        .ok_or_else(|| format!("Could not determine skills directory for '{}'", agent).into())
-}
-
 pub fn get_skill_target_path(
     base_dir: &Path,
     skill_name: &str,
@@ -583,9 +639,28 @@ pub fn link_skill(
         return Err(format!("Missing SKILL.md in: {:?}", source_dir).into());
     }
 
-    for agent in agents {
-        let base_dir = get_agent_skills_dir(agent, project_root, global)?;
-        validate_skill_target_parent(&base_dir, &skill.name)?;
+    let targets = resolve_agent_skill_targets(agents, project_root, global)?;
+    for target in &targets {
+        let base_dir = &target.path;
+        validate_skill_target_parent(base_dir, &skill.name)?;
+        let skill_target = get_skill_target_path(base_dir, &skill.name)?;
+
+        match fs::symlink_metadata(&skill_target) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {}
+            Ok(_) => {
+                return Err(format!(
+                    "Refusing to replace existing non-symlink path: {:?}",
+                    skill_target
+                )
+                .into());
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+
+    for target in targets {
+        let base_dir = target.path;
         let skill_target = get_skill_target_path(&base_dir, &skill.name)?;
 
         if let Some(parent) = skill_target.parent() {
@@ -631,8 +706,9 @@ pub fn plan_skill_unlink(
     let expected_source = resolve_skill_source_dir(skill, project_root)?;
     let mut targets = Vec::new();
 
-    for agent in agents {
-        let base_dir = get_agent_skills_dir(agent, project_root, global)?;
+    for target in resolve_agent_skill_targets(agents, project_root, global)? {
+        let agent = target.agents.join(", ");
+        let base_dir = target.path;
         validate_skill_target_parent(&base_dir, &skill.name)?;
         let skill_path = get_skill_target_path(&base_dir, &skill.name)?;
 
@@ -756,10 +832,7 @@ fn symlink_matches_expected(
 }
 
 pub fn is_supported_agent(agent: &str) -> bool {
-    matches!(
-        agent,
-        "claude" | "codex" | "cursor" | "copilot" | "grok" | "hermes"
-    )
+    SUPPORTED_AGENTS.contains(&agent)
 }
 
 pub(crate) fn is_safe_registry_name(name: &str) -> bool {
@@ -1128,7 +1201,76 @@ mod tests {
     fn rejects_unknown_agents() {
         let agents = vec!["codxe".to_string()];
 
-        assert!(validate_agents(&agents).is_err());
+        let error = validate_agents(&agents).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("Supported agents: claude, codex"));
+        assert!(error.to_string().contains("qwen, hermes"));
+    }
+
+    #[test]
+    fn resolves_every_supported_agent_to_the_documented_paths() {
+        let project = Path::new("/project");
+        let cases = [
+            ("claude", ".claude/skills", ".claude/skills"),
+            ("codex", ".agents/skills", ".agents/skills"),
+            ("copilot", ".github/skills", ".copilot/skills"),
+            ("cursor", ".cursor/skills", ".cursor/skills"),
+            ("antigravity", ".agents/skills", ".gemini/config/skills"),
+            ("pi", ".pi/skills", ".pi/agent/skills"),
+            ("opencode", ".opencode/skills", ".config/opencode/skills"),
+            ("cline", ".cline/skills", ".cline/skills"),
+            ("kilo", ".kilo/skills", ".kilo/skills"),
+            ("gemini-cli", ".gemini/skills", ".gemini/skills"),
+            ("goose", ".agents/skills", ".agents/skills"),
+            ("crush", ".crush/skills", ".config/crush/skills"),
+            ("openhands", ".agents/skills", ".openhands/skills"),
+            ("grok", ".grok/skills", ".grok/skills"),
+            ("qwen", ".qwen/skills", ".qwen/skills"),
+        ];
+
+        assert_eq!(SUPPORTED_AGENTS.len(), 16);
+        for (agent, project_path, global_path) in cases {
+            assert_eq!(
+                get_project_agent_skills_dirs(agent, project).unwrap(),
+                vec![project.join(project_path)]
+            );
+            assert_eq!(agent_skill_paths(agent, true).unwrap(), &[global_path]);
+        }
+        assert_eq!(
+            get_project_agent_skills_dirs("hermes", project).unwrap(),
+            Vec::<PathBuf>::new()
+        );
+        assert_eq!(
+            agent_skill_paths("hermes", true).unwrap(),
+            &[".hermes/skills"]
+        );
+    }
+
+    #[test]
+    fn deduplicates_shared_agent_targets_and_records_claimants() {
+        let project = Path::new("/project");
+        let agents = ["codex", "goose", "openhands", "antigravity"]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+
+        let targets = resolve_agent_skill_targets(&agents, project, false).unwrap();
+
+        assert_eq!(
+            targets,
+            vec![AgentSkillTarget {
+                path: project.join(".agents/skills"),
+                agents,
+            }]
+        );
+    }
+
+    #[test]
+    fn project_hermes_has_no_link_target() {
+        let project = Path::new("/project");
+        let targets = resolve_agent_skill_targets(&["hermes".to_string()], project, false).unwrap();
+        assert!(targets.is_empty());
     }
 
     #[test]
