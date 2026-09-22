@@ -871,35 +871,44 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let resolved = linker::resolve_skill_dependency_closure(&config.skills, &current_dir)?;
             for skill in &resolved {
                 let mut status = "OK".to_string();
-                let mut linked_agents = Vec::new();
-                let mut bad_links = Vec::new();
+                let mut linked_targets = Vec::new();
+                let mut bad_targets = Vec::new();
                 let source_dir = linker::resolve_skill_source_dir(skill, &current_dir)?;
                 let source_exists = source_dir.exists();
+                let targets =
+                    linker::resolve_agent_skill_targets(&config.agents, &current_dir, global)?;
 
-                for agent in &config.agents {
-                    let base = linker::get_agent_skills_dir(agent, &current_dir, global)?;
-                    let path = linker::get_skill_target_path(&base, &skill.name)?;
+                for target in &targets {
+                    let path = linker::get_skill_target_path(&target.path, &skill.name)?;
+                    let label = format!("{} [{}]", target.path.display(), target.agents.join(", "));
                     if path.is_symlink()
                         && source_exists
                         && linker::symlink_points_to(&path, &source_dir)?
                     {
-                        linked_agents.push(agent.as_str());
+                        linked_targets.push(label);
                     } else if path.exists() || path.is_symlink() {
-                        bad_links.push(agent.as_str());
+                        bad_targets.push(label);
                     }
                 }
 
                 if !source_exists {
                     status = "SOURCE MISSING".to_string();
-                } else if !bad_links.is_empty() {
-                    status = format!("BAD LINK ({:?})", bad_links);
-                } else if linked_agents.is_empty() {
+                } else if !bad_targets.is_empty() {
+                    status = format!("BAD LINK ({})", bad_targets.join(", "));
+                } else if linked_targets.is_empty() && !targets.is_empty() {
                     status = "MISSING/NOT LINKED".to_string();
-                } else if linked_agents.len() < config.agents.len() {
-                    status = format!("PARTIALLY LINKED ({:?})", linked_agents);
+                } else if linked_targets.len() < targets.len() {
+                    status = format!("PARTIALLY LINKED ({})", linked_targets.join(", "));
                 }
 
                 println!(" - {} (Status: {})", skill.name, status);
+                for target in &targets {
+                    println!(
+                        "   - {} (agents: {})",
+                        target.path.display(),
+                        target.agents.join(", ")
+                    );
+                }
             }
             if config.toolkit.is_some() {
                 toolkit::list(&current_dir)?;
@@ -931,13 +940,17 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 // Verify links
-                for agent in &config.agents {
-                    let base = linker::get_agent_skills_dir(agent, &current_dir, global)?;
-                    let path = linker::get_skill_target_path(&base, &skill.name)?;
+                for target in
+                    linker::resolve_agent_skill_targets(&config.agents, &current_dir, global)?
+                {
+                    let path = linker::get_skill_target_path(&target.path, &skill.name)?;
+                    let agents = target.agents.join(", ");
                     if !path.is_symlink() {
                         eprintln!(
-                            "[FAIL] Missing symlink for agent '{}' to skill '{}'",
-                            agent, skill.name
+                            "[FAIL] Missing symlink at '{}' for agents [{}] to skill '{}'",
+                            path.display(),
+                            agents,
+                            skill.name
                         );
                         all_ok = false;
                         continue;
@@ -945,8 +958,10 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
 
                     if !linker::symlink_points_to(&path, &source_dir)? {
                         eprintln!(
-                            "[FAIL] Link for agent '{}' to skill '{}' points at the wrong target",
-                            agent, skill.name
+                            "[FAIL] Link at '{}' for agents [{}] to skill '{}' points at the wrong target",
+                            path.display(),
+                            agents,
+                            skill.name
                         );
                         all_ok = false;
                     }

@@ -286,3 +286,32 @@ and checksum, binary identity, tag, and manifest verification in
 `workspace/agents/memory/facts.md`. The sequential init, trusted updater, and
 dedicated search-add specifications now record their confirmed release in
 `done`.
+
+## 2026-09-22 - Record explicit deduplicated agent skill targets
+
+- Type: decision
+- Source: spec
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded in `workspace/agents/memory/decisions.md` that agent skill paths stay
+compiled into SKM and shared filesystem targets retain all claimants while
+being processed once. Recorded the sixteen supported agents and corrected
+Codex and Hermes target behavior in `workspace/agents/memory/facts.md`.
+
+## 2026-09-22 - Record Workspace Docs 6 toolkit compatibility
+
+- Type: fact
+- Source: spec
+- Confidence: high
+- Review: before the first production release containing this change
+- Supersedes: 2026-08-19 - Support Workspace Docs 5 Toolkits (supported-major set only)
+
+Content:
+
+Recorded in `workspace/agents/memory/facts.md` that the explicit toolkit
+compatibility allowlist now accepts Workspace Docs 4.x, 5.x, and 6.x while
+remaining fail-closed for missing, malformed, and future-major declarations.

@@ -4,8 +4,8 @@
 toolkits from a declarative `skills.yaml` manifest.
 
 It installs skills by creating symlinks into supported agent skill directories,
-so a project can declare the skills it needs once and keep Claude, Codex,
-Cursor, Copilot, Grok, and Hermes in sync. Toolkit projects can also select
+so a project can declare the skills it needs once and keep all sixteen
+supported agent clients in sync. Toolkit projects can also select
 versioned bundles and portable role profiles, render agent-specific projections,
 and commit a deterministic `skills.lock.yaml`.
 
@@ -338,7 +338,7 @@ contain symlinks. The committed `skills.lock.yaml` records toolkit and workspace
 versions and integrity, resolved skill and profile versions and integrity,
 adapter versions and capabilities, and every managed output.
 
-SKM 0.4 accepts toolkit packages targeting Workspace Docs 4.x or 5.x and
+SKM accepts toolkit packages targeting Workspace Docs 4.x, 5.x, or 6.x and
 toolkit skill entries with dependency IDs. Selected bundles expand the complete
 toolkit dependency closure. The current Workspace toolkit uses the 5.x
 `backlog -> development -> test -> done`
@@ -351,27 +351,30 @@ labeled generated skill fallback under `.cursor/skills/`.
 
 ## Link Targets
 
-Project-local mode links skills under the current project:
+| Agent | Project path | Global path |
+| --- | --- | --- |
+| Claude | `.claude/skills` | `~/.claude/skills` |
+| Codex | `.agents/skills` | `~/.agents/skills` |
+| Copilot | `.github/skills` | `~/.copilot/skills` |
+| Cursor | `.cursor/skills` | `~/.cursor/skills` |
+| Antigravity | `.agents/skills` | `~/.gemini/config/skills` |
+| Pi | `.pi/skills` | `~/.pi/agent/skills` |
+| OpenCode | `.opencode/skills` | `~/.config/opencode/skills` |
+| Cline | `.cline/skills` | `~/.cline/skills` |
+| Kilo Code | `.kilo/skills` | `~/.kilo/skills` |
+| Gemini CLI | `.gemini/skills` | `~/.gemini/skills` |
+| Goose | `.agents/skills` | `~/.agents/skills` |
+| Crush | `.crush/skills` | `~/.config/crush/skills` |
+| OpenHands | `.agents/skills` | `~/.openhands/skills` |
+| Grok | `.grok/skills` | `~/.grok/skills` |
+| Qwen Code | `.qwen/skills` | `~/.qwen/skills` |
+| Hermes | *(none)* | `~/.hermes/skills` |
 
-```txt
-.claude/skills
-.agents/skills              # Codex and other Agent Skills clients
-.cursor/skills
-.github/skills
-.grok/skills
-.hermes/skills
-```
-
-Global mode links under the current user's home directory:
-
-```txt
-~/.claude/skills
-~/.agents/skills             # Codex and other Agent Skills clients
-~/.cursor/skills
-~/.copilot/skills
-~/.grok/skills
-~/.hermes/skills
-```
+When multiple selected agents use the same directory, SKM writes and checks it
+once and records every claimant in `skills.lock.yaml`. Hermes does not scan a
+project-local skills directory; users who want project content available to
+Hermes can add a shared directory through `external_dirs` in
+`~/.hermes/config.yaml`.
 
 ## Safety
 

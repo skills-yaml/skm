@@ -11,6 +11,8 @@ use walkdir::WalkDir;
 const LOCKFILE_NAME: &str = "skills.lock.yaml";
 const TRANSACTION_PATH: &str = ".skm/transactions/current";
 const ADAPTER_VERSION: &str = "2.0.0";
+const WORKSPACE_DOCS_COMPATIBILITY_ERROR: &str =
+    "toolkit must declare a supported workspace_docs_compatibility: 4.x, 5.x, or 6.x";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -19,11 +21,24 @@ struct ToolkitManifest {
     id: String,
     version: String,
     minimum_skm_version: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_workspace_docs_compatibility")]
     workspace_docs_compatibility: Option<String>,
     skills: Vec<ToolkitSkill>,
     profiles: Vec<ToolkitProfile>,
     bundles: Vec<ToolkitBundle>,
+}
+
+fn deserialize_workspace_docs_compatibility<'de, D>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    match serde_yaml::Value::deserialize(deserializer)? {
+        serde_yaml::Value::Null => Ok(None),
+        serde_yaml::Value::String(value) => Ok(Some(value)),
+        _ => Err(serde::de::Error::custom(WORKSPACE_DOCS_COMPATIBILITY_ERROR)),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -127,6 +142,8 @@ pub struct LockedProfile {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct LockedOutput {
     pub agent: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub claimants: Vec<String>,
     pub path: String,
     pub kind: String,
     pub integrity: String,
@@ -245,11 +262,21 @@ pub fn list(project_root: &Path) -> Result<(), Box<dyn std::error::Error>> {
             .collect::<Vec<_>>()
             .join(", ")
     );
-    for agent in lock.agents {
+    for agent in &lock.agents {
         println!(
             "Agent: {} (adapter {}, profiles: {})",
             agent.id, agent.adapter_version, agent.profile_capability
         );
+    }
+    for output in &lock.outputs {
+        if output.kind == "skill-link" {
+            let claimants = if output.claimants.is_empty() {
+                output.agent.clone()
+            } else {
+                output.claimants.join(", ")
+            };
+            println!("Skill target: {} (agents: {})", output.path, claimants);
+        }
     }
     println!("Managed outputs: {}", lock.outputs.len());
     Ok(())
@@ -585,14 +612,17 @@ fn materialize_outputs(
     profiles: &[ResolvedProfile],
 ) -> Result<Vec<DesiredOutput>, Box<dyn std::error::Error>> {
     let mut outputs = Vec::new();
-    for agent in &config.agents {
-        let base = linker::get_project_agent_skills_dir(agent, project_root)
-            .ok_or_else(|| format!("unsupported project adapter: {agent}"))?;
+    for target_group in linker::resolve_agent_skill_targets(&config.agents, project_root, false)? {
         for skill in skills {
-            let target = linker::get_skill_target_path(&base, &skill.lock.id)?;
+            let target = linker::get_skill_target_path(&target_group.path, &skill.lock.id)?;
             outputs.push(DesiredOutput {
                 lock: LockedOutput {
-                    agent: agent.clone(),
+                    agent: target_group
+                        .agents
+                        .first()
+                        .expect("resolved target has at least one claimant")
+                        .clone(),
+                    claimants: target_group.agents.clone(),
                     path: relative_string_for_output(project_root, &target)?,
                     kind: "skill-link".to_string(),
                     integrity: skill.lock.integrity.clone(),
@@ -607,7 +637,9 @@ fn materialize_outputs(
                 kind: DesiredKind::Symlink(skill.source_path.clone()),
             });
         }
+    }
 
+    for agent in &config.agents {
         for resolved in profiles {
             let profile = &resolved.profile;
             match agent.as_str() {
@@ -619,6 +651,7 @@ fn materialize_outputs(
                     outputs.push(DesiredOutput {
                         lock: LockedOutput {
                             agent: agent.clone(),
+                            claimants: vec![agent.clone()],
                             path: relative_string_for_output(project_root, &target)?,
                             kind: "native-profile".to_string(),
                             integrity: hash_bytes(&content),
@@ -636,6 +669,7 @@ fn materialize_outputs(
                     outputs.push(DesiredOutput {
                         lock: LockedOutput {
                             agent: "shared".to_string(),
+                            claimants: Vec::new(),
                             path: relative_string_for_output(project_root, &generated)?,
                             kind: "generated-profile".to_string(),
                             integrity: hash_bytes(&content),
@@ -648,6 +682,7 @@ fn materialize_outputs(
                     outputs.push(DesiredOutput {
                         lock: LockedOutput {
                             agent: agent.clone(),
+                            claimants: vec![agent.clone()],
                             path: relative_string_for_output(project_root, &target)?,
                             kind: "profile-fallback-link".to_string(),
                             integrity: outputs
@@ -700,11 +735,9 @@ fn validate_manifest(
     }
     if !matches!(
         manifest.workspace_docs_compatibility.as_deref(),
-        Some("4.x" | "5.x")
+        Some("4.x" | "5.x" | "6.x")
     ) {
-        return Err(
-            "toolkit must declare a supported workspace_docs_compatibility: 4.x or 5.x".into(),
-        );
+        return Err(WORKSPACE_DOCS_COMPATIBILITY_ERROR.into());
     }
     ensure_unique_ids(manifest.skills.iter().map(|item| item.id.as_str()), "skill")?;
     ensure_unique_ids(
@@ -1449,24 +1482,41 @@ fn validate_locked_output(output: &LockedOutput) -> Result<(), Box<dyn std::erro
     }
     match output.kind.as_str() {
         "skill-link" => {
-            let prefixes: &[&Path] = match output.agent.as_str() {
-                "claude" => &[Path::new(".claude/skills")],
-                "codex" => &[Path::new(".agents/skills"), Path::new(".codex/skills")],
-                "cursor" => &[Path::new(".cursor/skills")],
-                "copilot" => &[Path::new(".github/skills")],
-                "grok" => &[Path::new(".grok/skills")],
-                "hermes" => &[Path::new(".hermes/skills")],
-                agent => return Err(format!("unknown lockfile adapter: {agent}").into()),
+            let claimants = if output.claimants.is_empty() {
+                vec![output.agent.as_str()]
+            } else {
+                if output.claimants.first().map(String::as_str) != Some(output.agent.as_str()) {
+                    return Err("skill output primary agent must be its first claimant".into());
+                }
+                output.claimants.iter().map(String::as_str).collect()
             };
-            let skill = prefixes
-                .iter()
-                .find_map(|prefix| path.strip_prefix(prefix).ok())
-                .ok_or_else(|| {
-                    format!(
-                        "skill output is outside the {} adapter namespace",
-                        output.agent
-                    )
-                })?;
+            let mut skill = None;
+            for claimant in claimants {
+                let prefixes = linker::project_agent_skill_paths(claimant)
+                    .ok_or_else(|| format!("unknown lockfile adapter: {claimant}"))?;
+                let matched = prefixes
+                    .iter()
+                    .find_map(|prefix| path.strip_prefix(prefix).ok())
+                    .or_else(|| {
+                        (output.claimants.is_empty()
+                            && claimant == "codex"
+                            && path.starts_with(".codex/skills"))
+                        .then(|| path.strip_prefix(".codex/skills").expect("checked prefix"))
+                    })
+                    .or_else(|| {
+                        (output.claimants.is_empty()
+                            && claimant == "hermes"
+                            && path.starts_with(".hermes/skills"))
+                        .then(|| path.strip_prefix(".hermes/skills").expect("checked prefix"))
+                    })
+                    .ok_or_else(|| {
+                        format!("skill output is outside the {claimant} adapter namespace")
+                    })?;
+                if skill.is_none() {
+                    skill = Some(matched);
+                }
+            }
+            let skill = skill.ok_or("skill output has no adapter claimants")?;
             linker::validated_skill_path(
                 skill
                     .to_str()
@@ -1694,6 +1744,167 @@ mod tests {
     }
 
     #[test]
+    fn shared_agent_directory_has_one_output_with_all_claimants() {
+        let (temp, mut config) = fixture();
+        let manifest_path = temp
+            .path()
+            .join("workspace/instructions/toolkit/manifest.yaml");
+        let manifest = fs::read_to_string(&manifest_path).unwrap();
+        fs::write(
+            &manifest_path,
+            manifest.replace(
+                "    profiles:\n      - delivery-planner",
+                "    profiles: []",
+            ),
+        )
+        .unwrap();
+        config.agents = ["codex", "goose", "openhands", "antigravity"]
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+
+        let plan = build_plan(&config, temp.path()).unwrap();
+        let outputs = plan
+            .lock
+            .outputs
+            .iter()
+            .filter(|output| output.path == ".agents/skills/write-spec")
+            .collect::<Vec<_>>();
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].claimants, config.agents);
+        assert_eq!(
+            plan.public
+                .actions
+                .iter()
+                .filter(|action| action.path == ".agents/skills/write-spec")
+                .count(),
+            1
+        );
+
+        apply_plan(temp.path(), plan, None).unwrap();
+        check(&config, temp.path()).unwrap();
+        assert!(build_plan(&config, temp.path())
+            .unwrap()
+            .public
+            .actions
+            .is_empty());
+    }
+
+    #[test]
+    fn installs_and_checks_all_sixteen_agents() {
+        let (temp, mut config) = fixture();
+        let manifest_path = temp
+            .path()
+            .join("workspace/instructions/toolkit/manifest.yaml");
+        let manifest = fs::read_to_string(&manifest_path).unwrap();
+        fs::write(
+            &manifest_path,
+            manifest.replace(
+                "    profiles:\n      - delivery-planner",
+                "    profiles: []",
+            ),
+        )
+        .unwrap();
+        config.agents = linker::SUPPORTED_AGENTS
+            .iter()
+            .map(|agent| (*agent).to_string())
+            .collect();
+
+        let plan = build_plan(&config, temp.path()).unwrap();
+        apply_plan(temp.path(), plan, None).unwrap();
+        check(&config, temp.path()).unwrap();
+
+        assert!(!temp.path().join(".hermes/skills").exists());
+        assert!(temp.path().join(".agents/skills/write-spec").is_symlink());
+        assert!(temp.path().join(".qwen/skills/write-spec").is_symlink());
+    }
+
+    #[test]
+    fn hermes_project_target_is_removed_only_when_owned_by_previous_lock() {
+        let (temp, mut config) = fixture();
+        let root = temp.path();
+        apply_plan(root, build_plan(&config, root).unwrap(), None).unwrap();
+
+        let current = root.join(".agents/skills/write-spec");
+        let legacy = root.join(".hermes/skills/write-spec");
+        fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        fs::rename(&current, &legacy).unwrap();
+        let lock_path = root.join(LOCKFILE_NAME);
+        let mut lock: SkillsLock = serde_yaml::from_slice(&fs::read(&lock_path).unwrap()).unwrap();
+        let legacy_output = lock
+            .outputs
+            .iter()
+            .find(|output| output.agent == "codex" && output.kind == "skill-link")
+            .unwrap()
+            .clone();
+        lock.agents = vec![LockedAgent {
+            id: "hermes".to_string(),
+            adapter_version: ADAPTER_VERSION.to_string(),
+            profile_capability: "skills-only".to_string(),
+        }];
+        lock.outputs = vec![LockedOutput {
+            agent: "hermes".to_string(),
+            claimants: Vec::new(),
+            path: ".hermes/skills/write-spec".to_string(),
+            ..legacy_output
+        }];
+        fs::write(&lock_path, serde_yaml::to_string(&lock).unwrap()).unwrap();
+
+        let manifest_path = root.join("workspace/instructions/toolkit/manifest.yaml");
+        let manifest = fs::read_to_string(&manifest_path).unwrap();
+        fs::write(
+            manifest_path,
+            manifest.replace(
+                "    profiles:\n      - delivery-planner",
+                "    profiles: []",
+            ),
+        )
+        .unwrap();
+        config.agents = vec!["hermes".to_string()];
+        let plan = build_plan(&config, root).unwrap();
+        assert!(plan
+            .public
+            .actions
+            .iter()
+            .any(|action| action.action == "remove" && action.path == ".hermes/skills/write-spec"));
+        apply_plan(root, plan, None).unwrap();
+        assert!(!legacy.exists() && !legacy.is_symlink());
+        assert!(!root.join(".hermes/skills/write-spec").exists());
+    }
+
+    #[test]
+    fn hermes_project_target_leaves_unmanaged_content_untouched() {
+        let (temp, mut config) = fixture();
+        let root = temp.path();
+        let unmanaged = root.join(".hermes/skills/write-spec");
+        fs::create_dir_all(&unmanaged).unwrap();
+        fs::write(unmanaged.join("keep"), "user data").unwrap();
+        let manifest_path = root.join("workspace/instructions/toolkit/manifest.yaml");
+        let manifest = fs::read_to_string(&manifest_path).unwrap();
+        fs::write(
+            manifest_path,
+            manifest.replace(
+                "    profiles:\n      - delivery-planner",
+                "    profiles: []",
+            ),
+        )
+        .unwrap();
+        config.agents = vec!["hermes".to_string()];
+
+        let plan = build_plan(&config, root).unwrap();
+        assert!(!plan
+            .public
+            .actions
+            .iter()
+            .any(|action| action.path == ".hermes/skills/write-spec"));
+        apply_plan(root, plan, None).unwrap();
+        assert_eq!(
+            fs::read_to_string(unmanaged.join("keep")).unwrap(),
+            "user data"
+        );
+    }
+
+    #[test]
     fn toolkit_bundle_expands_transitive_skill_dependencies() {
         let (temp, mut config) = fixture();
         let root = temp.path();
@@ -1790,11 +2001,13 @@ mod tests {
             .find(|agent| agent.id == "codex")
             .unwrap()
             .adapter_version = "1.0.0".to_string();
-        lock.outputs
+        let legacy_output = lock
+            .outputs
             .iter_mut()
             .find(|output| output.agent == "codex" && output.kind == "skill-link")
-            .unwrap()
-            .path = ".codex/skills/write-spec".to_string();
+            .unwrap();
+        legacy_output.path = ".codex/skills/write-spec".to_string();
+        legacy_output.claimants.clear();
         fs::write(&lock_path, serde_yaml::to_string(&lock).unwrap()).unwrap();
 
         let plan = build_plan(&config, root).unwrap();
@@ -1820,11 +2033,13 @@ mod tests {
         apply_plan(root, build_plan(&config, root).unwrap(), None).unwrap();
         let lock_path = root.join(LOCKFILE_NAME);
         let mut lock: SkillsLock = serde_yaml::from_slice(&fs::read(&lock_path).unwrap()).unwrap();
-        lock.outputs
+        let legacy_output = lock
+            .outputs
             .iter_mut()
             .find(|output| output.agent == "codex" && output.kind == "skill-link")
-            .unwrap()
-            .path = ".codex/skills/write-spec".to_string();
+            .unwrap();
+        legacy_output.path = ".codex/skills/write-spec".to_string();
+        legacy_output.claimants.clear();
         fs::write(&lock_path, serde_yaml::to_string(&lock).unwrap()).unwrap();
 
         let error = build_plan(&config, root).err().unwrap();
@@ -1853,7 +2068,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unsupported_workspace_docs_compatibility() {
+    fn installs_workspace_docs_6_toolkit_and_is_byte_idempotent() {
         let (temp, config) = fixture();
         let manifest_path = temp
             .path()
@@ -1868,10 +2083,85 @@ mod tests {
         )
         .unwrap();
 
+        let first = build_plan(&config, temp.path()).unwrap();
+        apply_plan(temp.path(), first, None).unwrap();
+        check(&config, temp.path()).unwrap();
+        let lock_path = temp.path().join(LOCKFILE_NAME);
+        let first_lock = fs::read(&lock_path).unwrap();
+        let second = build_plan(&config, temp.path()).unwrap();
+        assert!(second.public.actions.is_empty());
+        apply_plan(temp.path(), second, None).unwrap();
+        assert_eq!(fs::read(lock_path).unwrap(), first_lock);
+    }
+
+    #[test]
+    fn rejects_unsupported_workspace_docs_compatibility() {
+        let (temp, config) = fixture();
+        let manifest_path = temp
+            .path()
+            .join("workspace/instructions/toolkit/manifest.yaml");
+        let manifest = fs::read_to_string(&manifest_path).unwrap();
+        fs::write(
+            manifest_path,
+            manifest.replace(
+                "workspace_docs_compatibility: 4.x",
+                "workspace_docs_compatibility: 7.x",
+            ),
+        )
+        .unwrap();
+
         let error = build_plan(&config, temp.path()).err().unwrap();
         assert!(error
             .to_string()
-            .contains("supported workspace_docs_compatibility: 4.x or 5.x"));
+            .contains("supported workspace_docs_compatibility: 4.x, 5.x, or 6.x"));
+        assert!(!temp.path().join(LOCKFILE_NAME).exists());
+        assert!(!temp.path().join(".agents/skills/write-spec").exists());
+    }
+
+    #[test]
+    fn rejects_missing_and_malformed_workspace_docs_compatibility_before_writes() {
+        for replacement in ["", "workspace_docs_compatibility: 6"] {
+            let (temp, config) = fixture();
+            let manifest_path = temp
+                .path()
+                .join("workspace/instructions/toolkit/manifest.yaml");
+            let manifest = fs::read_to_string(&manifest_path).unwrap();
+            fs::write(
+                manifest_path,
+                manifest.replace("workspace_docs_compatibility: 4.x", replacement),
+            )
+            .unwrap();
+
+            let error = build_plan(&config, temp.path()).err().unwrap();
+            assert!(error
+                .to_string()
+                .contains("supported workspace_docs_compatibility: 4.x, 5.x, or 6.x"));
+            assert!(!temp.path().join(LOCKFILE_NAME).exists());
+            assert!(!temp.path().join(".agents/skills/write-spec").exists());
+        }
+    }
+
+    #[test]
+    fn workspace_docs_6_does_not_bypass_minimum_skm_version() {
+        let (temp, config) = fixture();
+        let manifest_path = temp
+            .path()
+            .join("workspace/instructions/toolkit/manifest.yaml");
+        let manifest = fs::read_to_string(&manifest_path).unwrap();
+        fs::write(
+            manifest_path,
+            manifest
+                .replace(
+                    "workspace_docs_compatibility: 4.x",
+                    "workspace_docs_compatibility: 6.x",
+                )
+                .replace("minimum_skm_version: 0.2.0", "minimum_skm_version: 99.0.0"),
+        )
+        .unwrap();
+
+        let error = build_plan(&config, temp.path()).err().unwrap();
+        assert!(error.to_string().contains("toolkit requires SKM 99.0.0"));
+        assert!(!temp.path().join(LOCKFILE_NAME).exists());
     }
 
     #[test]

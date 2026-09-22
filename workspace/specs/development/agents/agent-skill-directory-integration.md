@@ -2,9 +2,11 @@
 
 ## Status
 
-State: backlog
+State: development
 
-Move to `development` when implementation starts. Nothing here is implemented.
+Implementation and local validation are complete on
+`feat/backlog-specs-implementation`. The spec remains in `development` until
+the branch is integrated into the configured `development` test target.
 
 ## Overview
 
@@ -192,13 +194,29 @@ The registry describes skills; SKM decides where they land.
 
 ## Memory Impact
 
-Status: pending
+Status: updated
 
-Rationale: On implementation, record in `workspace/agents/memory/decisions.md`
-that skill directory paths are compiled into SKM rather than registry-supplied,
-and that one filesystem directory may serve several agents. Record in
-`workspace/agents/memory/facts.md` the corrected Codex and Hermes targets, so
-the `.codex/skills` mistake is not reintroduced from memory of the old mapping.
+Rationale: `workspace/agents/memory/decisions.md` records that skill-directory
+paths are compiled into SKM and shared targets are processed once with all
+claimants retained. `workspace/agents/memory/facts.md` records the sixteen-agent
+set and the corrected Codex and Hermes targets. Corresponding entries were
+appended to `workspace/agents/memory/changelog.md`.
+
+## Implementation Evidence
+
+Completed locally on 2026-09-22 in `feat/backlog-specs-implementation`:
+
+- Explicit project and global path tables cover all sixteen agents; Hermes has
+  no project target.
+- Link, unlink, list, check, cleanup, version preview, local-development, and
+  toolkit flows use the shared deduplicating resolver.
+- Toolkit lock outputs record every claimant for a shared target, while legacy
+  singular lock outputs remain readable for safe migration.
+- SKM-owned legacy Codex and Hermes project outputs migrate safely; unmanaged
+  content at abandoned paths is preserved.
+- `task check`, `task test`, `task build`, `task test:init`, and
+  `git diff --check` passed. The Rust suite passed 129 tests, and workspace
+  validation passed all six tests.
 
 ## Evidence
 

@@ -223,16 +223,15 @@ pub fn use_version(
             skill_name, old_version, version
         );
         let project_root = config_path.parent().unwrap_or_else(|| Path::new("."));
-        for agent in &config.agents {
-            let base = linker::get_agent_skills_dir(agent, project_root, global)?;
-            let old_path = linker::get_skill_target_path(&base, skill_name)?;
+        for target in linker::resolve_agent_skill_targets(&config.agents, project_root, global)? {
+            let old_path = linker::get_skill_target_path(&target.path, skill_name)?;
             // Temporarily set version to resolve the new path
             let mut skill_temp = config.skills[skill_index].clone();
             skill_temp.version = Some(version.to_string());
             let new_path = linker::resolve_skill_source_dir(&skill_temp, project_root)?;
             println!(
-                "Would relink for agent '{}': {} -> {}",
-                agent,
+                "Would relink for agents '{}': {} -> {}",
+                target.agents.join(", "),
                 old_path.display(),
                 new_path.display()
             );
