@@ -315,3 +315,18 @@ Content:
 Recorded in `workspace/agents/memory/facts.md` that the explicit toolkit
 compatibility allowlist now accepts Workspace Docs 4.x, 5.x, and 6.x while
 remaining fail-closed for missing, malformed, and future-major declarations.
+
+## 2026-09-22 - Record development release of backlog implementations
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded the PR #38 `development` integration, passing CI, four-platform
+development release, and verified release manifest, Linux checksum, and binary
+identity in `workspace/agents/memory/facts.md`. Moved both integrated specs to
+`test` with the exact merge and workflow evidence.

@@ -216,3 +216,20 @@ Content:
 SKM's explicit toolkit compatibility allowlist accepts Workspace Docs `4.x`,
 `5.x`, and `6.x`. Missing, malformed, and future-major declarations remain
 fail-closed, and `minimum_skm_version` is enforced independently.
+
+## 2026-09-22 - Backlog implementations released to development
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+PR #38 integrated Workspace Docs 6 toolkit compatibility and sixteen-agent
+skill-directory support into `development` at
+`63b243a9dcd1de6e0c09dd248713e5503f6c85c6`. CI run `35761237089` passed.
+Release run `35761237088` built Linux, macOS Intel, macOS Apple Silicon, and
+Windows packages and published `development-latest`; its manifest, Linux
+checksum, and embedded development-channel commit identity were verified.

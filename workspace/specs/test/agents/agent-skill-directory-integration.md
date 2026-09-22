@@ -2,11 +2,11 @@
 
 ## Status
 
-State: development
+State: test
 
-Implementation and local validation are complete on
-`feat/backlog-specs-implementation`. The spec remains in `development` until
-the branch is integrated into the configured `development` test target.
+PR #38 integrated the implementation into `development` at `63b243a` on
+2026-09-22. Development CI and all four release builds passed, and the
+manifest-bound `development-latest` release was published and verified.
 
 ## Overview
 
@@ -217,6 +217,11 @@ Completed locally on 2026-09-22 in `feat/backlog-specs-implementation`:
 - `task check`, `task test`, `task build`, `task test:init`, and
   `git diff --check` passed. The Rust suite passed 129 tests, and workspace
   validation passed all six tests.
+- PR #38 merged into `development` at
+  `63b243a9dcd1de6e0c09dd248713e5503f6c85c6`. CI run `35761237089` passed;
+  release run `35761237088` built all four platforms and published the
+  manifest-bound `development-latest` release. The Linux checksum and embedded
+  development-channel commit identity were verified against that merge.
 
 ## Evidence
 
