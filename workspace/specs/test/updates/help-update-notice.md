@@ -1,7 +1,13 @@
 # Help update notice
 
-State: development
+State: test
 Primary feature: `updates`
+
+## Integration evidence
+
+Direct commit `2107f9e` integrated the implementation into this repository's
+configured `development` test branch on 2026-09-22. `task check` and `task test`
+passed before integration. Production release has not been confirmed.
 
 ## Problem
 
