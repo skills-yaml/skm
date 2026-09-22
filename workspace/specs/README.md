@@ -38,6 +38,7 @@ reopened, is superseded, or materially changes why it is in its state.
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
 | [workspace-docs-6-compatibility.md](backlog/workspace-toolkit/workspace-docs-6-compatibility.md) | `workspace-toolkit` | `backlog` | SKM 0.6.0 rejects Workspace Docs `6.x` toolkit manifests; the additive compatibility contract and end-to-end verification are specified but not implemented. |
+| [workspace-skill-bundle-install.md](backlog/workspace-toolkit/workspace-skill-bundle-install.md) | `workspace-toolkit` | `backlog` | Coordinated Workspace, Registry, and SKM contract is specified; canonical bundle publication and implementation have not started. |
 | [init-sequential-prompts.md](done/configuration/init-sequential-prompts.md) | `configuration` | `done` | PR #32 released SKM 0.6.0 through `main` at `769f5a4`; production CI, four-platform update qualification, publication, checksum, binary identity, and manifest verification passed. |
 | [nib-release-update-parity.md](done/updates/nib-release-update-parity.md) | `updates` | `done` | PR #32 released the corrected updater at `769f5a4`; required-reviewer gating held production until all four platforms passed qualification, then the complete manifest-bound release was verified. |
 | [adopt-workspace-docs-5.md](done/workspace-governance/adopt-workspace-docs-5.md) | `workspace-governance` | `done` | Released through `main` by PR #4 on 2026-09-05 (`e12ba7d`); `prod-latest` artifacts published successfully. |
