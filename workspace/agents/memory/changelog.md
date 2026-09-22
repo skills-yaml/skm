@@ -330,3 +330,17 @@ Recorded the PR #38 `development` integration, passing CI, four-platform
 development release, and verified release manifest, Linux checksum, and binary
 identity in `workspace/agents/memory/facts.md`. Moved both integrated specs to
 `test` with the exact merge and workflow evidence.
+
+## 2026-09-22 - Record help update notice decision
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded in `workspace/agents/memory/decisions.md` that interactive help
+requests show the available-update notice before Clap prints help. The
+implementation and local validation are tracked in the development spec.

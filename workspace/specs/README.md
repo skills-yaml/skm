@@ -37,6 +37,7 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
+| [help-update-notice.md](development/updates/help-update-notice.md) | `updates` | `development` | Help-path notification and local validation are complete; no PR integration into `development` or production release is confirmed. |
 | [workspace-docs-6-compatibility.md](test/workspace-toolkit/workspace-docs-6-compatibility.md) | `workspace-toolkit` | `test` | PR #38 integrated the implementation into `development` at `63b243a`; CI and the verified four-platform `development-latest` publication passed. |
 | [workspace-skill-bundle-install.md](backlog/workspace-toolkit/workspace-skill-bundle-install.md) | `workspace-toolkit` | `backlog` | Coordinated Workspace, Registry, and SKM contract is specified; canonical bundle publication and implementation have not started. |
 | [init-sequential-prompts.md](done/configuration/init-sequential-prompts.md) | `configuration` | `done` | PR #32 released SKM 0.6.0 through `main` at `769f5a4`; production CI, four-platform update qualification, publication, checksum, binary identity, and manifest verification passed. |

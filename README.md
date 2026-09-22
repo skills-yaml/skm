@@ -123,7 +123,8 @@ skm update --channel development --yes
 channel has a newer build. `--yes` is accepted for compatibility with older
 automation. Use `skm version` to print the embedded version, channel, and
 commit. Set `SKM_NO_UPDATE_CHECK=1` to suppress best-effort terminal startup
-notices.
+notices. Interactive help requests show the same available-update notice
+before the help text.
 
 ## Quick Start
 

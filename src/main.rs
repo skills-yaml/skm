@@ -663,7 +663,8 @@ fn main() {
         std::process::exit(exit_code);
     }
 
-    let cli = Cli::parse();
+    let cli = parse_cli_with_help_notice(env::args_os(), updater::maybe_print_startup_notice)
+        .unwrap_or_else(|error| error.exit());
 
     // Always ensure global environment is configured
     if let Err(e) = ensure_global_env() {
@@ -677,6 +678,22 @@ fn main() {
     if let Err(e) = run(cli.command) {
         eprintln!("Error: {}", e);
         std::process::exit(1);
+    }
+}
+
+fn parse_cli_with_help_notice<I, T>(args: I, notify: impl FnOnce()) -> Result<Cli, clap::Error>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString> + Clone,
+{
+    match Cli::try_parse_from(args) {
+        Ok(cli) => Ok(cli),
+        Err(error) => {
+            if error.kind() == clap::error::ErrorKind::DisplayHelp {
+                notify();
+            }
+            Err(error)
+        }
     }
 }
 
@@ -1407,6 +1424,37 @@ fn ensure_registries_cached(config: &SkillsConfig) -> Result<(), Box<dyn std::er
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod help_tests {
+    use super::*;
+    use std::cell::Cell;
+
+    #[test]
+    fn help_requests_notify_before_clap_exits() {
+        for args in [
+            vec!["skm", "help"],
+            vec!["skm", "--help"],
+            vec!["skm", "update", "--help"],
+        ] {
+            let notified = Cell::new(false);
+            let error = parse_cli_with_help_notice(args, || notified.set(true))
+                .err()
+                .expect("help exits through Clap");
+            assert_eq!(error.kind(), clap::error::ErrorKind::DisplayHelp);
+            assert!(notified.get());
+        }
+    }
+
+    #[test]
+    fn ordinary_commands_and_invalid_arguments_do_not_notify_during_parsing() {
+        for args in [vec!["skm", "version"], vec!["skm", "--invalid"]] {
+            let notified = Cell::new(false);
+            let _ = parse_cli_with_help_notice(args, || notified.set(true));
+            assert!(!notified.get());
+        }
+    }
 }
 
 #[cfg(test)]

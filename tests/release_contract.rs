@@ -45,7 +45,7 @@ fn windows_update_worker_dispatch_precedes_cli_parsing() {
         .find("updater::run_windows_update_worker_if_requested()")
         .expect("main must dispatch the private Windows updater worker");
     let cli_parsing = main
-        .find("let cli = Cli::parse();")
+        .find("parse_cli_with_help_notice(env::args_os()")
         .expect("main must parse the public CLI");
 
     assert!(
