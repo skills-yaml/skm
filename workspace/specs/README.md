@@ -27,6 +27,7 @@ integration or release event in the spec and in this catalog.
 | `registry` | Registry management commands. |
 | `maintenance` | Cleanup and maintenance commands. |
 | `updates` | Automatic update notification at launch. |
+| `agents` | Agent link targets and per-agent skill directory integration. |
 
 ## Status Catalog
 
@@ -36,6 +37,7 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
+| [workspace-docs-6-compatibility.md](backlog/workspace-toolkit/workspace-docs-6-compatibility.md) | `workspace-toolkit` | `backlog` | SKM 0.6.0 rejects Workspace Docs `6.x` toolkit manifests; the additive compatibility contract and end-to-end verification are specified but not implemented. |
 | [workspace-skill-bundle-install.md](backlog/workspace-toolkit/workspace-skill-bundle-install.md) | `workspace-toolkit` | `backlog` | Coordinated Workspace, Registry, and SKM contract is specified; canonical bundle publication and implementation have not started. |
 | [init-sequential-prompts.md](done/configuration/init-sequential-prompts.md) | `configuration` | `done` | PR #32 released SKM 0.6.0 through `main` at `769f5a4`; production CI, four-platform update qualification, publication, checksum, binary identity, and manifest verification passed. |
 | [nib-release-update-parity.md](done/updates/nib-release-update-parity.md) | `updates` | `done` | PR #32 released the corrected updater at `769f5a4`; required-reviewer gating held production until all four platforms passed qualification, then the complete manifest-bound release was verified. |
@@ -56,4 +58,5 @@ reopened, is superseded, or materially changes why it is in its state.
 | [init-tui-wizard.md](done/configuration/init-tui-wizard.md) | `configuration` | `done` | Released as SKM 0.3.0 through `main` by PR #8 on 2026-09-09 (`69c0b87`); all production packages and checksums published successfully. |
 | [skill-search.md](done/registry/skill-search.md) | `registry` | `done` | PR #18 released SKM 0.5.0 through `main` at `488860f`; production CI and all platform packages passed, and the Linux checksum, version, and search help were verified. |
 | [search-dedicated-add.md](done/registry/search-dedicated-add.md) | `registry` | `done` | PR #32 released the read-only search boundary in SKM 0.6.0 at `769f5a4`; production CI, publication, checksum, binary identity, and manifest verification passed. |
+| [agent-skill-directory-integration.md](backlog/agents/agent-skill-directory-integration.md) | `agents` | `backlog` | Accepted correction of the Codex and Hermes link targets plus sixteen-agent support; not started. |
 <!-- SPEC-CATALOG:END -->
