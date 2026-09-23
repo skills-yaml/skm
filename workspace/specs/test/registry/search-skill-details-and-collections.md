@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: The user requested clearer skill results, visible dependencies, and discovery of groups such as Workspace. Implementation is active; integration into `development` is not yet confirmed.
+Rationale: Commit `4c766e693d58fb399fbb7bf25f1939254eb2a65b` integrated the change into `development`. CI run `35924612401` passed and Release Artifacts run `35924612416` published the complete nine-asset `development-latest` prerelease for that commit. Production release is pending.
 
 ## Problem
 
