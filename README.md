@@ -181,20 +181,24 @@ Search configured project and inherited global registries by skill name:
 skm search spec
 ```
 
-Each result includes its registry, available version, `SKILL.md` description
-when present, and a command that adds and links it. Search also lists bundles
-published in configured registry manifests. If none are published, it says so;
-toolkit bundles are a separate source-repository feature. Use the dedicated add
+Each result labels its skill name, registry, available version, `SKILL.md`
+description, and exact declared dependencies when present. Search also lists
+namespace skill collections from registry manifests, including `workspace`,
+and shows the members of bundles explicitly published in schema-2 manifests.
+A collection shows what a namespace publishes; it is not itself an installable
+bundle. If no bundles are published, search says so. Toolkit bundles are a
+separate source-repository feature. Use the dedicated add
 command from a result:
 
 ```sh
 skm add software-development/spec --source default
 ```
 
-Use `--json` for machine-readable results and `--limit <number>` to bound the
-skill result list. Search is read-only; use `skm add` when you want to update
-the manifest and link a skill. Registry bundle installation has a separate
-planned command and is not available until bundles are published by a registry.
+Use `--json` for machine-readable results, including dependencies, collections,
+and bundle members, and `--limit <number>` to bound the skill result list.
+Search is read-only; use `skm add` when you want to update the manifest and link
+a skill. Group installation has a separate planned command and requires a
+registry-published bundle.
 
 Install the skills declared in `skills.yaml` into project-local agent folders:
 
@@ -259,9 +263,9 @@ skm workspace adopt|upgrade|repair [--target <version>] [--source <path-or-git-u
   every target, transactionally materializes each adapter, and writes the
   lockfile last.
 - `add`: adds one skill to `skills.yaml`, then links it.
-- `search`: searches configured registries by skill name, prints the skill
-  description and a dedicated `skm add` command, and lists published registry
-  bundles without changing project state.
+- `search`: searches configured registries by skill name, labels descriptions
+  and dependencies, prints a dedicated `skm add` command, and lists namespace
+  collections and published registry bundles without changing project state.
 - `list`: reports current link status, including missing sources and bad links.
 - `check`: verifies source directories, `SKILL.md`, symlink existence, and symlink targets; intended for CI.
 - `update`: checks the selected release channel and installs the latest release artifact.

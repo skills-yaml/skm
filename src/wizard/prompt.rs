@@ -423,7 +423,14 @@ fn search_skills<R: BufRead, W: Write>(
             entry.version
         )?;
         if let Some(description) = &entry.description {
-            writeln!(output, "     {description}")?;
+            writeln!(output, "     Description: {description}")?;
+        }
+        if !entry.dependencies.is_empty() {
+            writeln!(
+                output,
+                "     Dependencies: {}",
+                entry.dependencies.join(", ")
+            )?;
         }
     }
     if matches.len() > LIMIT {
@@ -961,6 +968,7 @@ mod tests {
             registry: "default".into(),
             version: "v1.0.0".into(),
             description: None,
+            dependencies: Vec::new(),
         };
         assert!(toggle_entry(&collision, &mut document.value).is_err());
         assert_eq!(document.value, original);
@@ -970,6 +978,7 @@ mod tests {
             registry: "company".into(),
             version: "v2.0.0".into(),
             description: None,
+            dependencies: Vec::new(),
         };
         assert!(entry_matches(&added, "SPEC company v2"));
         toggle_entry(&added, &mut document.value).unwrap();

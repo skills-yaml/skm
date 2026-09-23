@@ -311,7 +311,7 @@ fn normalize_published_skill(
     })
 }
 
-fn parse_skill_dependencies(
+pub(crate) fn parse_skill_dependencies(
     raw: Option<&str>,
 ) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
     let Some(raw) = raw else {

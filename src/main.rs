@@ -107,7 +107,7 @@ enum Commands {
         #[arg(short, long)]
         global: bool,
     },
-    /// Search configured registries for skills by name
+    /// Search configured registries for skills, dependencies, and groups
     Search {
         /// Skill name or part of a skill name
         query: String,
@@ -869,6 +869,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 &query,
                 &matches,
                 &discovery.bundles,
+                &discovery.collections,
                 &discovery.warnings,
                 limit,
                 json,

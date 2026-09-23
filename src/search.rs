@@ -14,10 +14,19 @@ pub struct Entry {
     pub registry: String,
     pub version: String,
     pub description: Option<String>,
+    pub dependencies: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Bundle {
+    pub id: String,
+    pub registry: String,
+    pub members: usize,
+    pub packages: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Collection {
     pub id: String,
     pub registry: String,
     pub members: usize,
@@ -27,6 +36,7 @@ pub struct Bundle {
 pub struct Discovery {
     pub entries: Vec<Entry>,
     pub bundles: Vec<Bundle>,
+    pub collections: Vec<Collection>,
     pub warnings: Vec<String>,
 }
 
@@ -36,6 +46,7 @@ struct SearchMatch<'a> {
     version: &'a str,
     registry: &'a str,
     description: Option<&'a str>,
+    dependencies: &'a [String],
     add_command: String,
 }
 
@@ -46,6 +57,7 @@ struct SearchOutput<'a> {
     total: usize,
     matches: Vec<SearchMatch<'a>>,
     bundles: &'a [Bundle],
+    collections: &'a [Collection],
     warnings: &'a [String],
 }
 
@@ -53,6 +65,7 @@ struct SearchOutput<'a> {
 struct RegistryContents {
     entries: Vec<Entry>,
     bundles: Vec<Bundle>,
+    collections: Vec<Collection>,
 }
 
 #[derive(Deserialize)]
@@ -113,6 +126,7 @@ fn discover_locations(
             Ok(contents) => {
                 discovery.entries.extend(contents.entries);
                 discovery.bundles.extend(contents.bundles);
+                discovery.collections.extend(contents.collections);
             }
             Err(message) => discovery.warnings.push(format!("{name}: {message}")),
         }
@@ -122,6 +136,9 @@ fn discover_locations(
         .sort_by(|a, b| (&a.name, &a.registry).cmp(&(&b.name, &b.registry)));
     discovery
         .bundles
+        .sort_by(|a, b| (&a.id, &a.registry).cmp(&(&b.id, &b.registry)));
+    discovery
+        .collections
         .sort_by(|a, b| (&a.id, &a.registry).cmp(&(&b.id, &b.registry)));
     Ok(discovery)
 }
@@ -183,9 +200,16 @@ fn scan_local(registry: &str, root: &Path) -> Result<RegistryContents, String> {
             .join(&entry.name)
             .join(&entry.version)
             .join("SKILL.md");
-        entry.description = fs::File::open(path).ok().and_then(description_from_reader);
+        if let Some(details) = fs::File::open(path)
+            .ok()
+            .and_then(skill_details_from_reader)
+        {
+            entry.description = details.description;
+            entry.dependencies = details.dependencies;
+        }
     }
     let mut bundles = Vec::new();
+    let mut collections = Vec::new();
     for namespace in fs::read_dir(&skills).map_err(|error| error.to_string())? {
         let namespace = namespace.map_err(|error| error.to_string())?;
         if !namespace.file_type().is_ok_and(|kind| kind.is_dir()) {
@@ -195,10 +219,16 @@ fn scan_local(registry: &str, root: &Path) -> Result<RegistryContents, String> {
         let Some(id) = id.to_str() else { continue };
         let manifest = namespace.path().join("manifest.yaml");
         if let Ok(file) = fs::File::open(manifest) {
-            bundles.extend(bundles_from_reader(file, registry, id));
+            let (collection, published) = groups_from_reader(file, registry, id);
+            collections.extend(collection);
+            bundles.extend(published);
         }
     }
-    Ok(RegistryContents { entries, bundles })
+    Ok(RegistryContents {
+        entries,
+        bundles,
+        collections,
+    })
 }
 
 fn scan_remote(registry: &str, location: &str) -> Result<RegistryContents, String> {
@@ -228,11 +258,16 @@ fn scan_remote(registry: &str, location: &str) -> Result<RegistryContents, Strin
     let mut entries = parse_tree(registry, &listing)?;
     for entry in &mut entries {
         let path = format!("HEAD:skills/{}/{}/SKILL.md", entry.name, entry.version);
-        entry.description = git_object(&repository, &path)
+        if let Some(details) = git_object(&repository, &path)
             .ok()
-            .and_then(|bytes| description_from_reader(bytes.as_slice()));
+            .and_then(|bytes| skill_details_from_reader(bytes.as_slice()))
+        {
+            entry.description = details.description;
+            entry.dependencies = details.dependencies;
+        }
     }
     let mut bundles = Vec::new();
+    let mut collections = Vec::new();
     for item in listing.split(|byte| *byte == 0) {
         let Ok(item) = std::str::from_utf8(item) else {
             continue;
@@ -253,10 +288,16 @@ fn scan_remote(registry: &str, location: &str) -> Result<RegistryContents, Strin
             continue;
         }
         if let Ok(bytes) = git_object(&repository, &format!("HEAD:{path}")) {
-            bundles.extend(bundles_from_reader(bytes.as_slice(), registry, namespace));
+            let (collection, published) = groups_from_reader(bytes.as_slice(), registry, namespace);
+            collections.extend(collection);
+            bundles.extend(published);
         }
     }
-    Ok(RegistryContents { entries, bundles })
+    Ok(RegistryContents {
+        entries,
+        bundles,
+        collections,
+    })
 }
 
 fn git_object(repository: &Path, object: &str) -> Result<Vec<u8>, String> {
@@ -265,43 +306,84 @@ fn git_object(repository: &Path, object: &str) -> Result<Vec<u8>, String> {
     run_git(command, Duration::from_secs(10))
 }
 
-fn description_from_reader(reader: impl Read) -> Option<String> {
+struct SkillDetails {
+    description: Option<String>,
+    dependencies: Vec<String>,
+}
+
+fn skill_details_from_reader(reader: impl Read) -> Option<SkillDetails> {
     let mut bytes = Vec::new();
     reader.take(16 * 1024).read_to_end(&mut bytes).ok()?;
     let content = std::str::from_utf8(&bytes).ok()?;
     let frontmatter = content.strip_prefix("---\n")?.split_once("\n---")?.0;
     let yaml: serde_yaml::Value = serde_yaml::from_str(frontmatter).ok()?;
-    let description = yaml.get("description")?.as_str()?;
-    let safe = description
-        .chars()
-        .map(|character| {
-            if character.is_control() {
-                ' '
-            } else {
-                character
-            }
+    let description = yaml.get("description").and_then(serde_yaml::Value::as_str);
+    let description = description
+        .map(|description| {
+            description
+                .chars()
+                .map(|character| {
+                    if character.is_control() {
+                        ' '
+                    } else {
+                        character
+                    }
+                })
+                .collect::<String>()
         })
-        .collect::<String>();
-    let normalized = safe.split_whitespace().collect::<Vec<_>>().join(" ");
-    if normalized.is_empty() {
-        None
-    } else {
-        Some(normalized.chars().take(1024).collect())
-    }
+        .and_then(|safe| {
+            let normalized = safe.split_whitespace().collect::<Vec<_>>().join(" ");
+            (!normalized.is_empty()).then(|| normalized.chars().take(1024).collect())
+        });
+    let dependencies = yaml
+        .get("metadata")
+        .and_then(|metadata| metadata.get("skm-dependencies"))
+        .and_then(serde_yaml::Value::as_str)
+        .and_then(|raw| crate::linker::parse_skill_dependencies(Some(raw)).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(name, version)| format!("{name}@{version}"))
+        .collect();
+    Some(SkillDetails {
+        description,
+        dependencies,
+    })
 }
 
-fn bundles_from_reader(reader: impl Read, registry: &str, namespace: &str) -> Vec<Bundle> {
+fn groups_from_reader(
+    reader: impl Read,
+    registry: &str,
+    namespace: &str,
+) -> (Vec<Collection>, Vec<Bundle>) {
     let mut bytes = Vec::new();
     if reader.take(64 * 1024).read_to_end(&mut bytes).is_err() {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
     let Ok(manifest) = serde_yaml::from_slice::<NamespaceManifest>(&bytes) else {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     };
-    if manifest.schema_version != 2 || manifest.namespace != namespace {
-        return Vec::new();
+    if !matches!(manifest.schema_version, 1 | 2)
+        || manifest.namespace != namespace
+        || manifest.packages.is_empty()
+        || manifest.packages.iter().any(|(id, version)| {
+            crate::linker::validate_skill_name(&format!("{namespace}/{id}")).is_err()
+                || version.split('.').count() != 3
+                || version
+                    .split('.')
+                    .any(|part| part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()))
+        })
+    {
+        return (Vec::new(), Vec::new());
     }
-    manifest
+    let collection = Collection {
+        id: namespace.to_owned(),
+        registry: registry.to_owned(),
+        members: manifest.packages.len(),
+    };
+    if manifest.schema_version == 1 {
+        return (vec![collection], Vec::new());
+    }
+    let bundles = manifest
         .bundles
         .into_iter()
         .filter_map(|(id, members)| {
@@ -329,13 +411,19 @@ fn bundles_from_reader(reader: impl Read, registry: &str, namespace: &str) -> Ve
             {
                 return None;
             }
+            let packages = member_set
+                .into_iter()
+                .map(|name| format!("{namespace}/{name}"))
+                .collect::<Vec<_>>();
             Some(Bundle {
                 id: format!("{namespace}/{id}"),
                 registry: registry.to_owned(),
-                members: member_set.len(),
+                members: packages.len(),
+                packages,
             })
         })
-        .collect()
+        .collect();
+    (vec![collection], bundles)
 }
 
 fn parse_tree(registry: &str, tree: &[u8]) -> Result<Vec<Entry>, String> {
@@ -399,6 +487,7 @@ fn entries(registry: &str, versions: BTreeMap<String, String>) -> Vec<Entry> {
             registry: registry.to_owned(),
             version,
             description: None,
+            dependencies: Vec::new(),
         })
         .collect()
 }
@@ -495,6 +584,7 @@ pub fn print_results(
     query: &str,
     matches: &[Entry],
     bundles: &[Bundle],
+    collections: &[Collection],
     warnings: &[String],
     limit: usize,
     json: bool,
@@ -510,6 +600,7 @@ pub fn print_results(
             version: &entry.version,
             registry: &entry.registry,
             description: entry.description.as_deref(),
+            dependencies: &entry.dependencies,
             add_command: add_command(entry),
         })
         .collect();
@@ -522,6 +613,7 @@ pub fn print_results(
                 total: matches.len(),
                 matches: visible,
                 bundles,
+                collections,
                 warnings,
             })?
         );
@@ -535,9 +627,13 @@ pub fn print_results(
         println!("No skills found matching '{}'.", query.trim());
     }
     for entry in visible {
-        println!("{}  {}  [{}]", entry.name, entry.version, entry.registry);
+        println!("Name: {}", entry.name);
+        println!("  Version: {}  Registry: {}", entry.version, entry.registry);
         if let Some(description) = entry.description {
-            println!("  {description}");
+            println!("  Description: {description}");
+        }
+        if !entry.dependencies.is_empty() {
+            println!("  Dependencies: {}", entry.dependencies.join(", "));
         }
         println!("  Add: {}", entry.add_command);
     }
@@ -554,6 +650,16 @@ pub fn print_results(
             println!(
                 "  {}  ({} skills)  [{}]",
                 bundle.id, bundle.members, bundle.registry
+            );
+            println!("    Includes: {}", bundle.packages.join(", "));
+        }
+    }
+    if !collections.is_empty() {
+        println!("Skill collections (browse only; group installation unavailable):");
+        for collection in collections {
+            println!(
+                "  {}  ({} skills)  [{}]",
+                collection.id, collection.members, collection.registry
             );
         }
     }
@@ -580,6 +686,7 @@ mod tests {
             registry: registry.into(),
             version: "v1.0.0".into(),
             description: None,
+            dependencies: Vec::new(),
         }
     }
 
@@ -631,6 +738,7 @@ mod tests {
                 registry: "default".into(),
                 version: "v2.0.0".into(),
                 description: None,
+                dependencies: Vec::new(),
             }]
         );
     }
@@ -649,6 +757,7 @@ mod tests {
                 version: &entry.version,
                 registry: &entry.registry,
                 description: entry.description.as_deref(),
+                dependencies: &entry.dependencies,
                 add_command: add_command(entry),
             })
             .collect();
@@ -659,6 +768,7 @@ mod tests {
             total: entries.len(),
             matches: visible,
             bundles: &[],
+            collections: &[],
             warnings: &warnings,
         })
         .unwrap();
@@ -670,6 +780,11 @@ mod tests {
             "skm add software/review --source company"
         );
         assert!(json["bundles"].as_array().unwrap().is_empty());
+        assert!(json["matches"][0]["dependencies"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+        assert!(json["collections"].as_array().unwrap().is_empty());
     }
 
     #[test]
@@ -680,7 +795,7 @@ mod tests {
         fs::create_dir_all(&directory).unwrap();
         fs::write(
             directory.join("SKILL.md"),
-            "---\nname: spec\ndescription: >-\n  Write a clear\n  specification.\n---\n# Spec\n",
+            "---\nname: spec\ndescription: >-\n  Write a clear\n  specification.\nmetadata:\n  skm-dependencies: \"workspace/write-spec@0.2.0\"\n---\n# Spec\n",
         )
         .unwrap();
         let manifest = registry.join("skills/workspace/manifest.yaml");
@@ -691,11 +806,17 @@ mod tests {
             Some("Write a clear specification.")
         );
         assert_eq!(
+            found.entries[0].dependencies,
+            ["workspace/write-spec@0.2.0"]
+        );
+        assert_eq!(found.collections[0].id, "workspace");
+        assert_eq!(
             found.bundles,
             [Bundle {
                 id: "workspace/all-workspace-skills".into(),
                 registry: "default".into(),
-                members: 1
+                members: 1,
+                packages: vec!["workspace/spec".into()],
             }]
         );
         fs::write(
@@ -703,21 +824,45 @@ mod tests {
             "schema_version: 1\nnamespace: workspace\npackages:\n  spec: 1.2.0\n",
         )
         .unwrap();
-        assert!(scan_local("default", &registry).unwrap().bundles.is_empty());
+        let found = scan_local("default", &registry).unwrap();
+        assert!(found.bundles.is_empty());
+        assert_eq!(found.collections[0].id, "workspace");
+        assert_eq!(found.collections[0].members, 1);
     }
 
     #[test]
     fn malformed_metadata_does_not_invent_a_description_or_bundle() {
-        assert_eq!(description_from_reader("# no frontmatter".as_bytes()), None);
+        assert!(skill_details_from_reader("# no frontmatter".as_bytes()).is_none());
         let manifest = "schema_version: 2\nnamespace: workspace\npackages:\n  spec: 1.2.0\nbundles:\n  all-workspace-skills:\n    packages: [missing]\n";
-        assert!(bundles_from_reader(manifest.as_bytes(), "default", "workspace").is_empty());
+        assert!(
+            groups_from_reader(manifest.as_bytes(), "default", "workspace")
+                .1
+                .is_empty()
+        );
         let incomplete = "schema_version: 2\nnamespace: workspace\npackages:\n  spec: 1.2.0\n  plan: 1.0.0\nbundles:\n  all-workspace-skills:\n    packages: [spec]\n";
-        assert!(bundles_from_reader(incomplete.as_bytes(), "default", "workspace").is_empty());
+        assert!(
+            groups_from_reader(incomplete.as_bytes(), "default", "workspace")
+                .1
+                .is_empty()
+        );
         let injected = "---\nname: spec\ndescription: \"Describe \\u001b[31m safely\"\n---\n";
         assert_eq!(
-            description_from_reader(injected.as_bytes()).as_deref(),
+            skill_details_from_reader(injected.as_bytes())
+                .unwrap()
+                .description
+                .as_deref(),
             Some("Describe [31m safely")
         );
+        let invalid = "---\nname: spec\nmetadata:\n  skm-dependencies: \"workspace/write-spec@latest\"\n---\n";
+        assert!(skill_details_from_reader(invalid.as_bytes())
+            .unwrap()
+            .dependencies
+            .is_empty());
+        let no_bundle = "schema_version: 1\nnamespace: workspace\npackages:\n  spec: 1.2.0\n";
+        let (collections, bundles) =
+            groups_from_reader(no_bundle.as_bytes(), "default", "workspace");
+        assert_eq!(collections[0].members, 1);
+        assert!(bundles.is_empty());
     }
 
     #[test]
@@ -728,7 +873,7 @@ mod tests {
         fs::create_dir_all(&skill).unwrap();
         fs::write(
             skill.join("SKILL.md"),
-            "---\nname: spec\ndescription: Write specifications.\n---\n# Spec\n",
+            "---\nname: spec\ndescription: Write specifications.\nmetadata:\n  skm-dependencies: \"workspace/write-spec@0.2.0\"\n---\n# Spec\n",
         )
         .unwrap();
         fs::write(registry.join("skills/workspace/manifest.yaml"), "schema_version: 2\nnamespace: workspace\npackages:\n  spec: 1.0.0\nbundles:\n  all-workspace-skills:\n    packages: [spec]\n").unwrap();
@@ -758,6 +903,12 @@ mod tests {
             found.entries[0].description.as_deref(),
             Some("Write specifications.")
         );
+        assert_eq!(
+            found.entries[0].dependencies,
+            ["workspace/write-spec@0.2.0"]
+        );
+        assert_eq!(found.collections[0].id, "workspace");
         assert_eq!(found.bundles[0].id, "workspace/all-workspace-skills");
+        assert_eq!(found.bundles[0].packages, ["workspace/spec"]);
     }
 }

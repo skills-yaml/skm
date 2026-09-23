@@ -287,3 +287,22 @@ install-target and search improvements into `development`. CI run
 complete nine-asset `development-latest` prerelease at the same commit. A
 local production build installed `workspace/wk-spec` and its `write-spec`
 dependency as direct Codex skill links, and `skm check` passed.
+
+## 2026-09-23 - Search distinguishes skills, collections, and bundles
+
+- Type: fact
+- Source: user and implementation
+- Confidence: high
+- Review: after development integration
+- Supersedes: 2026-09-23 - Skill target discovery and search metadata contract (search presentation only)
+
+Content:
+
+SKM search labels each skill's name and description and displays its exact
+declared dependencies. Search reads schema-1 or schema-2 namespace manifests to
+show published skill collections such as Workspace, while only explicit valid
+schema-2 bundle declarations appear as bundles with member identities. A
+namespace collection is browseable and does not itself provide group install.
+The current Workspace registry manifest is schema 1 and lists 19 skills but no
+installable bundle. JSON retains existing fields and adds dependencies,
+collections, and bundle package names.

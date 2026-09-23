@@ -1,5 +1,19 @@
 # Memory Changelog
 
+## 2026-09-23 - Record labeled search and namespace collections
+
+- Type: fact
+- Source: user and implementation
+- Confidence: high
+- Review: after development integration
+- Supersedes: 2026-09-23 - Record skill target and search discovery behavior (search presentation only)
+
+Content:
+
+Recorded labeled skill details, dependency discovery, and the distinction
+between browseable namespace collections and explicit published bundles in
+`workspace/agents/memory/facts.md`.
+
 ## 2026-09-19 - Record managed release update contract
 
 - Type: fact
