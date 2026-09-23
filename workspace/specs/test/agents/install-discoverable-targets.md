@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: Reproduced a successful `skm install` with no links when the manifest has no effective agent targets. Registry package names also create nested links that some agents do not discover.
+Rationale: Commit `91da59b8a6e7a2226a650dad481ed2609cbcb62c` integrated the fix into `development`. CI run `35871598722` passed, and Release Artifacts run `35871598742` published the complete `development-latest` prerelease for that exact commit. Production release is pending.
 
 ## Problem
 

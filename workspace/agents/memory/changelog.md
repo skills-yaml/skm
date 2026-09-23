@@ -374,3 +374,17 @@ Recorded the skills-only effective-target guard, direct-child agent skill
 links, final-name collision rule, description discovery, and explicit
 schema-2 registry bundle listing in `workspace/agents/memory/facts.md`.
 The current Workspace registry publishes no bundles.
+
+## 2026-09-23 - Record development integration of skill discovery fixes
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded the exact `development` commit, passing CI, complete prerelease
+publication, and local install/check smoke in `workspace/agents/memory/facts.md`.
+Moved both implementation specs to `test` with the integration evidence.

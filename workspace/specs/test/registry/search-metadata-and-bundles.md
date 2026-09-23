@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: Search currently reports only skill names and versions. The request is to expose skill descriptions and available bundle metadata during discovery.
+Rationale: Commit `91da59b8a6e7a2226a650dad481ed2609cbcb62c` integrated description and published-bundle discovery into `development`. CI run `35871598722` passed, and Release Artifacts run `35871598742` published the complete `development-latest` prerelease for that exact commit. Production release is pending.
 
 ## Problem
 

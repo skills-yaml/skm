@@ -270,3 +270,20 @@ the agent's skills directory using the final skill name, matching portable
 shows bounded `SKILL.md` descriptions and only registry bundles explicitly
 published in schema-2 namespace manifests. Toolkit bundles are separate; the
 current Workspace registry schema-1 manifest publishes no skill bundles.
+
+## 2026-09-23 - Discoverable skill install released to development
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Commit `91da59b8a6e7a2226a650dad481ed2609cbcb62c` integrated the
+install-target and search improvements into `development`. CI run
+`35871598722` passed. Release Artifacts run `35871598742` published the
+complete nine-asset `development-latest` prerelease at the same commit. A
+local production build installed `workspace/wk-spec` and its `write-spec`
+dependency as direct Codex skill links, and `skm check` passed.
