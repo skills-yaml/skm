@@ -152,3 +152,33 @@ registries, and skills; advanced toolkit/workspace fields are opt-in; and the
 complete YAML is shown before save. Existing-file preservation, validation,
 atomic replacement, concurrent-edit detection, and non-interactive creation
 remain part of the contract.
+
+## 2026-09-22 - Compile and deduplicate agent skill targets in SKM
+
+- Type: decision
+- Source: spec
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Agent skill-directory paths are compiled into SKM rather than supplied by a
+registry. When multiple configured agents claim the same filesystem directory,
+SKM resolves, writes, checks, lists, and records that directory once while
+retaining every claimant in the lockfile.
+
+## 2026-09-22 - Notify about updates on help requests
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Interactive SKM help requests, including `skm help` and `--help`, should show
+the same available-update notice as ordinary commands before Clap prints help.
+The notice remains best-effort, terminal-only, and controlled by the existing
+startup-check opt-out.

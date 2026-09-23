@@ -121,7 +121,7 @@ pub fn link_local_skill(
     // Determine agents to link to
     let agents = if all_agents {
         // All known agents
-        ["claude", "cursor", "codex", "copilot", "grok", "hermes"]
+        linker::SUPPORTED_AGENTS
             .iter()
             .map(|s| s.to_string())
             .collect()
@@ -136,7 +136,7 @@ pub fn link_local_skill(
         // Default: all available agents (from config or detected)
         if global {
             // For global, use all known agents
-            ["claude", "cursor", "codex", "copilot", "grok", "hermes"]
+            linker::SUPPORTED_AGENTS
                 .iter()
                 .map(|s| s.to_string())
                 .collect()
@@ -199,16 +199,8 @@ pub fn link_local_skill(
     // Link to each agent directory
     let project_root = std::env::current_dir()?;
 
-    for agent_name in &agents {
-        let base_dir = match linker::get_agent_skills_dir(agent_name, &project_root, global) {
-            Ok(dir) => dir,
-            Err(e) => {
-                if verbose {
-                    println!("Skipping unknown agent {}: {}", agent_name, e);
-                }
-                continue;
-            }
-        };
+    for target in linker::resolve_agent_skill_targets(&agents, &project_root, global)? {
+        let base_dir = target.path;
 
         if let Some(parent) = base_dir.parent() {
             fs::create_dir_all(parent)?;
@@ -240,10 +232,10 @@ pub fn link_local_skill(
 
         if verbose {
             println!(
-                "Linked {} to {} for agent {}",
+                "Linked {} to {} for agents {}",
                 skill_name,
                 canonical_path.display(),
-                agent_name
+                target.agents.join(", ")
             );
         }
     }
@@ -303,11 +295,8 @@ pub fn unlink_local_skill(
     // Remove symlinks from each agent
     let project_root = std::env::current_dir()?;
 
-    for agent_name in &dev_skill.agents {
-        let base_dir = match linker::get_agent_skills_dir(agent_name, &project_root, global) {
-            Ok(dir) => dir,
-            Err(_) => continue,
-        };
+    for target in linker::resolve_agent_skill_targets(&dev_skill.agents, &project_root, global)? {
+        let base_dir = target.path;
 
         let target_path = base_dir.join(linker::validated_skill_path(skill_name)?);
 
@@ -441,17 +430,15 @@ pub fn show_local_skill(
         );
 
         println!("\nLinked to:");
-        for agent_name in &dev_skill.agents {
-            let base_dir = match linker::get_agent_skills_dir(agent_name, &project_root, global) {
-                Ok(dir) => dir,
-                Err(_) => continue,
-            };
+        for target in linker::resolve_agent_skill_targets(&dev_skill.agents, &project_root, global)?
+        {
+            let base_dir = target.path;
 
             let symlink_path = base_dir.join(linker::validated_skill_path(&dev_skill.name)?);
             if symlink_path.exists() || symlink_path.is_symlink() {
-                println!("  {}: {}", agent_name, symlink_path.display());
+                println!("  {}: {}", target.agents.join(", "), symlink_path.display());
             } else {
-                println!("  {}: NOT LINKED", agent_name);
+                println!("  {}: NOT LINKED", target.agents.join(", "));
             }
         }
     }

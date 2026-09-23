@@ -713,7 +713,12 @@ fn validate_config_structure(
                     for agent in agents {
                         if let Some(name) = agent.as_str() {
                             if !crate::linker::is_supported_agent(name) {
-                                return Err(format!("Unsupported agent: {}", name).into());
+                                return Err(format!(
+                                    "Unsupported agent: {}. Supported agents: {}",
+                                    name,
+                                    crate::linker::SUPPORTED_AGENTS.join(", ")
+                                )
+                                .into());
                             }
                         }
                     }

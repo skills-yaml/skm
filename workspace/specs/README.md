@@ -27,6 +27,7 @@ integration or release event in the spec and in this catalog.
 | `registry` | Registry management commands. |
 | `maintenance` | Cleanup and maintenance commands. |
 | `updates` | Automatic update notification at launch. |
+| `agents` | Agent link targets and per-agent skill directory integration. |
 
 ## Status Catalog
 
@@ -36,6 +37,9 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
+| [help-update-notice.md](test/updates/help-update-notice.md) | `updates` | `test` | Direct commit `2107f9e` integrated the tested implementation into `development` on 2026-09-22; production release has not been confirmed. |
+| [workspace-docs-6-compatibility.md](test/workspace-toolkit/workspace-docs-6-compatibility.md) | `workspace-toolkit` | `test` | PR #38 integrated the implementation into `development` at `63b243a`; CI and the verified four-platform `development-latest` publication passed. |
+| [workspace-skill-bundle-install.md](backlog/workspace-toolkit/workspace-skill-bundle-install.md) | `workspace-toolkit` | `backlog` | Coordinated Workspace, Registry, and SKM contract is specified; canonical bundle publication and implementation have not started. |
 | [init-sequential-prompts.md](done/configuration/init-sequential-prompts.md) | `configuration` | `done` | PR #32 released SKM 0.6.0 through `main` at `769f5a4`; production CI, four-platform update qualification, publication, checksum, binary identity, and manifest verification passed. |
 | [nib-release-update-parity.md](done/updates/nib-release-update-parity.md) | `updates` | `done` | PR #32 released the corrected updater at `769f5a4`; required-reviewer gating held production until all four platforms passed qualification, then the complete manifest-bound release was verified. |
 | [adopt-workspace-docs-5.md](done/workspace-governance/adopt-workspace-docs-5.md) | `workspace-governance` | `done` | Released through `main` by PR #4 on 2026-09-05 (`e12ba7d`); `prod-latest` artifacts published successfully. |
@@ -55,4 +59,5 @@ reopened, is superseded, or materially changes why it is in its state.
 | [init-tui-wizard.md](done/configuration/init-tui-wizard.md) | `configuration` | `done` | Released as SKM 0.3.0 through `main` by PR #8 on 2026-09-09 (`69c0b87`); all production packages and checksums published successfully. |
 | [skill-search.md](done/registry/skill-search.md) | `registry` | `done` | PR #18 released SKM 0.5.0 through `main` at `488860f`; production CI and all platform packages passed, and the Linux checksum, version, and search help were verified. |
 | [search-dedicated-add.md](done/registry/search-dedicated-add.md) | `registry` | `done` | PR #32 released the read-only search boundary in SKM 0.6.0 at `769f5a4`; production CI, publication, checksum, binary identity, and manifest verification passed. |
+| [agent-skill-directory-integration.md](test/agents/agent-skill-directory-integration.md) | `agents` | `test` | PR #38 integrated the implementation into `development` at `63b243a`; CI and the verified four-platform `development-latest` publication passed. |
 <!-- SPEC-CATALOG:END -->
