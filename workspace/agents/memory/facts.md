@@ -252,3 +252,21 @@ complete `prod-latest` asset set. The manifest names that exact commit and all
 four archives; the Linux archive matched its published checksum and manifest
 digest. The production Linux artifact reported the expected embedded identity
 and printed the update notice before interactive help output.
+
+## 2026-09-23 - Skill target discovery and search metadata contract
+
+- Type: fact
+- Source: user and implementation
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+Skills-only install, list, and check require at least one effective agent skill
+target for a nonempty skill set. Namespaced registry skills link directly below
+the agent's skills directory using the final skill name, matching portable
+`SKILL.md` discovery; duplicate final names are rejected before install. Search
+shows bounded `SKILL.md` descriptions and only registry bundles explicitly
+published in schema-2 namespace manifests. Toolkit bundles are separate; the
+current Workspace registry schema-1 manifest publishes no skill bundles.

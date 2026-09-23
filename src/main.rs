@@ -788,6 +788,10 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let config = load_config(&config_path)?;
             validate_config(&config)?;
 
+            if config.toolkit.is_none() && !config.skills.is_empty() {
+                linker::require_skill_targets(&config.agents, &current_dir, global)?;
+            }
+
             if config.skills.iter().any(|skill| skill.path.is_none()) {
                 ensure_registries_cached(&config)?;
             }
@@ -815,6 +819,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("Installing skills for agents: {:?}", config.agents);
                 let resolved =
                     linker::resolve_skill_dependency_closure(&config.skills, &current_dir)?;
+                linker::validate_unique_skill_targets(&resolved)?;
                 for skill in &resolved {
                     linker::link_skill(skill, &current_dir, &config.agents, global)?;
                 }
@@ -860,7 +865,14 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|error| format!("Could not search registries: {error}"))?;
             let matches = search::matching_entries(&discovery.entries, &query)
                 .map_err(|error| format!("Could not search registries: {error}"))?;
-            search::print_results(&query, &matches, &discovery.warnings, limit, json)?;
+            search::print_results(
+                &query,
+                &matches,
+                &discovery.bundles,
+                &discovery.warnings,
+                limit,
+                json,
+            )?;
         }
         Commands::Remove {
             skill_name,
@@ -883,6 +895,9 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
         Commands::List { global } => {
             let config = load_config(&config_path)?;
             validate_config(&config)?;
+            if config.toolkit.is_none() && !config.skills.is_empty() {
+                linker::require_skill_targets(&config.agents, &current_dir, global)?;
+            }
             eprintln!("Listing skills for project '{}':", config.name);
 
             let resolved = linker::resolve_skill_dependency_closure(&config.skills, &current_dir)?;
@@ -934,6 +949,9 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
         Commands::Check { global } => {
             let config = load_config(&config_path)?;
             validate_config(&config)?;
+            if config.toolkit.is_none() && !config.skills.is_empty() {
+                linker::require_skill_targets(&config.agents, &current_dir, global)?;
+            }
             let mut all_ok = true;
 
             let resolved = linker::resolve_skill_dependency_closure(&config.skills, &current_dir)?;
@@ -1353,6 +1371,7 @@ fn validate_config(config: &SkillsConfig) -> Result<(), Box<dyn std::error::Erro
     for skill in &config.skills {
         linker::validate_skill_name(&skill.name)?;
     }
+    linker::validate_unique_skill_targets(&config.skills)?;
 
     Ok(())
 }
@@ -1376,8 +1395,11 @@ fn add_skill(
 
     let skill_name = new_skill.name.clone();
     config.skills.push(new_skill);
+    linker::require_skill_targets(&config.agents, project_root, global)?;
+    linker::validate_unique_skill_targets(&config.skills)?;
     ensure_registries_cached(&config)?;
     let resolved = linker::resolve_skill_dependency_closure(&config.skills, project_root)?;
+    linker::validate_unique_skill_targets(&resolved)?;
     config.save_to_file(config_path)?;
     eprintln!("Added skill '{}' to skills.yaml", skill_name);
     for skill in &resolved {
@@ -1728,5 +1750,55 @@ mod search_cli_tests {
         .unwrap();
         assert_eq!(fs::read(&manifest).unwrap(), original);
         assert!(!linker::resolve_registry_path("local").unwrap().exists());
+    }
+
+    #[test]
+    #[serial]
+    fn install_requires_targets_and_links_namespaced_skills_at_discoverable_depth() {
+        let environment = Environment::new();
+        let project = environment.project();
+        let source = project.join("fixture");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("SKILL.md"),
+            "---\nname: wk-spec\ndescription: Write a spec.\n---\n# Spec\n",
+        )
+        .unwrap();
+        let config_path = project.join("skills.yaml");
+        let mut config = SkillsConfig {
+            name: "fixture".into(),
+            version: None,
+            registries: None,
+            agents: Vec::new(),
+            skills: vec![SkillSpec {
+                name: "workspace/wk-spec".into(),
+                version: None,
+                source: None,
+                path: Some("fixture".into()),
+            }],
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            workspace: None,
+            trusted_sources: Vec::new(),
+        };
+        config.save_to_file(&config_path).unwrap();
+        let install = || Commands::Install {
+            global: false,
+            dry_run: false,
+            json: false,
+            yes: false,
+        };
+        assert!(run(install())
+            .unwrap_err()
+            .to_string()
+            .contains("No agent skill targets"));
+        assert!(!project.join(".agents/skills").exists());
+        config.agents.push("codex".into());
+        config.save_to_file(&config_path).unwrap();
+        run(install()).unwrap();
+        assert!(project.join(".agents/skills/wk-spec").is_symlink());
+        assert!(!project.join(".agents/skills/workspace/wk-spec").exists());
+        run(Commands::Check { global: false }).unwrap();
     }
 }

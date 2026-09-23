@@ -560,7 +560,51 @@ pub fn get_skill_target_path(
     base_dir: &Path,
     skill_name: &str,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    Ok(base_dir.join(validated_skill_path(skill_name)?))
+    let validated = validated_skill_path(skill_name)?;
+    let leaf = validated
+        .file_name()
+        .ok_or("skill name has no final component")?;
+    Ok(base_dir.join(leaf))
+}
+
+pub fn validate_unique_skill_targets(
+    skills: &[SkillSpec],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut targets = BTreeMap::new();
+    for skill in skills {
+        let path = validated_skill_path(&skill.name)?;
+        let leaf = path
+            .file_name()
+            .ok_or("skill name has no final component")?
+            .to_string_lossy()
+            .into_owned();
+        if let Some(previous) = targets.insert(leaf.clone(), skill.name.as_str()) {
+            if previous != skill.name {
+                return Err(format!(
+                    "Skills '{previous}' and '{}' both install as '{leaf}'; choose only one",
+                    skill.name
+                )
+                .into());
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn require_skill_targets(
+    agents: &[String],
+    project_root: &Path,
+    global: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if resolve_agent_skill_targets(agents, project_root, global)?.is_empty() {
+        return Err(if agents.is_empty() {
+            "No agent skill targets configured. Add a supported agent to skills.yaml agents before installing skills."
+        } else {
+            "No project skill targets for the selected agents. Hermes supports global skills only; select another agent or use skm install --global."
+        }
+        .into());
+    }
+    Ok(())
 }
 
 fn validate_skill_target_parent(
@@ -1206,6 +1250,42 @@ mod tests {
             .to_string()
             .contains("Supported agents: claude, codex"));
         assert!(error.to_string().contains("qwen, hermes"));
+    }
+
+    #[test]
+    fn namespaced_skills_use_discoverable_direct_child_targets() {
+        let root = Path::new("/project/.agents/skills");
+        assert_eq!(
+            get_skill_target_path(root, "workspace/wk-spec").unwrap(),
+            root.join("wk-spec")
+        );
+        let skills = ["workspace/spec", "software-development/spec"]
+            .into_iter()
+            .map(|name| SkillSpec {
+                name: name.into(),
+                version: None,
+                source: None,
+                path: None,
+            })
+            .collect::<Vec<_>>();
+        assert!(validate_unique_skill_targets(&skills)
+            .unwrap_err()
+            .to_string()
+            .contains("both install as 'spec'"));
+    }
+
+    #[test]
+    fn empty_effective_agent_targets_are_rejected() {
+        let root = Path::new("/project");
+        assert!(require_skill_targets(&[], root, false)
+            .unwrap_err()
+            .to_string()
+            .contains("No agent skill targets"));
+        assert!(require_skill_targets(&["hermes".into()], root, false)
+            .unwrap_err()
+            .to_string()
+            .contains("global skills only"));
+        assert!(require_skill_targets(&["codex".into()], root, false).is_ok());
     }
 
     #[test]

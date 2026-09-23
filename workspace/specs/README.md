@@ -37,6 +37,8 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
+| [install-discoverable-targets.md](development/agents/install-discoverable-targets.md) | `agents` | `development` | Empty effective targets and nested namespaced links are reproduced; install and compatibility fixes are in progress. |
+| [search-metadata-and-bundles.md](development/registry/search-metadata-and-bundles.md) | `registry` | `development` | Description and published bundle discovery are being implemented; current Workspace registry schema 1 has no bundle entries. |
 | [help-update-notice.md](done/updates/help-update-notice.md) | `updates` | `done` | PR #40 released the tested help notice through `main` at `a6cdef2`; production CI, four-platform publication, manifest verification, and an interactive Linux help smoke passed. |
 | [workspace-docs-6-compatibility.md](done/workspace-toolkit/workspace-docs-6-compatibility.md) | `workspace-toolkit` | `done` | PR #40 released the tested compatibility through `main` at `a6cdef2`; production CI and the verified complete four-platform publication passed. |
 | [workspace-skill-bundle-install.md](backlog/workspace-toolkit/workspace-skill-bundle-install.md) | `workspace-toolkit` | `backlog` | Coordinated Workspace, Registry, and SKM contract is specified; canonical bundle publication and implementation have not started. |

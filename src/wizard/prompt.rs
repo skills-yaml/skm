@@ -422,6 +422,9 @@ fn search_skills<R: BufRead, W: Write>(
             entry.registry,
             entry.version
         )?;
+        if let Some(description) = &entry.description {
+            writeln!(output, "     {description}")?;
+        }
     }
     if matches.len() > LIMIT {
         writeln!(
@@ -957,6 +960,7 @@ mod tests {
             name: "local/helper".into(),
             registry: "default".into(),
             version: "v1.0.0".into(),
+            description: None,
         };
         assert!(toggle_entry(&collision, &mut document.value).is_err());
         assert_eq!(document.value, original);
@@ -965,6 +969,7 @@ mod tests {
             name: "team/spec".into(),
             registry: "company".into(),
             version: "v2.0.0".into(),
+            description: None,
         };
         assert!(entry_matches(&added, "SPEC company v2"));
         toggle_entry(&added, &mut document.value).unwrap();

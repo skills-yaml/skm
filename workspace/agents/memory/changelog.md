@@ -359,3 +359,18 @@ Recorded PR #40's exact-commit production release, successful CI, complete
 four-platform publication, manifest and Linux checksum verification, and
 interactive help notice smoke in `workspace/agents/memory/facts.md`. Moved the
 three released specifications to `done` with the confirmed release evidence.
+
+## 2026-09-23 - Record skill target and search discovery behavior
+
+- Type: fact
+- Source: user and implementation
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+Recorded the skills-only effective-target guard, direct-child agent skill
+links, final-name collision rule, description discovery, and explicit
+schema-2 registry bundle listing in `workspace/agents/memory/facts.md`.
+The current Workspace registry publishes no bundles.

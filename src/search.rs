@@ -1,6 +1,6 @@
 use crate::config::SkillsConfig;
 use crate::config_manager::BaseConfig;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{Read, Seek};
@@ -13,11 +13,20 @@ pub struct Entry {
     pub name: String,
     pub registry: String,
     pub version: String,
+    pub description: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Bundle {
+    pub id: String,
+    pub registry: String,
+    pub members: usize,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Discovery {
     pub entries: Vec<Entry>,
+    pub bundles: Vec<Bundle>,
     pub warnings: Vec<String>,
 }
 
@@ -26,6 +35,7 @@ struct SearchMatch<'a> {
     name: &'a str,
     version: &'a str,
     registry: &'a str,
+    description: Option<&'a str>,
     add_command: String,
 }
 
@@ -35,7 +45,29 @@ struct SearchOutput<'a> {
     count: usize,
     total: usize,
     matches: Vec<SearchMatch<'a>>,
+    bundles: &'a [Bundle],
     warnings: &'a [String],
+}
+
+#[derive(Default)]
+struct RegistryContents {
+    entries: Vec<Entry>,
+    bundles: Vec<Bundle>,
+}
+
+#[derive(Deserialize)]
+struct NamespaceManifest {
+    schema_version: u32,
+    namespace: String,
+    #[serde(default)]
+    packages: BTreeMap<String, String>,
+    #[serde(default)]
+    bundles: BTreeMap<String, BundleMembers>,
+}
+
+#[derive(Deserialize)]
+struct BundleMembers {
+    packages: Vec<String>,
 }
 
 pub fn discover(
@@ -78,13 +110,19 @@ fn discover_locations(
     let mut discovery = Discovery::default();
     for (name, location) in registries {
         match load_registry(&name, &location, project, refresh) {
-            Ok(entries) => discovery.entries.extend(entries),
+            Ok(contents) => {
+                discovery.entries.extend(contents.entries);
+                discovery.bundles.extend(contents.bundles);
+            }
             Err(message) => discovery.warnings.push(format!("{name}: {message}")),
         }
     }
     discovery
         .entries
         .sort_by(|a, b| (&a.name, &a.registry).cmp(&(&b.name, &b.registry)));
+    discovery
+        .bundles
+        .sort_by(|a, b| (&a.id, &a.registry).cmp(&(&b.id, &b.registry)));
     Ok(discovery)
 }
 
@@ -93,7 +131,7 @@ fn load_registry(
     location: &str,
     project: &Path,
     refresh: bool,
-) -> Result<Vec<Entry>, String> {
+) -> Result<RegistryContents, String> {
     if crate::linker::resolve_registry_path(name).is_none() {
         return Err("Invalid registry name".into());
     }
@@ -118,7 +156,7 @@ fn load_registry(
     scan_remote(name, location)
 }
 
-fn scan_local(registry: &str, root: &Path) -> Result<Vec<Entry>, String> {
+fn scan_local(registry: &str, root: &Path) -> Result<RegistryContents, String> {
     let skills = root.join("skills");
     if !regular_directory(root) || !regular_directory(&skills) {
         return Err("Registry needs a real skills directory with versioned SKILL.md files".into());
@@ -139,10 +177,31 @@ fn scan_local(registry: &str, root: &Path) -> Result<Vec<Entry>, String> {
             }
         }
     }
-    Ok(entries(registry, versions))
+    let mut entries = entries(registry, versions);
+    for entry in &mut entries {
+        let path = skills
+            .join(&entry.name)
+            .join(&entry.version)
+            .join("SKILL.md");
+        entry.description = fs::File::open(path).ok().and_then(description_from_reader);
+    }
+    let mut bundles = Vec::new();
+    for namespace in fs::read_dir(&skills).map_err(|error| error.to_string())? {
+        let namespace = namespace.map_err(|error| error.to_string())?;
+        if !namespace.file_type().is_ok_and(|kind| kind.is_dir()) {
+            continue;
+        }
+        let id = namespace.file_name();
+        let Some(id) = id.to_str() else { continue };
+        let manifest = namespace.path().join("manifest.yaml");
+        if let Ok(file) = fs::File::open(manifest) {
+            bundles.extend(bundles_from_reader(file, registry, id));
+        }
+    }
+    Ok(RegistryContents { entries, bundles })
 }
 
-fn scan_remote(registry: &str, location: &str) -> Result<Vec<Entry>, String> {
+fn scan_remote(registry: &str, location: &str) -> Result<RegistryContents, String> {
     let temporary =
         tempfile::tempdir().map_err(|_| "Cannot create temporary registry storage".to_owned())?;
     let repository = temporary.path().join("registry");
@@ -163,9 +222,120 @@ fn scan_remote(registry: &str, location: &str) -> Result<Vec<Entry>, String> {
 
     let mut tree = Command::new("git");
     tree.arg("-C")
-        .arg(repository)
+        .arg(&repository)
         .args(["ls-tree", "-r", "-z", "HEAD", "--", "skills"]);
-    parse_tree(registry, &run_git(tree, Duration::from_secs(10))?)
+    let listing = run_git(tree, Duration::from_secs(10))?;
+    let mut entries = parse_tree(registry, &listing)?;
+    for entry in &mut entries {
+        let path = format!("HEAD:skills/{}/{}/SKILL.md", entry.name, entry.version);
+        entry.description = git_object(&repository, &path)
+            .ok()
+            .and_then(|bytes| description_from_reader(bytes.as_slice()));
+    }
+    let mut bundles = Vec::new();
+    for item in listing.split(|byte| *byte == 0) {
+        let Ok(item) = std::str::from_utf8(item) else {
+            continue;
+        };
+        let Some((metadata, path)) = item.split_once('\t') else {
+            continue;
+        };
+        if !metadata.starts_with("100644 blob ") && !metadata.starts_with("100755 blob ") {
+            continue;
+        }
+        let Some(namespace) = path
+            .strip_prefix("skills/")
+            .and_then(|path| path.strip_suffix("/manifest.yaml"))
+        else {
+            continue;
+        };
+        if namespace.contains('/') {
+            continue;
+        }
+        if let Ok(bytes) = git_object(&repository, &format!("HEAD:{path}")) {
+            bundles.extend(bundles_from_reader(bytes.as_slice(), registry, namespace));
+        }
+    }
+    Ok(RegistryContents { entries, bundles })
+}
+
+fn git_object(repository: &Path, object: &str) -> Result<Vec<u8>, String> {
+    let mut command = Command::new("git");
+    command.arg("-C").arg(repository).arg("show").arg(object);
+    run_git(command, Duration::from_secs(10))
+}
+
+fn description_from_reader(reader: impl Read) -> Option<String> {
+    let mut bytes = Vec::new();
+    reader.take(16 * 1024).read_to_end(&mut bytes).ok()?;
+    let content = std::str::from_utf8(&bytes).ok()?;
+    let frontmatter = content.strip_prefix("---\n")?.split_once("\n---")?.0;
+    let yaml: serde_yaml::Value = serde_yaml::from_str(frontmatter).ok()?;
+    let description = yaml.get("description")?.as_str()?;
+    let safe = description
+        .chars()
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect::<String>();
+    let normalized = safe.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized.chars().take(1024).collect())
+    }
+}
+
+fn bundles_from_reader(reader: impl Read, registry: &str, namespace: &str) -> Vec<Bundle> {
+    let mut bytes = Vec::new();
+    if reader.take(64 * 1024).read_to_end(&mut bytes).is_err() {
+        return Vec::new();
+    }
+    let Ok(manifest) = serde_yaml::from_slice::<NamespaceManifest>(&bytes) else {
+        return Vec::new();
+    };
+    if manifest.schema_version != 2 || manifest.namespace != namespace {
+        return Vec::new();
+    }
+    manifest
+        .bundles
+        .into_iter()
+        .filter_map(|(id, members)| {
+            if !id
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+                || id.starts_with('-')
+                || id.ends_with('-')
+                || crate::linker::validate_skill_name(&format!("{namespace}/{id}")).is_err()
+                || members.packages.is_empty()
+                || members
+                    .packages
+                    .iter()
+                    .any(|member| !manifest.packages.contains_key(member))
+            {
+                return None;
+            }
+            let member_set = members
+                .packages
+                .iter()
+                .collect::<std::collections::BTreeSet<_>>();
+            if member_set.len() != members.packages.len()
+                || (id == "all-workspace-skills"
+                    && member_set != manifest.packages.keys().collect())
+            {
+                return None;
+            }
+            Some(Bundle {
+                id: format!("{namespace}/{id}"),
+                registry: registry.to_owned(),
+                members: member_set.len(),
+            })
+        })
+        .collect()
 }
 
 fn parse_tree(registry: &str, tree: &[u8]) -> Result<Vec<Entry>, String> {
@@ -228,6 +398,7 @@ fn entries(registry: &str, versions: BTreeMap<String, String>) -> Vec<Entry> {
             name,
             registry: registry.to_owned(),
             version,
+            description: None,
         })
         .collect()
 }
@@ -323,6 +494,7 @@ pub fn matching_entries(entries: &[Entry], query: &str) -> Result<Vec<Entry>, St
 pub fn print_results(
     query: &str,
     matches: &[Entry],
+    bundles: &[Bundle],
     warnings: &[String],
     limit: usize,
     json: bool,
@@ -337,6 +509,7 @@ pub fn print_results(
             name: &entry.name,
             version: &entry.version,
             registry: &entry.registry,
+            description: entry.description.as_deref(),
             add_command: add_command(entry),
         })
         .collect();
@@ -348,6 +521,7 @@ pub fn print_results(
                 count: visible.len(),
                 total: matches.len(),
                 matches: visible,
+                bundles,
                 warnings,
             })?
         );
@@ -359,16 +533,29 @@ pub fn print_results(
     }
     if visible.is_empty() {
         println!("No skills found matching '{}'.", query.trim());
-        return Ok(());
     }
     for entry in visible {
         println!("{}  {}  [{}]", entry.name, entry.version, entry.registry);
+        if let Some(description) = entry.description {
+            println!("  {description}");
+        }
         println!("  Add: {}", entry.add_command);
     }
     if matches.len() > limit {
         println!("Showing {} of {} matches.", limit, matches.len());
-    } else {
+    } else if !matches.is_empty() {
         println!("{} skill(s) found.", matches.len());
+    }
+    if bundles.is_empty() {
+        println!("No published skill bundles in the selected registries.");
+    } else {
+        println!("Available skill bundles (discovery only):");
+        for bundle in bundles {
+            println!(
+                "  {}  ({} skills)  [{}]",
+                bundle.id, bundle.members, bundle.registry
+            );
+        }
     }
     Ok(())
 }
@@ -392,6 +579,7 @@ mod tests {
             name: name.into(),
             registry: registry.into(),
             version: "v1.0.0".into(),
+            description: None,
         }
     }
 
@@ -442,6 +630,7 @@ mod tests {
                 name: "dev/spec".into(),
                 registry: "default".into(),
                 version: "v2.0.0".into(),
+                description: None,
             }]
         );
     }
@@ -459,6 +648,7 @@ mod tests {
                 name: &entry.name,
                 version: &entry.version,
                 registry: &entry.registry,
+                description: entry.description.as_deref(),
                 add_command: add_command(entry),
             })
             .collect();
@@ -468,6 +658,7 @@ mod tests {
             count: 1,
             total: entries.len(),
             matches: visible,
+            bundles: &[],
             warnings: &warnings,
         })
         .unwrap();
@@ -478,5 +669,95 @@ mod tests {
             json["matches"][0]["add_command"],
             "skm add software/review --source company"
         );
+        assert!(json["bundles"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn local_discovery_reads_description_and_published_bundles() {
+        let project = tempfile::tempdir().unwrap();
+        let registry = project.path().join("registry");
+        let directory = registry.join("skills/workspace/spec/v1.2.0");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(
+            directory.join("SKILL.md"),
+            "---\nname: spec\ndescription: >-\n  Write a clear\n  specification.\n---\n# Spec\n",
+        )
+        .unwrap();
+        let manifest = registry.join("skills/workspace/manifest.yaml");
+        fs::write(&manifest, "schema_version: 2\nnamespace: workspace\npackages:\n  spec: 1.2.0\nbundles:\n  all-workspace-skills:\n    packages: [spec]\n").unwrap();
+        let found = scan_local("default", &registry).unwrap();
+        assert_eq!(
+            found.entries[0].description.as_deref(),
+            Some("Write a clear specification.")
+        );
+        assert_eq!(
+            found.bundles,
+            [Bundle {
+                id: "workspace/all-workspace-skills".into(),
+                registry: "default".into(),
+                members: 1
+            }]
+        );
+        fs::write(
+            manifest,
+            "schema_version: 1\nnamespace: workspace\npackages:\n  spec: 1.2.0\n",
+        )
+        .unwrap();
+        assert!(scan_local("default", &registry).unwrap().bundles.is_empty());
+    }
+
+    #[test]
+    fn malformed_metadata_does_not_invent_a_description_or_bundle() {
+        assert_eq!(description_from_reader("# no frontmatter".as_bytes()), None);
+        let manifest = "schema_version: 2\nnamespace: workspace\npackages:\n  spec: 1.2.0\nbundles:\n  all-workspace-skills:\n    packages: [missing]\n";
+        assert!(bundles_from_reader(manifest.as_bytes(), "default", "workspace").is_empty());
+        let incomplete = "schema_version: 2\nnamespace: workspace\npackages:\n  spec: 1.2.0\n  plan: 1.0.0\nbundles:\n  all-workspace-skills:\n    packages: [spec]\n";
+        assert!(bundles_from_reader(incomplete.as_bytes(), "default", "workspace").is_empty());
+        let injected = "---\nname: spec\ndescription: \"Describe \\u001b[31m safely\"\n---\n";
+        assert_eq!(
+            description_from_reader(injected.as_bytes()).as_deref(),
+            Some("Describe [31m safely")
+        );
+    }
+
+    #[test]
+    fn remote_discovery_reads_descriptions_and_bundles_without_a_checkout() {
+        let temporary = tempfile::tempdir().unwrap();
+        let registry = temporary.path().join("registry");
+        let skill = registry.join("skills/workspace/spec/v1.0.0");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(
+            skill.join("SKILL.md"),
+            "---\nname: spec\ndescription: Write specifications.\n---\n# Spec\n",
+        )
+        .unwrap();
+        fs::write(registry.join("skills/workspace/manifest.yaml"), "schema_version: 2\nnamespace: workspace\npackages:\n  spec: 1.0.0\nbundles:\n  all-workspace-skills:\n    packages: [spec]\n").unwrap();
+        for args in [
+            vec!["init", "--quiet"],
+            vec!["add", "."],
+            vec![
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-qm",
+                "fixture",
+            ],
+        ] {
+            let status = Command::new("git")
+                .arg("-C")
+                .arg(&registry)
+                .args(args)
+                .status()
+                .unwrap();
+            assert!(status.success());
+        }
+        let found = scan_remote("default", &format!("file://{}", registry.display())).unwrap();
+        assert_eq!(
+            found.entries[0].description.as_deref(),
+            Some("Write specifications.")
+        );
+        assert_eq!(found.bundles[0].id, "workspace/all-workspace-skills");
     }
 }
