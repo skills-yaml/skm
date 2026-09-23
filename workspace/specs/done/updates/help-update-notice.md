@@ -1,13 +1,24 @@
 # Help update notice
 
-State: test
+State: done
 Primary feature: `updates`
 
 ## Integration evidence
 
 Direct commit `2107f9e` integrated the implementation into this repository's
 configured `development` test branch on 2026-09-22. `task check` and `task test`
-passed before integration. Production release has not been confirmed.
+passed before integration.
+
+## Production release evidence
+
+PR #40 merged the tested implementation into `main` at
+`a6cdef2df8fb0ec35f3b6e9e33343e6fbe0e9d96` on 2026-09-23. Production CI
+run `35865013795` and Release Artifacts run `35865013776` passed. The
+`prod-latest` manifest names that exact commit and the complete four-platform
+asset set; its Linux archive matched both the published checksum and manifest
+digest. Before publication, the production Linux artifact reported the exact
+embedded identity, and an interactive `skm help` printed the available-update
+notice before Clap help text.
 
 ## Problem
 

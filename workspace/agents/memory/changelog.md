@@ -344,3 +344,18 @@ Content:
 Recorded in `workspace/agents/memory/decisions.md` that interactive help
 requests show the available-update notice before Clap prints help. The
 implementation and local validation are tracked in the development spec.
+
+## 2026-09-23 - Record SKM production promotion
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded PR #40's exact-commit production release, successful CI, complete
+four-platform publication, manifest and Linux checksum verification, and
+interactive help notice smoke in `workspace/agents/memory/facts.md`. Moved the
+three released specifications to `done` with the confirmed release evidence.
