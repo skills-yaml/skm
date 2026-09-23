@@ -2,11 +2,11 @@
 
 ## Status
 
-State: test
+State: done
 
 Status rationale: PR #38 integrated the implementation into `development` at
-`63b243a` on 2026-09-22. Development CI and all four release builds passed,
-and the manifest-bound `development-latest` release was published and verified.
+`63b243a` on 2026-09-22. PR #40 released it through `main` at `a6cdef2` on
+2026-09-23; production CI and the complete four-platform release passed.
 
 Primary feature: `workspace-toolkit`
 
@@ -182,6 +182,8 @@ release assets.
   fixture deterministic and local. A temporary-project CLI run provides an
   additional built-binary integration check without making the regression
   suite network-dependent.
+- Resolved for release: the `0.6.0` rolling production release at `a6cdef2`
+  carries the additive compatibility support.
 
 ## Memory Impact
 
@@ -213,3 +215,11 @@ Completed locally on 2026-09-22 in `feat/backlog-specs-implementation`:
   manifest-bound `development-latest` release. Its manifest, Linux checksum,
   and embedded development-channel commit identity were verified against that
   merge.
+
+## Production Release Evidence
+
+PR #40 merged the tested implementation into `main` at
+`a6cdef2df8fb0ec35f3b6e9e33343e6fbe0e9d96` on 2026-09-23. Production CI
+run `35865013795` and Release Artifacts run `35865013776` passed. The
+`prod-latest` manifest names that exact commit and all four supported archives;
+the published Linux archive passed its checksum and manifest digest checks.

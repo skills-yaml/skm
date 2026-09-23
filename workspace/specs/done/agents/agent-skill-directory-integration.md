@@ -2,11 +2,13 @@
 
 ## Status
 
-State: test
+State: done
 
 PR #38 integrated the implementation into `development` at `63b243a` on
 2026-09-22. Development CI and all four release builds passed, and the
-manifest-bound `development-latest` release was published and verified.
+manifest-bound `development-latest` release was published and verified. PR #40
+released the implementation through `main` at `a6cdef2` on 2026-09-23;
+production CI and the complete four-platform release passed.
 
 ## Overview
 
@@ -222,6 +224,14 @@ Completed locally on 2026-09-22 in `feat/backlog-specs-implementation`:
   release run `35761237088` built all four platforms and published the
   manifest-bound `development-latest` release. The Linux checksum and embedded
   development-channel commit identity were verified against that merge.
+
+## Production Release Evidence
+
+PR #40 merged the tested implementation into `main` at
+`a6cdef2df8fb0ec35f3b6e9e33343e6fbe0e9d96` on 2026-09-23. Production CI
+run `35865013795` and Release Artifacts run `35865013776` passed. The
+`prod-latest` manifest names that exact commit and all four supported archives;
+the published Linux archive passed its checksum and manifest digest checks.
 
 ## Evidence
 

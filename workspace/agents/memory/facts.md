@@ -233,3 +233,22 @@ skill-directory support into `development` at
 Release run `35761237088` built Linux, macOS Intel, macOS Apple Silicon, and
 Windows packages and published `development-latest`; its manifest, Linux
 checksum, and embedded development-channel commit identity were verified.
+
+## 2026-09-23 - SKM production promotion at a6cdef2
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+PR #40 promoted Workspace Docs 6 toolkit compatibility, sixteen-agent skill
+directory support, and interactive help update notices through `main` at
+`a6cdef2df8fb0ec35f3b6e9e33343e6fbe0e9d96`. Production CI run
+`35865013795` passed, and Release Artifacts run `35865013776` published the
+complete `prod-latest` asset set. The manifest names that exact commit and all
+four archives; the Linux archive matched its published checksum and manifest
+digest. The production Linux artifact reported the expected embedded identity
+and printed the update notice before interactive help output.
