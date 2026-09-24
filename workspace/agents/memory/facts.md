@@ -1,5 +1,20 @@
 # Facts
 
+## 2026-09-24 - Unified registry search and add integrated into development
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+PR #46 merged unified skill and published bundle results for `skm search`
+and the shared `skm add` route into `development` at
+`34d516ed1bf357fbc0d476de0c77c9485378fa5b` after its Validate check
+passed. The specification moved to `test`; production release remains pending.
+
 ## 2026-09-24 - Registry bundle consumer integrated into development
 
 - Type: fact

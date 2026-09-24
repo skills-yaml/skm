@@ -1,5 +1,19 @@
 # Memory Changelog
 
+## 2026-09-24 - Record unified registry workflow integration
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #46's confirmed `development` merge and passing Validate check in
+`workspace/agents/memory/facts.md`, and moved the unified registry workflow
+specification to `test` with the merge commit evidence.
+
 ## 2026-09-24 - Record unified registry discovery and addition
 
 - Type: decision
