@@ -1,5 +1,19 @@
 # Memory Changelog
 
+## 2026-09-24 - Record unified registry discovery and addition
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+Recorded the requested unified `skm search` and `skm add` workflow, explicit
+kind selection for collisions, and compatibility treatment of the existing
+bundle command in `workspace/agents/memory/decisions.md`.
+
 ## 2026-09-24 - Record registry bundle development integration
 
 - Type: fact

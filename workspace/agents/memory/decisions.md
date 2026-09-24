@@ -1,5 +1,21 @@
 # Decisions
 
+## 2026-09-24 - Use one registry search and add interface for skills and bundles
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: 2026-09-24 - Install published registry bundles as exact project skills (CLI command shape only)
+
+Content:
+
+SKM should show published manifest bundles and skills together in `skm search`
+results and install either through `skm add`. The result kind stays visible;
+`--kind skill|bundle` resolves an ID collision. Bundle installation retains the
+exact-pin, project-only preview and rollback transaction, while `skm bundle
+add` remains a compatibility command.
+
 ## 2026-09-24 - Install published registry bundles as exact project skills
 
 - Type: decision

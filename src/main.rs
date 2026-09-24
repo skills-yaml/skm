@@ -15,7 +15,7 @@ mod version_manager;
 mod wizard;
 mod workspace_source;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use config::{SkillSpec, SkillsConfig};
 use config_manager::{ensure_global_env, first_time_setup};
 use std::env;
@@ -91,28 +91,40 @@ enum Commands {
         #[arg(short, long)]
         yes: bool,
     },
-    /// Add a new skill to skills.yaml and link it
+    /// Add a registry skill or published bundle to this project
     Add {
-        /// Name of the skill (e.g. software-development/spec)
-        skill_name: String,
+        /// Skill or bundle ID (e.g. software-development/spec)
+        name: String,
         /// Source registry name (defaults to 'default')
         #[arg(long)]
         source: Option<String>,
+        /// Select skill or bundle explicitly when an ID names both
+        #[arg(long, value_enum)]
+        kind: Option<AddKind>,
         /// Path to a local skill directory (for local offline skills)
         #[arg(long)]
         path: Option<String>,
         /// Link skills globally instead of project-local
         #[arg(short, long)]
         global: bool,
+        /// Preview a bundle without writing
+        #[arg(long, conflicts_with = "yes")]
+        dry_run: bool,
+        /// Emit a bundle plan as JSON without writing
+        #[arg(long, conflicts_with = "yes")]
+        json: bool,
+        /// Apply a published bundle to this project
+        #[arg(long)]
+        yes: bool,
     },
     /// Add every skill in a published registry bundle to this project
     Bundle {
         #[command(subcommand)]
         command: BundleCommands,
     },
-    /// Search configured registries for skills, dependencies, and groups
+    /// Search configured registries for skills and published bundles
     Search {
-        /// Skill name or part of a skill name
+        /// Skill or bundle ID, or part of one
         query: String,
         /// Search only this configured registry
         #[arg(short, long)]
@@ -456,6 +468,12 @@ enum BundleCommands {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum AddKind {
+    Skill,
+    Bundle,
+}
+
 #[derive(Subcommand)]
 enum RegistryCommands {
     /// Add a new skill registry
@@ -776,21 +794,26 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Add {
-            skill_name,
+            name,
             source,
+            kind,
             path,
             global,
+            dry_run,
+            json,
+            yes,
         } => {
-            add_skill(
+            add_registry_item(
                 &config_path,
                 &current_dir,
-                SkillSpec {
-                    name: skill_name,
-                    version: Some("latest".to_string()),
-                    source,
-                    path,
-                },
+                &name,
+                source,
+                kind,
+                path,
                 global,
+                dry_run,
+                json,
+                yes,
             )?;
         }
         Commands::Bundle { command } => match command {
@@ -821,7 +844,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             };
             let discovery = search::discover(config.as_ref(), &current_dir, registry.as_deref())
                 .map_err(|error| format!("Could not search registries: {error}"))?;
-            let matches = search::matching_entries(&discovery.entries, &query)
+            let matches = search::matching_items(&discovery.entries, &discovery.bundles, &query)
                 .map_err(|error| format!("Could not search registries: {error}"))?;
             search::print_results(
                 &query,
@@ -1252,6 +1275,71 @@ fn validate_config(config: &SkillsConfig) -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+fn add_registry_item(
+    config_path: &Path,
+    project_root: &Path,
+    name: &str,
+    source: Option<String>,
+    kind: Option<AddKind>,
+    path: Option<String>,
+    global: bool,
+    dry_run: bool,
+    json: bool,
+    yes: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    linker::validate_skill_name(name)?;
+    let bundle_options = dry_run || json || yes;
+    if kind == Some(AddKind::Bundle) && path.is_some() {
+        return Err("--path applies only to local skills".into());
+    }
+    if kind == Some(AddKind::Bundle) && global {
+        return Err("published bundles can only be added to a project".into());
+    }
+    if path.is_none() && kind != Some(AddKind::Skill) {
+        let registry = source.as_deref().unwrap_or("default");
+        if kind == Some(AddKind::Bundle) {
+            return bundle::add(project_root, name, registry, dry_run, json, yes);
+        }
+        let config = load_config(config_path)?;
+        let discovery = search::discover(Some(&config), project_root, Some(registry))?;
+        let skill_exists = discovery
+            .entries
+            .iter()
+            .any(|entry| entry.name == name && entry.registry == registry);
+        let bundle_exists = discovery
+            .bundles
+            .iter()
+            .any(|bundle| bundle.id == name && bundle.registry == registry);
+        if skill_exists && bundle_exists {
+            return Err(format!(
+                "'{name}' is both a skill and a bundle in registry '{registry}'; add --kind skill or --kind bundle"
+            )
+            .into());
+        }
+        if bundle_exists {
+            if global {
+                return Err("published bundles can only be added to a project".into());
+            }
+            return bundle::add(project_root, name, registry, dry_run, json, yes);
+        }
+    }
+    if bundle_options {
+        return Err("--dry-run, --json, and --yes apply only to published bundles".into());
+    }
+    add_skill(
+        config_path,
+        project_root,
+        SkillSpec {
+            name: name.to_string(),
+            version: Some("latest".to_string()),
+            source,
+            path,
+        },
+        global,
+    )
+}
+
 fn add_skill(
     config_path: &Path,
     project_root: &Path,
@@ -1404,6 +1492,13 @@ mod help_tests {
             .to_string();
         for flag in ["--source", "--dry-run", "--json", "--yes"] {
             assert!(help.contains(flag));
+        }
+        let add_help = Cli::try_parse_from(["skm", "add", "--help"])
+            .err()
+            .expect("help exits through Clap")
+            .to_string();
+        for flag in ["--kind", "--source", "--dry-run", "--json", "--yes"] {
+            assert!(add_help.contains(flag));
         }
     }
 }
@@ -1682,6 +1777,213 @@ mod search_cli_tests {
         .unwrap();
         assert_eq!(fs::read(&manifest).unwrap(), original);
         assert!(!linker::resolve_registry_path("local").unwrap().exists());
+    }
+
+    #[test]
+    #[serial]
+    fn add_routes_skills_and_bundles_from_one_registry() {
+        let environment = Environment::new();
+        let registry = environment.registry();
+        for name in ["alpha", "beta"] {
+            let directory = registry.join(format!("skills/acme/{name}/v1.0.0"));
+            fs::create_dir_all(&directory).unwrap();
+            fs::write(
+                directory.join("SKILL.md"),
+                format!("---\nname: {name}\nmetadata:\n  skm-version: 1.0.0\n---\n# {name}\n"),
+            )
+            .unwrap();
+            std::os::unix::fs::symlink("v1.0.0", directory.parent().unwrap().join("latest"))
+                .unwrap();
+        }
+        fs::write(
+            registry.join("skills/acme/manifest.yaml"),
+            "schema_version: 2\nnamespace: acme\npackages:\n  alpha: 1.0.0\n  beta: 1.0.0\nbundles:\n  starter:\n    packages: [alpha]\n",
+        )
+        .unwrap();
+        git(&registry, &["init", "--quiet"]);
+        git(&registry, &["add", "."]);
+        git(
+            &registry,
+            &[
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-qm",
+                "fixture",
+            ],
+        );
+
+        let registries = HashMap::from([("local".into(), registry.to_string_lossy().into_owned())]);
+        BaseConfig {
+            default_registry: "local".into(),
+            registries: registries.clone(),
+            check_for_updates: false,
+        }
+        .save()
+        .unwrap();
+        let config_path = environment.project().join("skills.yaml");
+        SkillsConfig {
+            name: "unified-add".into(),
+            version: None,
+            registries: Some(registries),
+            agents: vec!["codex".into()],
+            skills: Vec::new(),
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            workspace: None,
+            trusted_sources: Vec::new(),
+        }
+        .save_to_file(&config_path)
+        .unwrap();
+        let before = fs::read(&config_path).unwrap();
+        let add = |name: &str, dry_run: bool, yes: bool| Commands::Add {
+            name: name.into(),
+            source: Some("local".into()),
+            kind: None,
+            path: None,
+            global: false,
+            dry_run,
+            json: false,
+            yes,
+        };
+
+        run(add("acme/starter", true, false)).unwrap();
+        assert_eq!(fs::read(&config_path).unwrap(), before);
+        assert!(!environment.project().join(".agents/skills/alpha").exists());
+        assert!(run(add("acme/starter", false, false))
+            .unwrap_err()
+            .to_string()
+            .contains("--yes"));
+        run(add("acme/starter", false, true)).unwrap();
+        let after_bundle = fs::read(&config_path).unwrap();
+        run(add("acme/starter", false, true)).unwrap();
+        assert_eq!(fs::read(&config_path).unwrap(), after_bundle);
+        assert!(environment
+            .project()
+            .join(".agents/skills/alpha")
+            .is_symlink());
+
+        run(add("acme/beta", false, false)).unwrap();
+        let config = SkillsConfig::load_from_file(&config_path).unwrap();
+        assert_eq!(config.skills.len(), 2);
+        assert!(environment
+            .project()
+            .join(".agents/skills/beta")
+            .is_symlink());
+        assert!(run(add("acme/beta", true, false))
+            .unwrap_err()
+            .to_string()
+            .contains("only to published bundles"));
+    }
+
+    #[test]
+    #[serial]
+    fn add_rejects_skill_bundle_id_collision_before_writes() {
+        let environment = Environment::new();
+        let registry = environment.registry();
+        let skill = registry.join("skills/acme/starter/v1.0.0");
+        fs::create_dir_all(&skill).unwrap();
+        std::os::unix::fs::symlink("v1.0.0", skill.parent().unwrap().join("latest")).unwrap();
+        fs::write(
+            skill.join("SKILL.md"),
+            "---\nname: starter\n---\n# Starter\n",
+        )
+        .unwrap();
+        fs::write(
+            registry.join("skills/acme/manifest.yaml"),
+            "schema_version: 2\nnamespace: acme\npackages:\n  starter: 1.0.0\nbundles:\n  starter:\n    packages: [starter]\n",
+        )
+        .unwrap();
+        git(&registry, &["init", "--quiet"]);
+        git(&registry, &["add", "."]);
+        git(
+            &registry,
+            &[
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-qm",
+                "fixture",
+            ],
+        );
+        let registries = HashMap::from([("local".into(), registry.to_string_lossy().into_owned())]);
+        BaseConfig {
+            default_registry: "local".into(),
+            registries: registries.clone(),
+            check_for_updates: false,
+        }
+        .save()
+        .unwrap();
+        let config_path = environment.project().join("skills.yaml");
+        SkillsConfig {
+            name: "collision".into(),
+            version: None,
+            registries: Some(registries),
+            agents: vec!["codex".into()],
+            skills: Vec::new(),
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            workspace: None,
+            trusted_sources: Vec::new(),
+        }
+        .save_to_file(&config_path)
+        .unwrap();
+        let before = fs::read(&config_path).unwrap();
+        let error = add_registry_item(
+            &config_path,
+            &environment.project(),
+            "acme/starter",
+            Some("local".into()),
+            None,
+            None,
+            false,
+            false,
+            false,
+            true,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("both a skill and a bundle"));
+        assert_eq!(fs::read(&config_path).unwrap(), before);
+        add_registry_item(
+            &config_path,
+            &environment.project(),
+            "acme/starter",
+            Some("local".into()),
+            Some(AddKind::Bundle),
+            None,
+            false,
+            true,
+            false,
+            false,
+        )
+        .unwrap();
+        assert_eq!(fs::read(&config_path).unwrap(), before);
+        add_registry_item(
+            &config_path,
+            &environment.project(),
+            "acme/starter",
+            Some("local".into()),
+            Some(AddKind::Skill),
+            None,
+            false,
+            false,
+            false,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            SkillsConfig::load_from_file(&config_path)
+                .unwrap()
+                .skills
+                .len(),
+            1
+        );
     }
 
     #[test]
