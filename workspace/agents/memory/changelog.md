@@ -1,5 +1,76 @@
 # Memory Changelog
 
+## 2026-09-24 - Record unified registry workflow integration
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #46's confirmed `development` merge and passing Validate check in
+`workspace/agents/memory/facts.md`, and moved the unified registry workflow
+specification to `test` with the merge commit evidence.
+
+## 2026-09-24 - Record unified registry discovery and addition
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+Recorded the requested unified `skm search` and `skm add` workflow, explicit
+kind selection for collisions, and compatibility treatment of the existing
+bundle command in `workspace/agents/memory/decisions.md`.
+
+## 2026-09-24 - Record registry bundle development integration
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #44's confirmed `development` merge and passing PR validation in
+`workspace/agents/memory/facts.md`, and moved the bundle specification to
+`test` with the merge commit evidence.
+
+## 2026-09-24 - Record registry bundle installation decision
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+Recorded in `workspace/agents/memory/decisions.md` that SKM expands published
+registry bundles into exact project skill pins with one previewed,
+rollback-protected application, rather than installing an instructionless
+dependency metapackage.
+
+## 2026-09-24 - Record skill-led Workspace management
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+Recorded the removal of Workspace-specific adoption commands, the published
+skill replacement, and the preserved toolkit integrity contract in
+`workspace/agents/memory/decisions.md`.
+
 ## 2026-09-24 - Record skill discovery production release
 
 - Type: fact
@@ -417,3 +488,32 @@ Content:
 Recorded the exact `development` commit, passing CI, complete prerelease
 publication, and local install/check smoke in `workspace/agents/memory/facts.md`.
 Moved both implementation specs to `test` with the integration evidence.
+
+## 2026-09-24 - Identify The First Bundle-Capable SKM Version
+
+- Type: decision
+- Source: implementation
+- Confidence: high
+- Review: after production release
+- Supersedes: none
+
+Content:
+
+Recorded in `workspace/agents/memory/decisions.md` that SKM 0.7.0 is the
+first version targeted for `skm bundle add`; production 0.6.0 lacks the
+command. The version reservation is a candidate, not release evidence.
+
+## 2026-09-24 - Record SKM 0.7.0 development qualification
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: after Registry bundle publication
+- Supersedes: none
+
+Content:
+
+Recorded the passing four-platform development release, checksum, manifest,
+released-binary bundle preview, and `skm check` evidence in
+`workspace/agents/memory/facts.md`. Registry publication and production release
+remain pending.

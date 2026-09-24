@@ -499,8 +499,13 @@ fn build_plan(
     let outputs = desired.iter().map(|output| output.lock.clone()).collect();
     let locked_workspace = if let Some(workspace) = &config.workspace {
         let integrity = match workspace.source.as_deref() {
-            Some(source) if crate::workspace::is_git_source(source) => workspace.integrity.clone(),
-            Some(source) => Some(crate::workspace::source_integrity(project_root, source)?),
+            Some(source) if crate::workspace_source::is_git_source(source) => {
+                workspace.integrity.clone()
+            }
+            Some(source) => Some(crate::workspace_source::source_integrity(
+                project_root,
+                source,
+            )?),
             None => None,
         };
         Some(LockedWorkspace {

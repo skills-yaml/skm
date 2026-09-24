@@ -1,12 +1,22 @@
-# Backlog Spec: Install Workspace Skill Bundles
+# Test Spec: Install Registry Skill Bundles
 
 ## Status
 
-State: `backlog`
+State: `test`
 
-Rationale: The cross-repository contract is specified, but implementation has
-not started. Workspace must publish canonical bundle membership and Registry
-must publish that membership before SKM can release the consumer command.
+Rationale: PR #44 merged generic `skm bundle add` into `development` at
+`29ba7dc77315be65e6e77d4d6932fbbc9018627d` on 2026-09-24. PR #47 merged
+the 0.7.0 bundle-capable candidate at `0855005926d2000f4446617ea1d77159e1ed4943`
+after Validate passed. Release Artifacts run `35992853126` published the 0.7.0
+`development-latest` prerelease at `4c8ed3a663dfb029329ab348a7e5970ac1c9ec25`
+on 2026-09-24. Its Linux archive checksum and manifest matched; the released
+binary recognized the staged Workspace bundle, and `skm check` passed for its
+20 installed skills. A published Registry bundle and production release remain
+pending.
+
+The Registry bundle contract uses `minimum_skm_version: 0.7.0`: the existing
+production 0.6.0 binary does not contain `skm bundle add`, so the bundle-capable
+candidate declares the next distinct version before publication.
 
 ## Companion Specifications
 
@@ -54,7 +64,7 @@ partially updated project when a later package conflicts or fails.
 - Removing a bundle or pruning skills that once belonged to a bundle.
 - Automatically upgrading an already configured bundle when future Workspace
   releases change its membership.
-- Supporting arbitrary third-party namespace manifests in the first release.
+- Reading bundles from unconfigured registries.
 - Changing Workspace adoption, toolkit bootstrap, or repository instruction
   management.
 
@@ -63,21 +73,19 @@ partially updated project when a later package conflicts or fails.
 The primary interface is:
 
 ```text
-skm workspace skills add --all --source default --dry-run
-skm workspace skills add --all --source default --yes
+skm bundle add workspace/all-workspace-skills --source default --dry-run
+skm bundle add workspace/all-workspace-skills --source default --yes
 ```
 
 The general named-bundle interface is:
 
 ```text
-skm workspace skills add --bundle all-workspace-skills --source default --yes
+skm bundle add workspace/<named-bundle> --source default --yes
 ```
 
 Rules:
 
-- Exactly one of `--all` and `--bundle <id>` is required.
-- `--all` is a stable convenience alias for `--bundle
-  all-workspace-skills`.
+- A fully qualified `namespace/bundle` identifier is required.
 - `--source` selects a configured registry and defaults to `default`; it does
   not persistently change registry configuration.
 - `--dry-run` prints a human-readable plan and performs no writes.
@@ -139,8 +147,7 @@ serialization where existing conventions require it.
    and cache rules.
 2. Read and validate the Workspace namespace manifest without deriving any
    members from directories.
-3. Select the named bundle, treating `--all` as
-   `all-workspace-skills`.
+3. Select the fully qualified named bundle.
 4. Convert every member to an exact same-registry skill request using the
    manifest's `packages` mapping.
 5. Resolve the complete existing `skm-dependencies` closure before writes.
@@ -216,11 +223,11 @@ and its need must be documented before addition.
 
 ## Acceptance Criteria
 
-1. `skm workspace skills add --all --source default --dry-run` returns the
+1. `skm bundle add workspace/all-workspace-skills --source default --dry-run` returns the
    complete, deterministic skill and dependency plan without changing files.
 2. The same command with `--yes` adds and links the exact packages declared by
    the registry's `all-workspace-skills` bundle in one transaction.
-3. `--bundle all-workspace-skills` and `--all` produce equivalent plans.
+3. A named Workspace bundle uses the same generic command and planning path.
 4. Every persisted bundle member has an explicit exact version and source in
    the existing project `skills` configuration.
 5. Profiles are not installed or persisted.
@@ -232,7 +239,7 @@ and its need must be documented before addition.
 9. A failure during commit or a detected concurrent config edit leaves the
    pre-command project configuration and links intact.
 10. `--json` produces stable structured preview output and no writes.
-11. Existing individual skill, toolkit, workspace, list, install, and check
+11. Existing individual skill, toolkit, list, install, and check
     behavior remains compatible.
 12. CLI help documents all arguments, exclusivity rules, safety modes, and
     project-only scope.
@@ -254,7 +261,7 @@ and its need must be documented before addition.
 1. Freeze the shared schema-2 manifest and CLI contract with the Workspace and
    Registry companion specifications.
 2. Add strict manifest and bundle parsing fixtures, including negative cases.
-3. Add the nested Clap command and deterministic human/JSON planning output.
+3. Add the generic bundle Clap command and deterministic human/JSON planning output.
 4. Implement config merge, complete dependency preflight, concurrent-edit
    detection, and transactional config/link application.
 5. Add unit, integration, rollback, idempotency, and compatibility tests.
@@ -276,6 +283,24 @@ and its need must be documented before addition.
   tests using temporary directories
 - end-to-end install, `skm check`, and second-apply convergence against a
   released Workspace registry fixture
+
+## Development Validation (2026-09-24)
+
+`task check`, `task test`, `task build`, and `git diff --check` passed locally.
+Tests cover schema-2 bundle and Workspace manifest validation, exact dependency
+expansion, local and Git registry preview/apply behavior, explicit pins,
+extension-field preservation, no-op repeats, target collisions, concurrent
+configuration edits, symlinked parents, and injected rollback. The released
+Registry still has a schema-1 Workspace manifest, so live published-bundle
+qualification remains pending.
+
+## Development Integration (2026-09-24)
+
+PR #44 merged into `development` at
+`29ba7dc77315be65e6e77d4d6932fbbc9018627d`. Its Validate check passed.
+This confirmed integration permits the `development -> test` transition;
+development-channel release verification and live Registry bundle qualification
+remain pending.
 
 ## Rollout and Rollback
 
@@ -319,14 +344,47 @@ ordinary explicit skill entries.
 
 ## Open Questions
 
-None for backlog entry. Implementation may refine JSON field names, but it
-must preserve the data and safety semantics defined here.
+No unresolved SKM interface decision. Published Registry bundle qualification
+remains a delivery dependency.
 
 ## Memory Impact
 
-Status: `pending`
+Status: `updated`
 
-Rationale: The final command, manifest schema, transaction boundary, and
-released compatibility are durable decisions, but they are not implemented or
-released yet. Resolve this section and update project memory before the spec
-can reach `done`.
+Rationale: The user selected Registry namespace-manifest bundles over
+instructionless dependency metapackages. The project-only exact-pin expansion
+and transactional application decision is recorded in
+`workspace/agents/memory/decisions.md` and
+`workspace/agents/memory/changelog.md`. Release
+compatibility remains a test-stage validation gate until Registry publishes
+schema-2 bundles and the SKM consumer reaches production.
+
+## Amendment: Bundles From Any Namespace
+
+Accepted for this implementation on 2026-09-24 by the user's request to support
+Registry's manifest bundles. The matching Registry amendment is tracked in
+Registry PR #10.
+
+The interface is already namespace-generic: `skm bundle add
+<namespace>/<bundle>`. The released search reader already reads
+`skills/<namespace>/manifest.yaml` for every namespace and requires no Workspace
+provenance field. The remaining restriction is the non-goal "Supporting arbitrary
+third-party namespace manifests in the first release".
+
+Proposed replacement for that non-goal:
+
+- Bundles resolve from any namespace manifest in a **configured** registry. The
+  configured registry is the trust boundary; restricting by namespace name adds
+  no protection, because every namespace in a registry is reviewed through the
+  same process.
+- Provenance checks apply where the manifest carries a provenance block, which
+  the `workspace` namespace always does. A core-only manifest is validated for
+  structure, exact versions, and membership, as the released reader already does.
+- Registries the user has not configured remain out of scope.
+
+Everything else in this specification is unchanged: explicit exact entries in
+`skills.yaml`, no hidden bundle state, the plan-then-apply flow, no global scope,
+and no automatic membership upgrades.
+
+First consumer outside `workspace`: `skills-yaml/authoring-toolkit`, bundling
+`skills-yaml/skill-creator` and `skills-yaml/skill-reviewer`.

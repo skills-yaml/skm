@@ -1,5 +1,35 @@
 # Facts
 
+## 2026-09-24 - Unified registry search and add integrated into development
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+PR #46 merged unified skill and published bundle results for `skm search`
+and the shared `skm add` route into `development` at
+`34d516ed1bf357fbc0d476de0c77c9485378fa5b` after its Validate check
+passed. The specification moved to `test`; production release remains pending.
+
+## 2026-09-24 - Registry bundle consumer integrated into development
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+PR #44 merged the `skm bundle add` consumer into `development` at
+`29ba7dc77315be65e6e77d4d6932fbbc9018627d` after its Validate check
+passed. The SKM specification moved to `test`; released Registry schema-2
+bundle qualification and production release remain pending.
+
 ## 2026-09-19 - Managed release updates use a strict release manifest
 
 - Type: fact
@@ -325,3 +355,21 @@ Artifacts `35962863697` published the complete nine-asset `prod-latest`
 release. The Linux archive checksum matched; the manifest and binary reported
 the exact production commit, and a released-binary search smoke showed labeled
 skill details, dependencies, and the 19-skill Workspace collection.
+
+## 2026-09-24 - Bundle-capable SKM 0.7.0 qualified on the development channel
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: after Registry bundle publication
+- Supersedes: none
+
+Content:
+
+Release Artifacts run `35992853126` published the complete nine-asset SKM
+0.7.0 `development-latest` prerelease from
+`4c8ed3a663dfb029329ab348a7e5970ac1c9ec25`. The Linux archive checksum,
+manifest version and commit, and released binary identity matched. The released
+binary recognized the staged `workspace/all-workspace-skills` bundle as 20
+existing skill pins with no changes on repeat, and `skm check` passed. The
+Workspace Registry bundle and SKM 0.7.0 production release remain pending.

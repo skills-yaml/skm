@@ -43,11 +43,87 @@ pub struct Discovery {
 #[derive(Debug, Serialize)]
 struct SearchMatch<'a> {
     name: &'a str,
-    version: &'a str,
+    kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<&'a str>,
     registry: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<&'a str>,
     dependencies: &'a [String],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    members: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    packages: Option<&'a [String]>,
     add_command: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    apply_command: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub enum SearchItem<'a> {
+    Skill(&'a Entry),
+    Bundle(&'a Bundle),
+}
+
+impl SearchItem<'_> {
+    fn name(&self) -> &str {
+        match self {
+            Self::Skill(entry) => &entry.name,
+            Self::Bundle(bundle) => &bundle.id,
+        }
+    }
+
+    fn registry(&self) -> &str {
+        match self {
+            Self::Skill(entry) => &entry.registry,
+            Self::Bundle(bundle) => &bundle.registry,
+        }
+    }
+
+    fn kind(&self) -> &'static str {
+        match self {
+            Self::Skill(_) => "skill",
+            Self::Bundle(_) => "bundle",
+        }
+    }
+
+    fn display(&self) -> SearchMatch<'_> {
+        match self {
+            Self::Skill(entry) => SearchMatch {
+                name: &entry.name,
+                kind: "skill",
+                version: Some(&entry.version),
+                registry: &entry.registry,
+                description: entry.description.as_deref(),
+                dependencies: &entry.dependencies,
+                members: None,
+                packages: None,
+                add_command: format!(
+                    "skm add {} --source {} --kind skill",
+                    entry.name, entry.registry
+                ),
+                apply_command: None,
+            },
+            Self::Bundle(bundle) => {
+                let command = format!(
+                    "skm add {} --source {} --kind bundle",
+                    bundle.id, bundle.registry
+                );
+                SearchMatch {
+                    name: &bundle.id,
+                    kind: "bundle",
+                    version: None,
+                    registry: &bundle.registry,
+                    description: None,
+                    dependencies: &[],
+                    members: Some(bundle.members),
+                    packages: Some(&bundle.packages),
+                    add_command: format!("{command} --dry-run"),
+                    apply_command: Some(format!("{command} --yes")),
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -497,13 +573,13 @@ fn regular_directory(path: &Path) -> bool {
         .is_ok_and(|metadata| metadata.is_dir() && !metadata.file_type().is_symlink())
 }
 
-fn is_git_url(location: &str) -> bool {
+pub(crate) fn is_git_url(location: &str) -> bool {
     ["https://", "http://", "ssh://", "git://", "file://", "git@"]
         .iter()
         .any(|prefix| location.starts_with(prefix))
 }
 
-fn cache_matches(cache: &Path, location: &str) -> bool {
+pub(crate) fn cache_matches(cache: &Path, location: &str) -> bool {
     if !regular_directory(cache) || !regular_directory(&cache.join(".git")) {
         return false;
     }
@@ -518,7 +594,7 @@ fn cache_matches(cache: &Path, location: &str) -> bool {
         .is_some_and(|bytes| String::from_utf8_lossy(&bytes).trim() == location)
 }
 
-fn run_git(mut command: Command, timeout: Duration) -> Result<Vec<u8>, String> {
+pub(crate) fn run_git(mut command: Command, timeout: Duration) -> Result<Vec<u8>, String> {
     let mut output =
         tempfile::tempfile().map_err(|_| "Cannot create temporary Git output".to_owned())?;
     command
@@ -568,21 +644,35 @@ fn run_git(mut command: Command, timeout: Duration) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-pub fn matching_entries(entries: &[Entry], query: &str) -> Result<Vec<Entry>, String> {
+pub fn matching_items<'a>(
+    entries: &'a [Entry],
+    bundles: &'a [Bundle],
+    query: &str,
+) -> Result<Vec<SearchItem<'a>>, String> {
     let query = query.trim().to_lowercase();
     if query.is_empty() {
         return Err("Search query must not be empty".into());
     }
-    Ok(entries
+    let mut matches: Vec<_> = entries
         .iter()
         .filter(|entry| entry.name.to_lowercase().contains(&query))
-        .cloned()
-        .collect())
+        .map(SearchItem::Skill)
+        .chain(
+            bundles
+                .iter()
+                .filter(|bundle| bundle.id.to_lowercase().contains(&query))
+                .map(SearchItem::Bundle),
+        )
+        .collect();
+    matches.sort_by(|a, b| {
+        (a.name(), a.registry(), a.kind()).cmp(&(b.name(), b.registry(), b.kind()))
+    });
+    Ok(matches)
 }
 
 pub fn print_results(
     query: &str,
-    matches: &[Entry],
+    matches: &[SearchItem<'_>],
     bundles: &[Bundle],
     collections: &[Collection],
     warnings: &[String],
@@ -595,14 +685,7 @@ pub fn print_results(
     let visible: Vec<_> = matches
         .iter()
         .take(limit)
-        .map(|entry| SearchMatch {
-            name: &entry.name,
-            version: &entry.version,
-            registry: &entry.registry,
-            description: entry.description.as_deref(),
-            dependencies: &entry.dependencies,
-            add_command: add_command(entry),
-        })
+        .map(SearchItem::display)
         .collect();
     if json {
         println!(
@@ -624,35 +707,34 @@ pub fn print_results(
         eprintln!("Warning: {warning}");
     }
     if visible.is_empty() {
-        println!("No skills found matching '{}'.", query.trim());
+        println!("No skills or bundles found matching '{}'.", query.trim());
     }
     for entry in visible {
         println!("Name: {}", entry.name);
-        println!("  Version: {}  Registry: {}", entry.version, entry.registry);
+        println!("  Kind: {}  Registry: {}", entry.kind, entry.registry);
+        if let Some(version) = entry.version {
+            println!("  Version: {version}");
+        }
         if let Some(description) = entry.description {
             println!("  Description: {description}");
         }
         if !entry.dependencies.is_empty() {
             println!("  Dependencies: {}", entry.dependencies.join(", "));
         }
-        println!("  Add: {}", entry.add_command);
+        if let Some(packages) = entry.packages {
+            println!("  Includes: {}", packages.join(", "));
+        }
+        if let Some(command) = entry.apply_command {
+            println!("  Preview: {}", entry.add_command);
+            println!("  Add: {command}");
+        } else {
+            println!("  Add: {}", entry.add_command);
+        }
     }
     if matches.len() > limit {
         println!("Showing {} of {} matches.", limit, matches.len());
     } else if !matches.is_empty() {
-        println!("{} skill(s) found.", matches.len());
-    }
-    if bundles.is_empty() {
-        println!("No published skill bundles in the selected registries.");
-    } else {
-        println!("Available skill bundles (discovery only):");
-        for bundle in bundles {
-            println!(
-                "  {}  ({} skills)  [{}]",
-                bundle.id, bundle.members, bundle.registry
-            );
-            println!("    Includes: {}", bundle.packages.join(", "));
-        }
+        println!("{} skill(s) or bundle(s) found.", matches.len());
     }
     if !collections.is_empty() {
         println!("Skill collections (browse only; group installation unavailable):");
@@ -664,10 +746,6 @@ pub fn print_results(
         }
     }
     Ok(())
-}
-
-fn add_command(entry: &Entry) -> String {
-    format!("skm add {} --source {}", entry.name, entry.registry)
 }
 
 #[cfg(test)]
@@ -720,8 +798,18 @@ mod tests {
             default.clone(),
             entry("ai/review", "default"),
         ];
-        assert_eq!(matching_entries(&entries, "SPEC").unwrap().len(), 2);
-        assert!(matching_entries(&entries, " ").is_err());
+        let bundles = [Bundle {
+            id: "software/spec-kit".into(),
+            registry: "default".into(),
+            members: 1,
+            packages: vec!["software/spec".into()],
+        }];
+        let matches = matching_items(&entries, &bundles, "SPEC").unwrap();
+        assert_eq!(matches.len(), 3);
+        assert_eq!(matches[0].kind(), "skill");
+        assert_eq!(matches[2].kind(), "bundle");
+        assert_eq!(matching_items(&entries, &bundles, "kit").unwrap().len(), 1);
+        assert!(matching_items(&entries, &bundles, " ").is_err());
     }
 
     #[test]
@@ -749,37 +837,44 @@ mod tests {
             entry("software/review", "company"),
             entry("software/spec", "default"),
         ];
-        let visible = entries
-            .iter()
-            .take(1)
-            .map(|entry| SearchMatch {
-                name: &entry.name,
-                version: &entry.version,
-                registry: &entry.registry,
-                description: entry.description.as_deref(),
-                dependencies: &entry.dependencies,
-                add_command: add_command(entry),
-            })
-            .collect();
+        let bundles = [Bundle {
+            id: "software/starter".into(),
+            registry: "company".into(),
+            members: 1,
+            packages: vec!["software/review".into()],
+        }];
+        let matches = matching_items(&entries, &bundles, "software").unwrap();
+        let visible = matches.iter().map(SearchItem::display).collect();
         let warnings = ["other: unavailable".into()];
         let json = serde_json::to_value(SearchOutput {
             query: "software",
-            count: 1,
-            total: entries.len(),
+            count: 3,
+            total: matches.len(),
             matches: visible,
-            bundles: &[],
+            bundles: &bundles,
             collections: &[],
             warnings: &warnings,
         })
         .unwrap();
-        assert_eq!(json["count"], 1);
-        assert_eq!(json["total"], 2);
+        assert_eq!(json["count"], 3);
+        assert_eq!(json["total"], 3);
         assert_eq!(json["matches"][0]["name"], "software/review");
+        assert_eq!(json["matches"][0]["kind"], "skill");
         assert_eq!(
             json["matches"][0]["add_command"],
-            "skm add software/review --source company"
+            "skm add software/review --source company --kind skill"
         );
-        assert!(json["bundles"].as_array().unwrap().is_empty());
+        assert_eq!(json["matches"][2]["kind"], "bundle");
+        assert_eq!(json["matches"][2]["members"], 1);
+        assert_eq!(
+            json["matches"][2]["add_command"],
+            "skm add software/starter --source company --kind bundle --dry-run"
+        );
+        assert_eq!(
+            json["matches"][2]["apply_command"],
+            "skm add software/starter --source company --kind bundle --yes"
+        );
+        assert_eq!(json["bundles"].as_array().unwrap().len(), 1);
         assert!(json["matches"][0]["dependencies"]
             .as_array()
             .unwrap()

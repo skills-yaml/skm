@@ -7,6 +7,7 @@ use std::path::{Component, Path, PathBuf};
 
 const VERSION_METADATA_KEY: &str = "skm-version";
 const DEPENDENCIES_METADATA_KEY: &str = "skm-dependencies";
+const MAX_SKILL_DEPENDENCY_DEPTH: usize = 128;
 
 #[derive(Debug, Deserialize)]
 struct SkillFrontmatter {
@@ -159,7 +160,7 @@ pub fn resolve_skill_dependency_closure(
     resolve_skill_dependency_closure_with(skills, project_root, resolve_skill_source_dir)
 }
 
-fn resolve_skill_dependency_closure_with<F>(
+pub(crate) fn resolve_skill_dependency_closure_with<F>(
     skills: &[SkillSpec],
     project_root: &Path,
     resolve_source: F,
@@ -194,6 +195,12 @@ fn resolve_skill_dependency<F>(
 where
     F: Fn(&SkillSpec, &Path) -> Result<PathBuf, Box<dyn std::error::Error>>,
 {
+    if stack.len() >= MAX_SKILL_DEPENDENCY_DEPTH {
+        return Err(format!(
+            "registry skill dependency depth exceeds {MAX_SKILL_DEPENDENCY_DEPTH}"
+        )
+        .into());
+    }
     validate_skill_name(&requested.name)?;
     let source = resolve_source(requested, project_root)?;
     if !source.is_dir() {
@@ -336,7 +343,7 @@ pub(crate) fn parse_skill_dependencies(
     Ok(dependencies)
 }
 
-fn validate_exact_version(version: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn validate_exact_version(version: &str) -> Result<(), Box<dyn std::error::Error>> {
     let version = version.strip_prefix('v').unwrap_or(version);
     let parts: Vec<_> = version.split('.').collect();
     let valid = parts.len() == 3
@@ -413,7 +420,7 @@ pub fn resolve_skill_source_dir(
     skill: &SkillSpec,
     project_root: &Path,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let skill_path = validated_skill_path(&skill.name)?;
+    validate_skill_name(&skill.name)?;
 
     if let Some(ref local_path) = skill.path {
         Ok(project_root.join(local_path))
@@ -422,15 +429,21 @@ pub fn resolve_skill_source_dir(
         let reg_path = resolve_registry_path(registry_name)
             .ok_or_else(|| format!("Could not resolve path for registry: {}", registry_name))?;
 
-        let package_root = reg_path.join("skills").join(&skill_path);
-        validate_registry_package_root(&reg_path, &skill_path, &package_root)?;
-
-        // Resolve version path
-        let version_path = resolve_version_path(skill)?;
-        let source = package_root.join(&version_path);
-        validate_registry_version_path(&package_root, &source, &version_path)?;
-        Ok(source)
+        resolve_registry_skill_source_dir(skill, &reg_path)
     }
+}
+
+pub(crate) fn resolve_registry_skill_source_dir(
+    skill: &SkillSpec,
+    registry_root: &Path,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let skill_path = validated_skill_path(&skill.name)?;
+    let package_root = registry_root.join("skills").join(&skill_path);
+    validate_registry_package_root(registry_root, &skill_path, &package_root)?;
+    let version_path = resolve_version_path(skill)?;
+    let source = package_root.join(&version_path);
+    validate_registry_version_path(&package_root, &source, &version_path)?;
+    Ok(source)
 }
 
 fn validate_registry_package_root(
@@ -607,7 +620,7 @@ pub fn require_skill_targets(
     Ok(())
 }
 
-fn validate_skill_target_parent(
+pub(crate) fn validate_skill_target_parent(
     base_dir: &Path,
     skill_name: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -1018,6 +1031,36 @@ mod tests {
         assert_eq!(resolved[0].version.as_deref(), Some("0.1.0"));
         assert_eq!(resolved[1].name, "workspace/write-spec");
         assert_eq!(resolved[1].version.as_deref(), Some("0.2.0"));
+        fs::remove_dir_all(project).unwrap();
+    }
+
+    #[test]
+    fn rejects_excessive_registry_dependency_depth() {
+        let project = temp_project();
+        let registry = project.join("registry");
+        for index in 0..=MAX_SKILL_DEPENDENCY_DEPTH {
+            let dependency = (index < MAX_SKILL_DEPENDENCY_DEPTH)
+                .then(|| format!("workspace/skill{}@1.0.0", index + 1));
+            write_registry_skill(
+                &registry,
+                &format!("workspace/skill{index}"),
+                "1.0.0",
+                dependency.as_deref(),
+            );
+        }
+        let requested = [SkillSpec {
+            name: "workspace/skill0".into(),
+            version: Some("1.0.0".into()),
+            source: Some("default".into()),
+            path: None,
+        }];
+        let error = resolve_skill_dependency_closure_with(
+            &requested,
+            &project,
+            registry_resolver(&registry),
+        )
+        .expect_err("deep dependency graph is rejected");
+        assert!(error.to_string().contains("dependency depth exceeds"));
         fs::remove_dir_all(project).unwrap();
     }
 
