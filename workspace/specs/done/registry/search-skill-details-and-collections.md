@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `test`
+State: `done`
 
-Rationale: Commit `4c766e693d58fb399fbb7bf25f1939254eb2a65b` integrated the change into `development`; CI `35924612401` and Release Artifacts `35924612416` passed. PR #42 merged the tested code into `main` at `be2581d98e81c79d0756c1ef36fb4ea584200fb1`, and production CI `35962268392` passed. The production release is held for qualification and reviewer approval.
+Rationale: PR #42 merged the tested search details into `main`; production commit `9c8153a23bb3c8f2c3148895962efceaa60a5825` passed CI `35962863500`, four-platform qualification `35963192731`, and Release Artifacts `35962863697`. The complete `prod-latest` asset set, Linux checksum, manifest, binary identity, and labeled search output were verified.
 
 ## Problem
 

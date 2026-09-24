@@ -306,3 +306,22 @@ namespace collection is browseable and does not itself provide group install.
 The current Workspace registry manifest is schema 1 and lists 19 skills but no
 installable bundle. JSON retains existing fields and adds dependencies,
 collections, and bundle package names.
+
+## 2026-09-24 - Skill discovery and search released to production
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+PR #42 merged the discoverable skill-target and search improvements into
+`main`. Commit `9c8153a23bb3c8f2c3148895962efceaa60a5825` passed production
+CI `35962863500` and release-update qualification `35963192731` on Linux,
+macOS Intel, macOS Apple Silicon, and Windows. After reviewer approval, Release
+Artifacts `35962863697` published the complete nine-asset `prod-latest`
+release. The Linux archive checksum matched; the manifest and binary reported
+the exact production commit, and a released-binary search smoke showed labeled
+skill details, dependencies, and the 19-skill Workspace collection.

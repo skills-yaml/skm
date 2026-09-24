@@ -37,9 +37,9 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
-| [search-skill-details-and-collections.md](test/registry/search-skill-details-and-collections.md) | `registry` | `test` | PR #42 merged the tested change into `main` at `be2581d`; production CI `35962268392` passed, while publication is held for qualification and approval. |
-| [install-discoverable-targets.md](test/agents/install-discoverable-targets.md) | `agents` | `test` | PR #42 merged the tested fix into `main` at `be2581d`; production CI `35962268392` passed, while publication is held for qualification and approval. |
-| [search-metadata-and-bundles.md](test/registry/search-metadata-and-bundles.md) | `registry` | `test` | PR #42 merged the tested change into `main` at `be2581d`; production CI `35962268392` passed, while publication is held for qualification and approval. |
+| [search-skill-details-and-collections.md](done/registry/search-skill-details-and-collections.md) | `registry` | `done` | PR #42 released the search details through `main` at `9c8153a`; production CI, four-platform qualification, nine-asset publication, checksum, and binary smoke passed. |
+| [install-discoverable-targets.md](done/agents/install-discoverable-targets.md) | `agents` | `done` | PR #42 released discoverable install targets through `main` at `9c8153a`; production CI, four-platform qualification, and verified publication passed. |
+| [search-metadata-and-bundles.md](done/registry/search-metadata-and-bundles.md) | `registry` | `done` | PR #42 released search metadata through `main` at `9c8153a`; production CI, four-platform qualification, and verified publication passed. |
 | [help-update-notice.md](done/updates/help-update-notice.md) | `updates` | `done` | PR #40 released the tested help notice through `main` at `a6cdef2`; production CI, four-platform publication, manifest verification, and an interactive Linux help smoke passed. |
 | [workspace-docs-6-compatibility.md](done/workspace-toolkit/workspace-docs-6-compatibility.md) | `workspace-toolkit` | `done` | PR #40 released the tested compatibility through `main` at `a6cdef2`; production CI and the verified complete four-platform publication passed. |
 | [workspace-skill-bundle-install.md](backlog/workspace-toolkit/workspace-skill-bundle-install.md) | `workspace-toolkit` | `backlog` | Coordinated Workspace, Registry, and SKM contract is specified; canonical bundle publication and implementation have not started. |

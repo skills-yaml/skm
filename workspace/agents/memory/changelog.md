@@ -1,5 +1,20 @@
 # Memory Changelog
 
+## 2026-09-24 - Record skill discovery production release
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded PR #42's qualified production release, four-platform publication,
+checksum, manifest, binary identity, and search smoke in
+`workspace/agents/memory/facts.md`. The three released specifications moved to
+`done` with confirmed release evidence.
+
 ## 2026-09-23 - Record labeled search and namespace collections
 
 - Type: fact
