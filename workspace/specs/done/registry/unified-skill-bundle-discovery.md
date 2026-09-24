@@ -1,12 +1,16 @@
-# Test Spec: Unified Registry Skill and Bundle Discovery
+# Unified Registry Skill and Bundle Discovery
 
 ## Status
 
-State: `test`
+State: `done`
 
-Rationale: PR #46 merged the unified `skm search` and `skm add` workflow into
-`development` at `34d516ed1bf357fbc0d476de0c77c9485378fa5b` on
-2026-09-24 after its Validate check passed. Production release remains pending.
+Rationale: PR #46 integrated the unified `skm search` and `skm add` workflow
+into `development`. PR #51 promoted SKM 0.7.0 through `main`, and PR #52's
+release-evidence commit `44a502af733e1ef3e0a360fe6e00d72959be261d`
+passed production CI `36007217965`, four-platform update qualification
+`36008025230`, and production Release Artifacts run `36007218144` on
+2026-09-24. The nine published assets, archive checksums, manifest, and
+production binary identity were verified.
 
 ## Problem and Goal
 

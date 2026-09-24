@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `test`
+State: `done`
 
-Rationale: Commit `5152bc1` integrated the skill-led Workspace CLI change into `development` on 2026-09-24. CI run `35974287389` passed, and release run `35974287428` published the four-platform `development-latest` prerelease at that commit. Production release through `main` is pending.
+Rationale: Commit `5152bc1` integrated the skill-led Workspace CLI change into `development`. PR #51 promoted SKM 0.7.0 through `main`, and PR #52's release-evidence commit `44a502af733e1ef3e0a360fe6e00d72959be261d` passed production CI `36007217965`, four-platform update qualification `36008025230`, and production Release Artifacts run `36007218144` on 2026-09-24. The nine published assets, archive checksums, manifest, and production binary identity were verified.
 
 ## Problem
 

@@ -1,5 +1,24 @@
 # Facts
 
+## 2026-09-24 - SKM 0.7.0 bundle workflow released to production
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: 2026-09-24 - Unified registry search and add integrated into development; 2026-09-24 - Registry bundle consumer integrated into development
+
+Content:
+
+SKM 0.7.0 at `44a502af733e1ef3e0a360fe6e00d72959be261d` was published
+through the reviewed `release-prod` environment after production CI and
+four-platform update qualification passed. Its nine release assets, four
+archive checksums, release manifest, and production binary identity were
+verified. It supports one `skm search` and `skm add` workflow for published
+skills and schema-2 bundles. Before release, the 20-member
+`workspace/all-workspace-skills` bundle published in Registry passed live
+search, preview, add, `skm check`, and repeat-add with the development binary.
+
 ## 2026-09-24 - Unified registry search and add integrated into development
 
 - Type: fact
