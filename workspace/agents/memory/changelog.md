@@ -1,5 +1,20 @@
 # Memory Changelog
 
+## 2026-09-24 - Record registry bundle installation decision
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+Recorded in `workspace/agents/memory/decisions.md` that SKM expands published
+registry bundles into exact project skill pins with one previewed,
+rollback-protected application, rather than installing an instructionless
+dependency metapackage.
+
 ## 2026-09-24 - Record skill-led Workspace management
 
 - Type: decision

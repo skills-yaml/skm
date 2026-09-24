@@ -497,13 +497,13 @@ fn regular_directory(path: &Path) -> bool {
         .is_ok_and(|metadata| metadata.is_dir() && !metadata.file_type().is_symlink())
 }
 
-fn is_git_url(location: &str) -> bool {
+pub(crate) fn is_git_url(location: &str) -> bool {
     ["https://", "http://", "ssh://", "git://", "file://", "git@"]
         .iter()
         .any(|prefix| location.starts_with(prefix))
 }
 
-fn cache_matches(cache: &Path, location: &str) -> bool {
+pub(crate) fn cache_matches(cache: &Path, location: &str) -> bool {
     if !regular_directory(cache) || !regular_directory(&cache.join(".git")) {
         return false;
     }
@@ -518,7 +518,7 @@ fn cache_matches(cache: &Path, location: &str) -> bool {
         .is_some_and(|bytes| String::from_utf8_lossy(&bytes).trim() == location)
 }
 
-fn run_git(mut command: Command, timeout: Duration) -> Result<Vec<u8>, String> {
+pub(crate) fn run_git(mut command: Command, timeout: Duration) -> Result<Vec<u8>, String> {
     let mut output =
         tempfile::tempfile().map_err(|_| "Cannot create temporary Git output".to_owned())?;
     command
@@ -645,13 +645,17 @@ pub fn print_results(
     if bundles.is_empty() {
         println!("No published skill bundles in the selected registries.");
     } else {
-        println!("Available skill bundles (discovery only):");
+        println!("Available skill bundles:");
         for bundle in bundles {
             println!(
                 "  {}  ({} skills)  [{}]",
                 bundle.id, bundle.members, bundle.registry
             );
             println!("    Includes: {}", bundle.packages.join(", "));
+            println!(
+                "    Preview: skm bundle add {} --source {} --dry-run",
+                bundle.id, bundle.registry
+            );
         }
     }
     if !collections.is_empty() {
