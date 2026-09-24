@@ -329,3 +329,32 @@ Rationale: The final command, manifest schema, transaction boundary, and
 released compatibility are durable decisions, but they are not implemented or
 released yet. Resolve this section and update project memory before the spec
 can reach `done`.
+
+## Amendment: Bundles From Any Namespace
+
+Proposed 2026-09-24, with the matching Registry amendment "Generic Namespace
+Manifests". Not yet agreed with this specification's owner.
+
+The interface is already namespace-generic: `skm bundle add
+<namespace>/<bundle>`. The released search reader already reads
+`skills/<namespace>/manifest.yaml` for every namespace and requires no Workspace
+provenance field. The remaining restriction is the non-goal "Supporting arbitrary
+third-party namespace manifests in the first release".
+
+Proposed replacement for that non-goal:
+
+- Bundles resolve from any namespace manifest in a **configured** registry. The
+  configured registry is the trust boundary; restricting by namespace name adds
+  no protection, because every namespace in a registry is reviewed through the
+  same process.
+- Provenance checks apply where the manifest carries a provenance block, which
+  the `workspace` namespace always does. A core-only manifest is validated for
+  structure, exact versions, and membership, as the released reader already does.
+- Registries the user has not configured remain out of scope.
+
+Everything else in this specification is unchanged: explicit exact entries in
+`skills.yaml`, no hidden bundle state, the plan-then-apply flow, no global scope,
+and no automatic membership upgrades.
+
+First consumer outside `workspace`: `skills-yaml/authoring-toolkit`, bundling
+`skills-yaml/skill-creator` and `skills-yaml/skill-reviewer`.
