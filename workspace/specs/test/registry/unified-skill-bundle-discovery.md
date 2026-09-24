@@ -1,12 +1,12 @@
-# Development Spec: Unified Registry Skill and Bundle Discovery
+# Test Spec: Unified Registry Skill and Bundle Discovery
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: The user requested one search interface and one add command for
-published registry skills and manifest bundles. Implementation is active on a
-feature branch; integration into `development` has not been confirmed.
+Rationale: PR #46 merged the unified `skm search` and `skm add` workflow into
+`development` at `34d516ed1bf357fbc0d476de0c77c9485378fa5b` on
+2026-09-24 after its Validate check passed. Production release remains pending.
 
 ## Problem and Goal
 
