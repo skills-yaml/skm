@@ -460,3 +460,17 @@ Content:
 Recorded the exact `development` commit, passing CI, complete prerelease
 publication, and local install/check smoke in `workspace/agents/memory/facts.md`.
 Moved both implementation specs to `test` with the integration evidence.
+
+## 2026-09-24 - Identify The First Bundle-Capable SKM Version
+
+- Type: decision
+- Source: implementation
+- Confidence: high
+- Review: after production release
+- Supersedes: none
+
+Content:
+
+Recorded in `workspace/agents/memory/decisions.md` that SKM 0.7.0 is the
+first version targeted for `skm bundle add`; production 0.6.0 lacks the
+command. The version reservation is a candidate, not release evidence.
