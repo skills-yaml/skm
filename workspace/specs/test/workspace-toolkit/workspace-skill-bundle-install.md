@@ -1,12 +1,13 @@
-# Development Spec: Install Registry Skill Bundles
+# Test Spec: Install Registry Skill Bundles
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: Generic `skm bundle add` is implemented on a feature branch and
-passes local validation with schema-2 fixtures. Registry and Workspace bundle
-publication, review, and development integration remain outstanding.
+Rationale: PR #44 merged generic `skm bundle add` into `development` at
+`29ba7dc77315be65e6e77d4d6932fbbc9018627d` on 2026-09-24 after its
+Validate check passed. Development-channel qualification and released Registry
+bundle fixtures remain pending before production release.
 
 ## Companion Specifications
 
@@ -282,7 +283,15 @@ expansion, local and Git registry preview/apply behavior, explicit pins,
 extension-field preservation, no-op repeats, target collisions, concurrent
 configuration edits, symlinked parents, and injected rollback. The released
 Registry still has a schema-1 Workspace manifest, so live published-bundle
-qualification and development integration remain pending.
+qualification remains pending.
+
+## Development Integration (2026-09-24)
+
+PR #44 merged into `development` at
+`29ba7dc77315be65e6e77d4d6932fbbc9018627d`. Its Validate check passed.
+This confirmed integration permits the `development -> test` transition;
+development-channel release verification and live Registry bundle qualification
+remain pending.
 
 ## Rollout and Rollback
 
@@ -326,8 +335,8 @@ ordinary explicit skill entries.
 
 ## Open Questions
 
-None for backlog entry. Implementation may refine JSON field names, but it
-must preserve the data and safety semantics defined here.
+No unresolved SKM interface decision. Published Registry bundle qualification
+remains a delivery dependency.
 
 ## Memory Impact
 
@@ -338,8 +347,8 @@ instructionless dependency metapackages. The project-only exact-pin expansion
 and transactional application decision is recorded in
 `workspace/agents/memory/decisions.md` and
 `workspace/agents/memory/changelog.md`. Release
-compatibility remains a development validation gate until Registry publishes
-schema-2 bundles and the SKM consumer reaches its test and production stages.
+compatibility remains a test-stage validation gate until Registry publishes
+schema-2 bundles and the SKM consumer reaches production.
 
 ## Amendment: Bundles From Any Namespace
 
