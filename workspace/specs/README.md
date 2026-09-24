@@ -37,6 +37,7 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
+| [unified-skill-bundle-discovery.md](development/registry/unified-skill-bundle-discovery.md) | `registry` | `development` | User requested a single search and add interface for skills and published bundles; implementation is active and development integration is pending. |
 | [remove-workspace-cli.md](test/workspace-toolkit/remove-workspace-cli.md) | `workspace-toolkit` | `test` | Commit `5152bc1` integrated into `development`; CI and the four-platform `development-latest` publication passed. Production release remains pending. |
 | [search-skill-details-and-collections.md](done/registry/search-skill-details-and-collections.md) | `registry` | `done` | PR #42 released the search details through `main` at `9c8153a`; production CI, four-platform qualification, nine-asset publication, checksum, and binary smoke passed. |
 | [install-discoverable-targets.md](done/agents/install-discoverable-targets.md) | `agents` | `done` | PR #42 released discoverable install targets through `main` at `9c8153a`; production CI, four-platform qualification, and verified publication passed. |
