@@ -182,3 +182,22 @@ Interactive SKM help requests, including `skm help` and `--help`, should show
 the same available-update notice as ordinary commands before Clap prints help.
 The notice remains best-effort, terminal-only, and controlled by the existing
 startup-check opt-out.
+
+## 2026-09-24 - Delegate Workspace structure management to skills
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+SKM removes its dedicated `workspace audit|adopt|upgrade|repair` commands.
+Repository assessment, adoption, upgrade, and repair are handled by the
+published `workspace/wk-adopt` skill and its exact
+`workspace/adopt-workspace-structure` dependency. SKM still installs skills and
+toolkits and preserves `workspace:` pins and local source integrity in toolkit
+lockfiles. Existing `.skm/workspace-plan.yaml` handoffs are left untouched.
+Future registry bundle installation is proposed under generic `skm bundle add`
+rather than a Workspace-only command.

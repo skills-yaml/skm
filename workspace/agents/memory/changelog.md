@@ -1,5 +1,19 @@
 # Memory Changelog
 
+## 2026-09-24 - Record skill-led Workspace management
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+Recorded the removal of Workspace-specific adoption commands, the published
+skill replacement, and the preserved toolkit integrity contract in
+`workspace/agents/memory/decisions.md`.
+
 ## 2026-09-24 - Record skill discovery production release
 
 - Type: fact

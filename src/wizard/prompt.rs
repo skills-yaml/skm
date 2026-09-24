@@ -582,9 +582,6 @@ fn edit_workspace<R: BufRead, W: Write>(
             .is_some_and(|v| !v.is_empty())
         || document.value["profiles"]
             .as_sequence()
-            .is_some_and(|v| !v.is_empty())
-        || document.value["trusted_sources"]
-            .as_sequence()
             .is_some_and(|v| !v.is_empty());
     writeln!(
         output,
@@ -660,15 +657,7 @@ fn edit_workspace<R: BufRead, W: Write>(
             }
         }
     }
-    edit_target(
-        document,
-        input,
-        output,
-        Target::Field("trusted_sources"),
-        "Trusted sources (comma-separated)",
-        true,
-        |_| Ok(()),
-    )
+    Ok(true)
 }
 
 fn edit_target<R, W, F>(

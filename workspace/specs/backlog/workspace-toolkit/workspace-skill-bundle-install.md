@@ -4,9 +4,11 @@
 
 State: `backlog`
 
-Rationale: The cross-repository contract is specified, but implementation has
-not started. Workspace must publish canonical bundle membership and Registry
-must publish that membership before SKM can release the consumer command.
+Rationale: The cross-repository bundle contract is specified, but implementation
+has not started. The proposed SKM interface is now generic `skm bundle add`,
+following the decision to remove Workspace-specific CLI commands. Workspace
+must publish canonical bundle membership and Registry must publish that
+membership before SKM can release the consumer command.
 
 ## Companion Specifications
 
@@ -63,21 +65,19 @@ partially updated project when a later package conflicts or fails.
 The primary interface is:
 
 ```text
-skm workspace skills add --all --source default --dry-run
-skm workspace skills add --all --source default --yes
+skm bundle add workspace/all-workspace-skills --source default --dry-run
+skm bundle add workspace/all-workspace-skills --source default --yes
 ```
 
 The general named-bundle interface is:
 
 ```text
-skm workspace skills add --bundle all-workspace-skills --source default --yes
+skm bundle add workspace/<named-bundle> --source default --yes
 ```
 
 Rules:
 
-- Exactly one of `--all` and `--bundle <id>` is required.
-- `--all` is a stable convenience alias for `--bundle
-  all-workspace-skills`.
+- A fully qualified `namespace/bundle` identifier is required.
 - `--source` selects a configured registry and defaults to `default`; it does
   not persistently change registry configuration.
 - `--dry-run` prints a human-readable plan and performs no writes.
@@ -139,8 +139,7 @@ serialization where existing conventions require it.
    and cache rules.
 2. Read and validate the Workspace namespace manifest without deriving any
    members from directories.
-3. Select the named bundle, treating `--all` as
-   `all-workspace-skills`.
+3. Select the fully qualified named bundle.
 4. Convert every member to an exact same-registry skill request using the
    manifest's `packages` mapping.
 5. Resolve the complete existing `skm-dependencies` closure before writes.
@@ -216,11 +215,11 @@ and its need must be documented before addition.
 
 ## Acceptance Criteria
 
-1. `skm workspace skills add --all --source default --dry-run` returns the
+1. `skm bundle add workspace/all-workspace-skills --source default --dry-run` returns the
    complete, deterministic skill and dependency plan without changing files.
 2. The same command with `--yes` adds and links the exact packages declared by
    the registry's `all-workspace-skills` bundle in one transaction.
-3. `--bundle all-workspace-skills` and `--all` produce equivalent plans.
+3. A named Workspace bundle uses the same generic command and planning path.
 4. Every persisted bundle member has an explicit exact version and source in
    the existing project `skills` configuration.
 5. Profiles are not installed or persisted.
@@ -232,7 +231,7 @@ and its need must be documented before addition.
 9. A failure during commit or a detected concurrent config edit leaves the
    pre-command project configuration and links intact.
 10. `--json` produces stable structured preview output and no writes.
-11. Existing individual skill, toolkit, workspace, list, install, and check
+11. Existing individual skill, toolkit, list, install, and check
     behavior remains compatible.
 12. CLI help documents all arguments, exclusivity rules, safety modes, and
     project-only scope.
@@ -254,7 +253,7 @@ and its need must be documented before addition.
 1. Freeze the shared schema-2 manifest and CLI contract with the Workspace and
    Registry companion specifications.
 2. Add strict manifest and bundle parsing fixtures, including negative cases.
-3. Add the nested Clap command and deterministic human/JSON planning output.
+3. Add the generic bundle Clap command and deterministic human/JSON planning output.
 4. Implement config merge, complete dependency preflight, concurrent-edit
    detection, and transactional config/link application.
 5. Add unit, integration, rollback, idempotency, and compatibility tests.

@@ -214,6 +214,22 @@ skills-only installs. Hermes uses `skm install --global` for its global target.
 If an older SKM version created a nested `skills/workspace/wk-spec` link,
 review and remove that old link after confirming it points to the same source.
 
+For Workspace Docs assessment, adoption, upgrade, or repair, install the
+published `wk-adopt` skill in a project with an effective agent target:
+
+```sh
+skm add workspace/wk-adopt --source default
+skm check
+```
+
+SKM also links its exact `adopt-workspace-structure` dependency. Invoke
+`wk-adopt` in your agent and state whether you want an assessment, adoption,
+upgrade, or repair. The skill verifies the standard and performs authorized
+repository work. Existing `.skm/workspace-plan.yaml` files from older SKM
+versions remain available for review; SKM no longer creates or updates them.
+Existing `trusted_sources` manifest values are preserved but no longer grant
+source authorization in SKM.
+
 For a configured toolkit, preview every write and then apply non-interactively:
 
 ```sh
@@ -238,7 +254,7 @@ Use `--global` with `install`, `list`, or `check` to work against user-level age
 ## Commands
 
 ```txt
-skm init [--name <name>] [--global] [--non-interactive] [--advanced] [--toolkit-manifest <path>] [--toolkit-version <version>] [--bundle <id>] [--profile <id>] [--workspace-standard <id>] [--workspace-source <path-or-git-url>] [--workspace-revision <commit>] [--workspace-integrity <sha256>] [--trusted-source <source>]
+skm init [--name <name>] [--global] [--non-interactive] [--advanced] [--toolkit-manifest <path>] [--toolkit-version <version>] [--bundle <id>] [--profile <id>] [--workspace-standard <id>] [--workspace-source <path-or-git-url>] [--workspace-revision <commit>] [--workspace-integrity <sha256>]
 skm install [--global] [--dry-run] [--json] [--yes]
 skm add <skill-name> [--source <registry>] [--path <local-path>] [--global]
 skm search <query> [--registry <registry>] [--json] [--limit <limit>]
@@ -253,8 +269,6 @@ skm dev unlink <skill-name> [--global] [--yes] [--verbose]
 skm dev list [--global] [--all] [--json] [--paths]
 skm dev show <skill-name> [--global] [--json]
 skm dev mode [on|off|status] [--global]
-skm workspace audit [--target <version>] [--source <path-or-git-url>] [--revision <commit>] [--integrity <sha256>] [--json]
-skm workspace adopt|upgrade|repair [--target <version>] [--source <path-or-git-url>] [--revision <commit>] [--integrity <sha256>] [--apply] [--yes] [--json]
 ```
 
 - `init`: creates or edits `skills.yaml` through sequential prompts; use
@@ -273,9 +287,6 @@ skm workspace adopt|upgrade|repair [--target <version>] [--source <path-or-git-u
 - `use`: switches a skill to a specific version (e.g. `skill@v1.2.0`) in `skills.yaml` and re-links it.
 - `update-skill`: updates a skill to its latest version in `skills.yaml` and re-links it.
 - `dev`: manages local development skills (linking local paths as symlinks directly, toggling dev mode).
-- `workspace`: audits trusted `workspace-docs` packages and creates a verified,
-  resumable handoff for adoption, upgrade, or repair. It does not interpret
-  migration prose as executable code.
 
 ## Configuration
 
@@ -347,8 +358,6 @@ profiles:
 workspace:
   standard: workspace-docs@5.0.0
   source: workspace/instructions/standards/workspace-docs
-trusted_sources:
-  - workspace/instructions/standards/workspace-docs
 ```
 
 Toolkit and local workspace source paths must be repository-relative and may not
@@ -411,16 +420,12 @@ removes only outputs owned by the previous lockfile. A repository-local journal
 backs up managed paths during apply, rolls back a partial failure, and writes the
 new lockfile last. An unchanged second install is byte-idempotent.
 
-Workspace source authorization is project-scoped. A partial local standard
-package is a read-only blocker; an explicit or committed complete source can
-resume the same plan. A Git source requires a full 40-character commit revision
-and expected `sha256:` package integrity. SKM fetches only that revision,
-materializes blobs without checkout filters, rejects unsafe paths and symlinks,
-verifies the package, and caches it inside the project for offline re-application.
-Committed Git sources must also appear in `trusted_sources`; an explicit
-`--source` authorizes only the current command. No toolkit or workspace command
-writes outside the current repository unless an existing non-toolkit command is
-explicitly invoked with its established `--global` option.
+Toolkit Workspace pins remain project-scoped. SKM validates and hashes local
+standard sources before recording their integrity in a lockfile, rejecting
+unsafe source paths and symlinks. Remote Workspace source pins keep their
+configured revision and integrity. Adoption and migration are handled by the
+installed Workspace skills. Toolkit installation writes only inside the current
+repository; skill commands use their documented project or `--global` targets.
 
 Installed Workspace workflows enforce OpenTofu as the only infrastructure
 mutation mechanism and repository CI/CD as the only mutation environment.

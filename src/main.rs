@@ -12,7 +12,7 @@ mod updater;
 mod version;
 mod version_manager;
 mod wizard;
-mod workspace;
+mod workspace_source;
 
 use clap::{Parser, Subcommand};
 use config::{SkillSpec, SkillsConfig};
@@ -74,9 +74,6 @@ enum Commands {
         /// Pin the expected SHA-256 package integrity for a remote workspace source
         #[arg(long)]
         workspace_integrity: Option<String>,
-        /// Authorize a local path or Git source; repeat for multiple sources
-        #[arg(long)]
-        trusted_source: Vec<String>,
     },
     /// Install and symlink all skills specified in skills.yaml
     Install {
@@ -231,77 +228,6 @@ enum Commands {
     /// Manage local development skills
     #[command(subcommand)]
     Dev(DevCommands),
-    /// Assess and prepare workspace structure operations
-    #[command(subcommand)]
-    Workspace(WorkspaceCommands),
-}
-
-#[derive(Subcommand)]
-enum WorkspaceCommands {
-    /// Assess the current workspace and trusted package without writing
-    Audit {
-        #[arg(long)]
-        target: Option<String>,
-        #[arg(long)]
-        source: Option<String>,
-        #[arg(long)]
-        revision: Option<String>,
-        #[arg(long)]
-        integrity: Option<String>,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Prepare a verified fresh-adoption handoff
-    Adopt {
-        #[arg(long)]
-        target: Option<String>,
-        #[arg(long)]
-        source: Option<String>,
-        #[arg(long)]
-        revision: Option<String>,
-        #[arg(long)]
-        integrity: Option<String>,
-        #[arg(long)]
-        apply: bool,
-        #[arg(short, long)]
-        yes: bool,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Prepare a verified ordered workspace upgrade handoff
-    Upgrade {
-        #[arg(long)]
-        target: Option<String>,
-        #[arg(long)]
-        source: Option<String>,
-        #[arg(long)]
-        revision: Option<String>,
-        #[arg(long)]
-        integrity: Option<String>,
-        #[arg(long)]
-        apply: bool,
-        #[arg(short, long)]
-        yes: bool,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Prepare a verified workspace repair handoff
-    Repair {
-        #[arg(long)]
-        target: Option<String>,
-        #[arg(long)]
-        source: Option<String>,
-        #[arg(long)]
-        revision: Option<String>,
-        #[arg(long)]
-        integrity: Option<String>,
-        #[arg(long)]
-        apply: bool,
-        #[arg(short, long)]
-        yes: bool,
-        #[arg(long)]
-        json: bool,
-    },
 }
 
 #[derive(Subcommand)]
@@ -714,7 +640,6 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             workspace_source,
             workspace_revision,
             workspace_integrity,
-            trusted_source,
             ..
         } => {
             let mut document =
@@ -751,9 +676,6 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 || workspace_integrity.is_some()
             {
                 return Err("workspace source options require --workspace-standard".into());
-            }
-            if !trusted_source.is_empty() {
-                document.value["trusted_sources"] = serde_yaml::to_value(trusted_source)?;
             }
             if non_interactive {
                 document.save(global)?;
@@ -1211,89 +1133,6 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 dev::toggle_dev_mode(&action, global)?;
             }
         },
-        Commands::Workspace(command) => {
-            let config = load_config(&config_path)?;
-            match command {
-                WorkspaceCommands::Audit {
-                    target,
-                    source,
-                    revision,
-                    integrity,
-                    json,
-                } => workspace::run(
-                    workspace::Mode::Audit,
-                    &config,
-                    &current_dir,
-                    target,
-                    source,
-                    revision,
-                    integrity,
-                    false,
-                    false,
-                    json,
-                )?,
-                WorkspaceCommands::Adopt {
-                    target,
-                    source,
-                    revision,
-                    integrity,
-                    apply,
-                    yes,
-                    json,
-                } => workspace::run(
-                    workspace::Mode::Adopt,
-                    &config,
-                    &current_dir,
-                    target,
-                    source,
-                    revision,
-                    integrity,
-                    apply,
-                    yes,
-                    json,
-                )?,
-                WorkspaceCommands::Upgrade {
-                    target,
-                    source,
-                    revision,
-                    integrity,
-                    apply,
-                    yes,
-                    json,
-                } => workspace::run(
-                    workspace::Mode::Upgrade,
-                    &config,
-                    &current_dir,
-                    target,
-                    source,
-                    revision,
-                    integrity,
-                    apply,
-                    yes,
-                    json,
-                )?,
-                WorkspaceCommands::Repair {
-                    target,
-                    source,
-                    revision,
-                    integrity,
-                    apply,
-                    yes,
-                    json,
-                } => workspace::run(
-                    workspace::Mode::Repair,
-                    &config,
-                    &current_dir,
-                    target,
-                    source,
-                    revision,
-                    integrity,
-                    apply,
-                    yes,
-                    json,
-                )?,
-            }
-        }
         Commands::Versions {
             skill_name,
             registry,
@@ -1478,6 +1317,22 @@ mod help_tests {
             assert!(!notified.get());
         }
     }
+
+    #[test]
+    fn workspace_cli_is_removed_from_help_and_parsing() {
+        let help = Cli::try_parse_from(["skm", "--help"])
+            .err()
+            .expect("help exits through Clap");
+        assert_eq!(help.kind(), clap::error::ErrorKind::DisplayHelp);
+        assert!(!help
+            .to_string()
+            .lines()
+            .any(|line| line.trim_start().starts_with("workspace ")));
+        let removed = Cli::try_parse_from(["skm", "workspace", "audit"])
+            .err()
+            .expect("workspace is not a command");
+        assert_eq!(removed.kind(), clap::error::ErrorKind::InvalidSubcommand);
+    }
 }
 
 #[cfg(test)]
@@ -1553,8 +1408,6 @@ mod init_tests {
             "workspace-docs@5.0.0",
             "--workspace-source",
             "workspace/standards",
-            "--trusted-source",
-            "workspace/standards",
         ])
         .unwrap();
         let config = SkillsConfig::load_from_file(project.path()).unwrap();
@@ -1565,7 +1418,7 @@ mod init_tests {
             config.workspace.unwrap().source.as_deref(),
             Some("workspace/standards")
         );
-        assert_eq!(config.trusted_sources, ["workspace/standards"]);
+        assert!(config.trusted_sources.is_empty());
     }
 
     #[test]
@@ -1583,6 +1436,11 @@ mod init_tests {
             vec![
                 "--non-interactive",
                 "--workspace-source",
+                "workspace/standards",
+            ],
+            vec![
+                "--non-interactive",
+                "--trusted-source",
                 "workspace/standards",
             ],
         ] {
