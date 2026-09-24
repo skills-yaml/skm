@@ -11,8 +11,10 @@ after Validate passed. Release Artifacts run `35992853126` published the 0.7.0
 `development-latest` prerelease at `4c8ed3a663dfb029329ab348a7e5970ac1c9ec25`
 on 2026-09-24. Its Linux archive checksum and manifest matched; the released
 binary recognized the staged Workspace bundle, and `skm check` passed for its
-20 installed skills. A published Registry bundle and production release remain
-pending.
+20 installed skills. Registry PR #14 published the schema-2 bundle from
+Workspace source `bd958c01249e1cb1e1fbbcf91ba70e83abec8d5f` on
+2026-09-24. The released 0.7.0 development binary passed the live Registry
+qualification below. Production publication remains pending.
 
 The Registry bundle contract uses `minimum_skm_version: 0.7.0`: the existing
 production 0.6.0 binary does not contain `skm bundle add`, so the bundle-capable
@@ -291,16 +293,27 @@ Tests cover schema-2 bundle and Workspace manifest validation, exact dependency
 expansion, local and Git registry preview/apply behavior, explicit pins,
 extension-field preservation, no-op repeats, target collisions, concurrent
 configuration edits, symlinked parents, and injected rollback. The released
-Registry still has a schema-1 Workspace manifest, so live published-bundle
-qualification remains pending.
+Registry now has a schema-2 Workspace manifest.
+
+## Published Registry Qualification (2026-09-24)
+
+Workspace workflow run `36005593693` published source revision
+`bd958c01249e1cb1e1fbbcf91ba70e83abec8d5f` through Registry PR #14,
+merged at `19a07659631db05decd7b03600ee503679e19414`. In an isolated
+temporary project, the checksum-verified Linux binary from SKM development
+Release Artifacts run `35994384028` identified itself as 0.7.0 at
+`2f882e5ef7e2724d4d9f504b70e9059a50d61fe1`. Search found the published
+`workspace/all-workspace-skills` bundle with 20 members. Dry-run add left the
+project unchanged; apply recorded 20 exact Workspace pins; `skm check` passed;
+and repeating add left `skills.yaml` unchanged.
 
 ## Development Integration (2026-09-24)
 
 PR #44 merged into `development` at
 `29ba7dc77315be65e6e77d4d6932fbbc9018627d`. Its Validate check passed.
 This confirmed integration permits the `development -> test` transition;
-development-channel release verification and live Registry bundle qualification
-remain pending.
+the released development binary has since passed live Registry qualification.
+The exact-commit release update qualification remains pending.
 
 ## Rollout and Rollback
 
