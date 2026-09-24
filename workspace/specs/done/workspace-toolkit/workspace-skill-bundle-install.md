@@ -1,24 +1,21 @@
-# Test Spec: Install Registry Skill Bundles
+# Install Registry Skill Bundles
 
 ## Status
 
-State: `test`
+State: `done`
 
-Rationale: PR #44 merged generic `skm bundle add` into `development` at
-`29ba7dc77315be65e6e77d4d6932fbbc9018627d` on 2026-09-24. PR #47 merged
-the 0.7.0 bundle-capable candidate at `0855005926d2000f4446617ea1d77159e1ed4943`
-after Validate passed. Release Artifacts run `35992853126` published the 0.7.0
-`development-latest` prerelease at `4c8ed3a663dfb029329ab348a7e5970ac1c9ec25`
-on 2026-09-24. Its Linux archive checksum and manifest matched; the released
-binary recognized the staged Workspace bundle, and `skm check` passed for its
-20 installed skills. Registry PR #14 published the schema-2 bundle from
-Workspace source `bd958c01249e1cb1e1fbbcf91ba70e83abec8d5f` on
-2026-09-24. The released 0.7.0 development binary passed the live Registry
-qualification below. Production publication remains pending.
+Rationale: Registry PR #14 published the schema-2 Workspace bundle from
+source `bd958c01249e1cb1e1fbbcf91ba70e83abec8d5f`; the SKM 0.7.0
+development binary passed the live Registry qualification below. PR #51
+promoted the consumer through `main`. PR #52's release-evidence commit
+`44a502af733e1ef3e0a360fe6e00d72959be261d` passed production CI
+`36007217965`, four-platform update qualification `36008025230`, and
+production Release Artifacts run `36007218144` on 2026-09-24. The nine
+published assets, archive checksums, manifest, and production binary identity
+were verified.
 
-The Registry bundle contract uses `minimum_skm_version: 0.7.0`: the existing
-production 0.6.0 binary does not contain `skm bundle add`, so the bundle-capable
-candidate declares the next distinct version before publication.
+The Registry bundle contract uses `minimum_skm_version: 0.7.0` because the
+previous production 0.6.0 binary does not contain bundle installation.
 
 ## Companion Specifications
 
@@ -313,7 +310,7 @@ PR #44 merged into `development` at
 `29ba7dc77315be65e6e77d4d6932fbbc9018627d`. Its Validate check passed.
 This confirmed integration permits the `development -> test` transition;
 the released development binary has since passed live Registry qualification.
-The exact-commit release update qualification remains pending.
+The exact-commit release update qualification passed in run `36008025230`.
 
 ## Rollout and Rollback
 
@@ -357,8 +354,7 @@ ordinary explicit skill entries.
 
 ## Open Questions
 
-No unresolved SKM interface decision. Published Registry bundle qualification
-remains a delivery dependency.
+No unresolved SKM interface decision or delivery dependency.
 
 ## Memory Impact
 
@@ -368,9 +364,9 @@ Rationale: The user selected Registry namespace-manifest bundles over
 instructionless dependency metapackages. The project-only exact-pin expansion
 and transactional application decision is recorded in
 `workspace/agents/memory/decisions.md` and
-`workspace/agents/memory/changelog.md`. Release
-compatibility remains a test-stage validation gate until Registry publishes
-schema-2 bundles and the SKM consumer reaches production.
+`workspace/agents/memory/changelog.md`. Registry published schema-2 bundles,
+the SKM consumer passed live compatibility checks, and the 0.7.0 production
+release was verified.
 
 ## Amendment: Bundles From Any Namespace
 

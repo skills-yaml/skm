@@ -1,5 +1,20 @@
 # Memory Changelog
 
+## 2026-09-24 - Record SKM 0.7.0 production release
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: 2026-09-24 - Record unified registry workflow integration; 2026-09-24 - Record registry bundle development integration
+
+Content:
+
+Recorded the qualified and verified SKM 0.7.0 production publication, its
+unified skill and bundle workflow, and the live published Workspace bundle
+qualification in `workspace/agents/memory/facts.md`. Moved the three released
+specifications to `done` with the confirmed release evidence.
+
 ## 2026-09-24 - Record unified registry workflow integration
 
 - Type: fact
