@@ -37,7 +37,7 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
-| [remove-workspace-cli.md](development/workspace-toolkit/remove-workspace-cli.md) | `workspace-toolkit` | `development` | User requested skill-led Workspace adoption and removal of the dedicated CLI command; implementation is active and integration is unconfirmed. |
+| [remove-workspace-cli.md](test/workspace-toolkit/remove-workspace-cli.md) | `workspace-toolkit` | `test` | Commit `5152bc1` integrated into `development`; CI and the four-platform `development-latest` publication passed. Production release remains pending. |
 | [search-skill-details-and-collections.md](done/registry/search-skill-details-and-collections.md) | `registry` | `done` | PR #42 released the search details through `main` at `9c8153a`; production CI, four-platform qualification, nine-asset publication, checksum, and binary smoke passed. |
 | [install-discoverable-targets.md](done/agents/install-discoverable-targets.md) | `agents` | `done` | PR #42 released discoverable install targets through `main` at `9c8153a`; production CI, four-platform qualification, and verified publication passed. |
 | [search-metadata-and-bundles.md](done/registry/search-metadata-and-bundles.md) | `registry` | `done` | PR #42 released search metadata through `main` at `9c8153a`; production CI, four-platform qualification, and verified publication passed. |

@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: The user requested removal of the dedicated Workspace CLI commands in favor of Workspace skills. Implementation is active; integration into `development` is not yet confirmed.
+Rationale: Commit `5152bc1` integrated the skill-led Workspace CLI change into `development` on 2026-09-24. CI run `35974287389` passed, and release run `35974287428` published the four-platform `development-latest` prerelease at that commit. Production release through `main` is pending.
 
 ## Problem
 
