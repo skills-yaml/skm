@@ -181,22 +181,38 @@ Search configured project and inherited global registries by skill name:
 skm search spec
 ```
 
-Each result includes its registry, available version, and a command that adds
-and links it. Use the dedicated add command from a result:
+Each result labels its skill name, registry, available version, `SKILL.md`
+description, and exact declared dependencies when present. Search also lists
+namespace skill collections from registry manifests, including `workspace`,
+and shows the members of bundles explicitly published in schema-2 manifests.
+A collection shows what a namespace publishes; it is not itself an installable
+bundle. If no bundles are published, search says so. Toolkit bundles are a
+separate source-repository feature. Use the dedicated add
+command from a result:
 
 ```sh
 skm add software-development/spec --source default
 ```
 
-Use `--json` for machine-readable results and `--limit <number>` to bound the
-result list. Search is read-only; use `skm add` when you want to update the
-manifest and link a skill.
+Use `--json` for machine-readable results, including dependencies, collections,
+and bundle members, and `--limit <number>` to bound the skill result list.
+Search is read-only; use `skm add` when you want to update the manifest and link
+a skill. Group installation has a separate planned command and requires a
+registry-published bundle.
 
 Install the skills declared in `skills.yaml` into project-local agent folders:
 
 ```sh
 skm install
 ```
+
+Select at least one agent with a project skill directory in `skills.yaml`
+before a skills-only install. For example, `agents: [codex]` links
+`workspace/wk-spec` as `.agents/skills/wk-spec` so Codex can discover it.
+`agents: []` and project-only Hermes configurations now report an error for
+skills-only installs. Hermes uses `skm install --global` for its global target.
+If an older SKM version created a nested `skills/workspace/wk-spec` link,
+review and remove that old link after confirming it points to the same source.
 
 For a configured toolkit, preview every write and then apply non-interactively:
 
@@ -247,8 +263,9 @@ skm workspace adopt|upgrade|repair [--target <version>] [--source <path-or-git-u
   every target, transactionally materializes each adapter, and writes the
   lockfile last.
 - `add`: adds one skill to `skills.yaml`, then links it.
-- `search`: searches configured registries by skill name and prints a dedicated
-  `skm add` command for each result without changing project state.
+- `search`: searches configured registries by skill name, labels descriptions
+  and dependencies, prints a dedicated `skm add` command, and lists namespace
+  collections and published registry bundles without changing project state.
 - `list`: reports current link status, including missing sources and bad links.
 - `check`: verifies source directories, `SKILL.md`, symlink existence, and symlink targets; intended for CI.
 - `update`: checks the selected release channel and installs the latest release artifact.
@@ -376,6 +393,13 @@ once and records every claimant in `skills.lock.yaml`. Hermes does not scan a
 project-local skills directory; users who want project content available to
 Hermes can add a shared directory through `external_dirs` in
 `~/.hermes/config.yaml`.
+
+The table records SKM link targets, not a guarantee that every agent has been
+tested end to end with every published skill. Project skill discovery may also
+require agent-specific setup: for example, Pi and Gemini CLI require a trusted
+workspace before they load project skills. SKM places skills directly under
+each target directory using the `SKILL.md` name; packages with the same final
+name cannot be installed together into one project.
 
 ## Safety
 

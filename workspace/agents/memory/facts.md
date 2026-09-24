@@ -252,3 +252,57 @@ complete `prod-latest` asset set. The manifest names that exact commit and all
 four archives; the Linux archive matched its published checksum and manifest
 digest. The production Linux artifact reported the expected embedded identity
 and printed the update notice before interactive help output.
+
+## 2026-09-23 - Skill target discovery and search metadata contract
+
+- Type: fact
+- Source: user and implementation
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+Skills-only install, list, and check require at least one effective agent skill
+target for a nonempty skill set. Namespaced registry skills link directly below
+the agent's skills directory using the final skill name, matching portable
+`SKILL.md` discovery; duplicate final names are rejected before install. Search
+shows bounded `SKILL.md` descriptions and only registry bundles explicitly
+published in schema-2 namespace manifests. Toolkit bundles are separate; the
+current Workspace registry schema-1 manifest publishes no skill bundles.
+
+## 2026-09-23 - Discoverable skill install released to development
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Commit `91da59b8a6e7a2226a650dad481ed2609cbcb62c` integrated the
+install-target and search improvements into `development`. CI run
+`35871598722` passed. Release Artifacts run `35871598742` published the
+complete nine-asset `development-latest` prerelease at the same commit. A
+local production build installed `workspace/wk-spec` and its `write-spec`
+dependency as direct Codex skill links, and `skm check` passed.
+
+## 2026-09-23 - Search distinguishes skills, collections, and bundles
+
+- Type: fact
+- Source: user and implementation
+- Confidence: high
+- Review: after development integration
+- Supersedes: 2026-09-23 - Skill target discovery and search metadata contract (search presentation only)
+
+Content:
+
+SKM search labels each skill's name and description and displays its exact
+declared dependencies. Search reads schema-1 or schema-2 namespace manifests to
+show published skill collections such as Workspace, while only explicit valid
+schema-2 bundle declarations appear as bundles with member identities. A
+namespace collection is browseable and does not itself provide group install.
+The current Workspace registry manifest is schema 1 and lists 19 skills but no
+installable bundle. JSON retains existing fields and adds dependencies,
+collections, and bundle package names.

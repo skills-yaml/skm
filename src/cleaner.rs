@@ -228,7 +228,16 @@ fn collect_known_skill_names(
 ) -> Result<HashSet<String>, Box<dyn std::error::Error>> {
     let mut known = HashSet::new();
     if let Some(config) = project_config {
-        known.extend(config.skills.iter().map(|skill| skill.name.clone()));
+        for skill in &config.skills {
+            // Preserve legacy nested links as well as discoverable direct-child links.
+            known.insert(skill.name.clone());
+            if let Some(leaf) = Path::new(&skill.name)
+                .file_name()
+                .and_then(|name| name.to_str())
+            {
+                known.insert(leaf.to_string());
+            }
+        }
     }
 
     let dev_config = DevConfig::load(global)?;
@@ -1150,10 +1159,13 @@ mod tests {
         let target = home_temp.join(".claude/skills/software-development/spec");
         fs::create_dir_all(target.parent().unwrap()).unwrap();
         linker::symlink_dir(&source, &target).unwrap();
+        let flat_target = home_temp.join(".claude/skills/spec");
+        linker::symlink_dir(&source, &flat_target).unwrap();
 
         clean_symlinks(true, false, true, false, false, true, false).unwrap();
 
         assert!(target.is_symlink());
+        assert!(flat_target.is_symlink());
         fs::remove_dir_all(temp).unwrap();
     }
 
