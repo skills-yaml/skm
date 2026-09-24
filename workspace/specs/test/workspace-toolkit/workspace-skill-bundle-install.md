@@ -5,9 +5,11 @@
 State: `test`
 
 Rationale: PR #44 merged generic `skm bundle add` into `development` at
-`29ba7dc77315be65e6e77d4d6932fbbc9018627d` on 2026-09-24 after its
-Validate check passed. Development-channel qualification and released Registry
-bundle fixtures remain pending before production release.
+`29ba7dc77315be65e6e77d4d6932fbbc9018627d` on 2026-09-24. PR #47 merged
+the 0.7.0 bundle-capable candidate at `0855005926d2000f4446617ea1d77159e1ed4943`
+after Validate passed. A revision-verified staged Workspace bundle installed
+20 skills and passed `skm check`; development-channel qualification and a
+published Registry bundle remain pending before production release.
 
 The Registry bundle contract uses `minimum_skm_version: 0.7.0`: the existing
 production 0.6.0 binary does not contain `skm bundle add`, so the bundle-capable
