@@ -1,5 +1,19 @@
 # Memory Changelog
 
+## 2026-09-24 - Record registry bundle development integration
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #44's confirmed `development` merge and passing PR validation in
+`workspace/agents/memory/facts.md`, and moved the bundle specification to
+`test` with the merge commit evidence.
+
 ## 2026-09-24 - Record registry bundle installation decision
 
 - Type: decision

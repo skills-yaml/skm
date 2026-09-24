@@ -1,5 +1,20 @@
 # Facts
 
+## 2026-09-24 - Registry bundle consumer integrated into development
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+PR #44 merged the `skm bundle add` consumer into `development` at
+`29ba7dc77315be65e6e77d4d6932fbbc9018627d` after its Validate check
+passed. The SKM specification moved to `test`; released Registry schema-2
+bundle qualification and production release remain pending.
+
 ## 2026-09-19 - Managed release updates use a strict release manifest
 
 - Type: fact
