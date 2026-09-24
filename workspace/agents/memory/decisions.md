@@ -1,5 +1,38 @@
 # Decisions
 
+## 2026-09-24 - Use one registry search and add interface for skills and bundles
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: 2026-09-24 - Install published registry bundles as exact project skills (CLI command shape only)
+
+Content:
+
+SKM should show published manifest bundles and skills together in `skm search`
+results and install either through `skm add`. The result kind stays visible;
+`--kind skill|bundle` resolves an ID collision. Bundle installation retains the
+exact-pin, project-only preview and rollback transaction, while `skm bundle
+add` remains a compatibility command.
+
+## 2026-09-24 - Install published registry bundles as exact project skills
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+SKM handles Registry metapackage use cases through published schema-2 namespace
+manifest bundles. `skm bundle add` expands the selected bundle and exact
+same-registry dependencies into explicit project `skills.yaml` pins. The
+instructionless dependency package removed from the Registry draft is not a
+bundle. Project application previews the complete change and rolls back
+configuration and managed links together on failure.
+
 ## 2026-06-17 - Adopt workspace-docs@1.0.0
 
 - Type: decision
@@ -182,3 +215,38 @@ Interactive SKM help requests, including `skm help` and `--help`, should show
 the same available-update notice as ordinary commands before Clap prints help.
 The notice remains best-effort, terminal-only, and controlled by the existing
 startup-check opt-out.
+
+## 2026-09-24 - Delegate Workspace structure management to skills
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+SKM removes its dedicated `workspace audit|adopt|upgrade|repair` commands.
+Repository assessment, adoption, upgrade, and repair are handled by the
+published `workspace/wk-adopt` skill and its exact
+`workspace/adopt-workspace-structure` dependency. SKM still installs skills and
+toolkits and preserves `workspace:` pins and local source integrity in toolkit
+lockfiles. Existing `.skm/workspace-plan.yaml` handoffs are left untouched.
+Future registry bundle installation is proposed under generic `skm bundle add`
+rather than a Workspace-only command.
+
+## 2026-09-24 - Reserve SKM 0.7.0 For Registry Bundle Installation
+
+- Type: decision
+- Source: implementation
+- Confidence: high
+- Review: after production release
+- Supersedes: none
+
+Content:
+
+The `skm bundle add` consumer is the first SKM release that can install
+Registry namespace bundles. The existing production 0.6.0 binary lacks that
+command, so the bundle-capable candidate uses version 0.7.0 and the generated
+Workspace schema-2 manifest requires SKM 0.7.0 or newer. This decision does
+not claim a production release.
