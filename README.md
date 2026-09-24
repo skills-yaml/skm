@@ -197,8 +197,21 @@ skm add software-development/spec --source default
 Use `--json` for machine-readable results, including dependencies, collections,
 and bundle members, and `--limit <number>` to bound the skill result list.
 Search is read-only; use `skm add` when you want to update the manifest and link
-a skill. Group installation has a separate planned command and requires a
-registry-published bundle.
+a skill. To add every member of a bundle published in a configured registry's
+schema-2 namespace manifest, preview and apply it with:
+
+```sh
+skm bundle add workspace/all-workspace-skills --source default --dry-run
+skm bundle add workspace/all-workspace-skills --source default --yes
+```
+
+`--json` emits a structured preview and makes no project changes. The command
+requires a project `skills.yaml` with an effective agent target. It expands the
+bundle and its exact same-registry dependencies into ordinary pinned `skills`
+entries, then links them as one rollback-protected project change. Repeating
+the same command succeeds without changing the project. Conflicting pins and
+real-file targets stop the whole operation. A published bundle is required;
+the current schema-1 Workspace manifest does not yet publish one.
 
 Install the skills declared in `skills.yaml` into project-local agent folders:
 
@@ -257,6 +270,7 @@ Use `--global` with `install`, `list`, or `check` to work against user-level age
 skm init [--name <name>] [--global] [--non-interactive] [--advanced] [--toolkit-manifest <path>] [--toolkit-version <version>] [--bundle <id>] [--profile <id>] [--workspace-standard <id>] [--workspace-source <path-or-git-url>] [--workspace-revision <commit>] [--workspace-integrity <sha256>]
 skm install [--global] [--dry-run] [--json] [--yes]
 skm add <skill-name> [--source <registry>] [--path <local-path>] [--global]
+skm bundle add <namespace/bundle> [--source <registry>] [--dry-run | --json | --yes]
 skm search <query> [--registry <registry>] [--json] [--limit <limit>]
 skm list [--global]
 skm check [--global]
@@ -277,6 +291,8 @@ skm dev mode [on|off|status] [--global]
   every target, transactionally materializes each adapter, and writes the
   lockfile last.
 - `add`: adds one skill to `skills.yaml`, then links it.
+- `bundle add`: expands a published registry bundle and exact dependencies into
+  project skill pins, with preview and transactional application.
 - `search`: searches configured registries by skill name, labels descriptions
   and dependencies, prints a dedicated `skm add` command, and lists namespace
   collections and published registry bundles without changing project state.

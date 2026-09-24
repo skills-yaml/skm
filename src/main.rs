@@ -1,3 +1,4 @@
+mod bundle;
 mod cleaner;
 mod config;
 mod config_editor;
@@ -103,6 +104,11 @@ enum Commands {
         /// Link skills globally instead of project-local
         #[arg(short, long)]
         global: bool,
+    },
+    /// Add every skill in a published registry bundle to this project
+    Bundle {
+        #[command(subcommand)]
+        command: BundleCommands,
     },
     /// Search configured registries for skills, dependencies, and groups
     Search {
@@ -426,6 +432,27 @@ enum ConfigCommands {
         /// Perform strict validation
         #[arg(long)]
         strict: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum BundleCommands {
+    /// Expand a published registry bundle into exact project skill pins
+    Add {
+        /// Published bundle ID in namespace/name form
+        bundle: String,
+        /// Configured registry containing the bundle
+        #[arg(long, default_value = "default")]
+        source: String,
+        /// Preview all skill and link changes without writing
+        #[arg(long, conflicts_with = "yes")]
+        dry_run: bool,
+        /// Emit a JSON plan without writing
+        #[arg(long, conflicts_with = "yes")]
+        json: bool,
+        /// Apply the complete project change
+        #[arg(long)]
+        yes: bool,
     },
 }
 
@@ -766,6 +793,15 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 global,
             )?;
         }
+        Commands::Bundle { command } => match command {
+            BundleCommands::Add {
+                bundle,
+                source,
+                dry_run,
+                json,
+                yes,
+            } => bundle::add(&current_dir, &bundle, &source, dry_run, json, yes)?,
+        },
         Commands::Search {
             query,
             registry,
@@ -1332,6 +1368,43 @@ mod help_tests {
             .err()
             .expect("workspace is not a command");
         assert_eq!(removed.kind(), clap::error::ErrorKind::InvalidSubcommand);
+    }
+
+    #[test]
+    fn bundle_add_help_and_modes_are_project_scoped() {
+        let parsed = Cli::try_parse_from([
+            "skm",
+            "bundle",
+            "add",
+            "acme/starter",
+            "--source",
+            "local",
+            "--dry-run",
+        ])
+        .unwrap();
+        assert!(matches!(
+            parsed.command,
+            Commands::Bundle {
+                command: BundleCommands::Add { dry_run: true, .. }
+            }
+        ));
+        assert!(Cli::try_parse_from(["skm", "bundle", "add", "acme/starter", "--global"]).is_err());
+        assert!(Cli::try_parse_from([
+            "skm",
+            "bundle",
+            "add",
+            "acme/starter",
+            "--yes",
+            "--dry-run",
+        ])
+        .is_err());
+        let help = Cli::try_parse_from(["skm", "bundle", "add", "--help"])
+            .err()
+            .expect("help exits through Clap")
+            .to_string();
+        for flag in ["--source", "--dry-run", "--json", "--yes"] {
+            assert!(help.contains(flag));
+        }
     }
 }
 

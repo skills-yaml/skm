@@ -1,14 +1,12 @@
-# Backlog Spec: Install Workspace Skill Bundles
+# Development Spec: Install Registry Skill Bundles
 
 ## Status
 
-State: `backlog`
+State: `development`
 
-Rationale: The cross-repository bundle contract is specified, but implementation
-has not started. The proposed SKM interface is now generic `skm bundle add`,
-following the decision to remove Workspace-specific CLI commands. Workspace
-must publish canonical bundle membership and Registry must publish that
-membership before SKM can release the consumer command.
+Rationale: Generic `skm bundle add` is implemented on a feature branch and
+passes local validation with schema-2 fixtures. Registry and Workspace bundle
+publication, review, and development integration remain outstanding.
 
 ## Companion Specifications
 
@@ -56,7 +54,7 @@ partially updated project when a later package conflicts or fails.
 - Removing a bundle or pruning skills that once belonged to a bundle.
 - Automatically upgrading an already configured bundle when future Workspace
   releases change its membership.
-- Supporting arbitrary third-party namespace manifests in the first release.
+- Reading bundles from unconfigured registries.
 - Changing Workspace adoption, toolkit bootstrap, or repository instruction
   management.
 
@@ -276,6 +274,16 @@ and its need must be documented before addition.
 - end-to-end install, `skm check`, and second-apply convergence against a
   released Workspace registry fixture
 
+## Development Validation (2026-09-24)
+
+`task check`, `task test`, `task build`, and `git diff --check` passed locally.
+Tests cover schema-2 bundle and Workspace manifest validation, exact dependency
+expansion, local and Git registry preview/apply behavior, explicit pins,
+extension-field preservation, no-op repeats, target collisions, concurrent
+configuration edits, symlinked parents, and injected rollback. The released
+Registry still has a schema-1 Workspace manifest, so live published-bundle
+qualification and development integration remain pending.
+
 ## Rollout and Rollback
 
 Rollout order is Workspace canonical bundle, Registry publication, then SKM
@@ -323,17 +331,21 @@ must preserve the data and safety semantics defined here.
 
 ## Memory Impact
 
-Status: `pending`
+Status: `updated`
 
-Rationale: The final command, manifest schema, transaction boundary, and
-released compatibility are durable decisions, but they are not implemented or
-released yet. Resolve this section and update project memory before the spec
-can reach `done`.
+Rationale: The user selected Registry namespace-manifest bundles over
+instructionless dependency metapackages. The project-only exact-pin expansion
+and transactional application decision is recorded in
+`workspace/agents/memory/decisions.md` and
+`workspace/agents/memory/changelog.md`. Release
+compatibility remains a development validation gate until Registry publishes
+schema-2 bundles and the SKM consumer reaches its test and production stages.
 
 ## Amendment: Bundles From Any Namespace
 
-Proposed 2026-09-24, with the matching Registry amendment "Generic Namespace
-Manifests". Not yet agreed with this specification's owner.
+Accepted for this implementation on 2026-09-24 by the user's request to support
+Registry's manifest bundles. The matching Registry amendment is tracked in
+Registry PR #10.
 
 The interface is already namespace-generic: `skm bundle add
 <namespace>/<bundle>`. The released search reader already reads

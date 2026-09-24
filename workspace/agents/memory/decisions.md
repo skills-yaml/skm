@@ -1,5 +1,22 @@
 # Decisions
 
+## 2026-09-24 - Install published registry bundles as exact project skills
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+SKM handles Registry metapackage use cases through published schema-2 namespace
+manifest bundles. `skm bundle add` expands the selected bundle and exact
+same-registry dependencies into explicit project `skills.yaml` pins. The
+instructionless dependency package removed from the Registry draft is not a
+bundle. Project application previews the complete change and rolls back
+configuration and managed links together on failure.
+
 ## 2026-06-17 - Adopt workspace-docs@1.0.0
 
 - Type: decision
