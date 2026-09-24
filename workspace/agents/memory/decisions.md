@@ -218,3 +218,19 @@ toolkits and preserves `workspace:` pins and local source integrity in toolkit
 lockfiles. Existing `.skm/workspace-plan.yaml` handoffs are left untouched.
 Future registry bundle installation is proposed under generic `skm bundle add`
 rather than a Workspace-only command.
+
+## 2026-09-24 - Reserve SKM 0.7.0 For Registry Bundle Installation
+
+- Type: decision
+- Source: implementation
+- Confidence: high
+- Review: after production release
+- Supersedes: none
+
+Content:
+
+The `skm bundle add` consumer is the first SKM release that can install
+Registry namespace bundles. The existing production 0.6.0 binary lacks that
+command, so the bundle-capable candidate uses version 0.7.0 and the generated
+Workspace schema-2 manifest requires SKM 0.7.0 or newer. This decision does
+not claim a production release.

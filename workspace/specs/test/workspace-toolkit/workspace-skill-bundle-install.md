@@ -9,6 +9,10 @@ Rationale: PR #44 merged generic `skm bundle add` into `development` at
 Validate check passed. Development-channel qualification and released Registry
 bundle fixtures remain pending before production release.
 
+The Registry bundle contract uses `minimum_skm_version: 0.7.0`: the existing
+production 0.6.0 binary does not contain `skm bundle add`, so the bundle-capable
+candidate declares the next distinct version before publication.
+
 ## Companion Specifications
 
 This specification is the SKM consumer part of one coordinated change:
