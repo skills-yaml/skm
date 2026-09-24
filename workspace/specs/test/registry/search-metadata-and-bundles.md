@@ -4,7 +4,7 @@
 
 State: `test`
 
-Rationale: Commit `91da59b8a6e7a2226a650dad481ed2609cbcb62c` integrated description and published-bundle discovery into `development`. CI run `35871598722` passed, and Release Artifacts run `35871598742` published the complete `development-latest` prerelease for that exact commit. Production release is pending.
+Rationale: Commit `91da59b8a6e7a2226a650dad481ed2609cbcb62c` integrated description and published-bundle discovery into `development`; CI `35871598722` and Release Artifacts `35871598742` passed. PR #42 merged the tested code into `main` at `be2581d98e81c79d0756c1ef36fb4ea584200fb1`, and production CI `35962268392` passed. The production release is held for qualification and reviewer approval.
 
 ## Problem
 

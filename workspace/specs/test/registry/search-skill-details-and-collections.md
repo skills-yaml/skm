@@ -4,7 +4,7 @@
 
 State: `test`
 
-Rationale: Commit `4c766e693d58fb399fbb7bf25f1939254eb2a65b` integrated the change into `development`. CI run `35924612401` passed and Release Artifacts run `35924612416` published the complete nine-asset `development-latest` prerelease for that commit. Production release is pending.
+Rationale: Commit `4c766e693d58fb399fbb7bf25f1939254eb2a65b` integrated the change into `development`; CI `35924612401` and Release Artifacts `35924612416` passed. PR #42 merged the tested code into `main` at `be2581d98e81c79d0756c1ef36fb4ea584200fb1`, and production CI `35962268392` passed. The production release is held for qualification and reviewer approval.
 
 ## Problem
 
