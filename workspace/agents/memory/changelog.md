@@ -474,3 +474,18 @@ Content:
 Recorded in `workspace/agents/memory/decisions.md` that SKM 0.7.0 is the
 first version targeted for `skm bundle add`; production 0.6.0 lacks the
 command. The version reservation is a candidate, not release evidence.
+
+## 2026-09-24 - Record SKM 0.7.0 development qualification
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: after Registry bundle publication
+- Supersedes: none
+
+Content:
+
+Recorded the passing four-platform development release, checksum, manifest,
+released-binary bundle preview, and `skm check` evidence in
+`workspace/agents/memory/facts.md`. Registry publication and production release
+remain pending.

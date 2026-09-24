@@ -340,3 +340,21 @@ Artifacts `35962863697` published the complete nine-asset `prod-latest`
 release. The Linux archive checksum matched; the manifest and binary reported
 the exact production commit, and a released-binary search smoke showed labeled
 skill details, dependencies, and the 19-skill Workspace collection.
+
+## 2026-09-24 - Bundle-capable SKM 0.7.0 qualified on the development channel
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: after Registry bundle publication
+- Supersedes: none
+
+Content:
+
+Release Artifacts run `35992853126` published the complete nine-asset SKM
+0.7.0 `development-latest` prerelease from
+`4c8ed3a663dfb029329ab348a7e5970ac1c9ec25`. The Linux archive checksum,
+manifest version and commit, and released binary identity matched. The released
+binary recognized the staged `workspace/all-workspace-skills` bundle as 20
+existing skill pins with no changes on repeat, and `skm check` passed. The
+Workspace Registry bundle and SKM 0.7.0 production release remain pending.
