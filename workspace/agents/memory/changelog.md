@@ -1,5 +1,19 @@
 # Memory Changelog
 
+## 2026-09-25 - Record SKM 0.8.0 production release
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: 2026-09-25 - Record add confirmation development integration; 2026-09-25 - Record two-column search development integration
+
+Content:
+
+Recorded the qualified SKM 0.8.0 production publication and verified release
+identity in `workspace/agents/memory/facts.md`. Moved the add-confirmation and
+two-column search specifications to `done` with confirmed release evidence.
+
 ## 2026-09-25 - Record add confirmation development integration
 
 - Type: fact
