@@ -182,34 +182,56 @@ published bundles by name:
 skm search spec
 ```
 
-Each result labels its kind, name, registry, and a ready-to-run `skm add`
-command. Skill results include the available version, `SKILL.md` description,
-and exact declared dependencies when present. Published schema-2 bundle
-results show their member skills. Namespace collections remain browse-only;
-they are not installable bundles. Toolkit bundles are a separate
-source-repository feature. Use the add command shown by a result:
+Text results use two columns. The first shows each name, with the version
+immediately after a skill name and a `skill` or `bundle` label. The second shows
+the description and registry on separate lines. Skill dependencies appear
+below the registry when present; published schema-2 bundles show a summary of
+their member skills. For example:
+
+```text
+NAME (TYPE)                         DESCRIPTION
+──────────────────────────────────  ─────────────────────────────────────────────
+software/spec@1.2.0 (skill)         Write clear, reviewable software specs.
+                                    Registry: default
+
+software/starter (bundle)           Includes 2 skills: software/spec, software/review.
+                                    Registry: default
+```
+
+Namespace collections remain browse-only; they are not installable bundles.
+Toolkit bundles are a separate source-repository feature. Add a selected skill
+with:
 
 ```sh
 skm add software-development/spec --source default --kind skill
 ```
 
+`skm add` shows the planned configuration, resolved skills, and agent link
+changes, then asks for confirmation. The prompt defaults to No. Pass
+`--yes` to apply without a prompt, including from a script; a non-interactive
+add without `--yes` fails before changing the project. This applies to both
+single skills and published bundles.
+
 Search commands include `--kind skill` or `--kind bundle` so they remain
 unambiguous if a registry publishes both with the same ID. For a unique ID,
 `skm add` chooses the item automatically.
 
-Use `--json` for machine-readable results, including result kinds,
+Use `--json` for machine-readable search results, including result kinds,
 dependencies, collections, and bundle members, and `--limit <number>` to bound
 the combined result list. Search is read-only; use `skm add` to install a skill
-or every member of a published bundle. Preview and apply a bundle with:
+or every member of a published bundle. Preview or add a bundle with:
 
 ```sh
 skm add workspace/all-workspace-skills --source default --kind bundle --dry-run
+skm add workspace/all-workspace-skills --source default --kind bundle
 skm add workspace/all-workspace-skills --source default --kind bundle --yes
 ```
 
-`--json` emits a structured preview and makes no project changes. Bundle add
-requires a project `skills.yaml` with an effective agent target. It expands the
-bundle and its exact same-registry dependencies into ordinary pinned `skills`
+For bundles, `--dry-run` and `--json` preview without asking or changing the
+project; `--json` emits a structured plan. These preview flags do not apply to
+single skills. Bundle add requires a project `skills.yaml` with an effective
+agent target. It expands the bundle and its exact same-registry dependencies
+into ordinary pinned `skills`
 entries, then links them as one rollback-protected project change. Repeating
 the same command succeeds without changing the project. Conflicting pins and
 real-file targets stop the whole operation. A published schema-2 bundle is
@@ -293,9 +315,10 @@ skm dev mode [on|off|status] [--global]
   every target, transactionally materializes each adapter, and writes the
   lockfile last.
 - `add`: adds and links one skill, or expands a published registry bundle and
-  exact dependencies into project skill pins with preview and transactional
-  application. `--dry-run`, `--json`, and `--yes` apply to bundles only.
-- `bundle add`: compatibility command for adding a published registry bundle.
+  exact dependencies into project skill pins. Both paths show a plan and prompt
+  unless `--yes` is set. `--dry-run` and `--json` preview bundles without
+  applying; bundle application remains transactional.
+- `bundle add`: compatibility command with the same bundle confirmation flow.
 - `search`: searches configured registries for skills and published bundles in
   one result list, shows a matching `skm add` command for each, and lists
   browse-only namespace collections without changing project state.

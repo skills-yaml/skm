@@ -1,5 +1,62 @@
 # Memory Changelog
 
+## 2026-09-25 - Record add confirmation development integration
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #56's confirmed `development` merge in
+`workspace/agents/memory/facts.md` and moved the add-confirmation
+specification to `test` with a matching catalog rationale.
+
+## 2026-09-25 - Record planned add confirmation behavior
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded the approved default-No confirmation for planned single-skill and
+bundle adds in `workspace/agents/memory/decisions.md`, including `--yes` for
+non-interactive use and read-only bundle previews.
+
+## 2026-09-25 - Record two-column search development integration
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #54's confirmed `development` merge in
+`workspace/agents/memory/facts.md` and moved the two-column search
+specification to `test` with a matching catalog rationale.
+
+## 2026-09-25 - Record two-column search display preference
+
+- Type: preference
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded the approved `skm search` text layout in
+`workspace/agents/memory/preferences.md`: name and kind in the first column,
+skill version beside its name, and description plus registry in the second
+column, without add or preview instructions.
+
 ## 2026-09-24 - Record SKM 0.7.0 production release
 
 - Type: fact

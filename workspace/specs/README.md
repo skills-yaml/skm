@@ -37,6 +37,8 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
+| [add-confirmation.md](test/registry/add-confirmation.md) | `registry` | `test` | PR #56 merged into the configured `development` test channel at `ed645db` on 2026-09-25 after Validate passed; production release is pending. |
+| [search-two-column-output.md](test/registry/search-two-column-output.md) | `registry` | `test` | PR #54 merged into the configured `development` test channel at `9033c29` on 2026-09-25 after Validate passed; production release is pending. |
 | [unified-skill-bundle-discovery.md](done/registry/unified-skill-bundle-discovery.md) | `registry` | `done` | PR #51 promoted SKM 0.7.0; commit `44a502a` passed production CI, four-platform qualification, and verified nine-asset publication. |
 | [remove-workspace-cli.md](done/workspace-toolkit/remove-workspace-cli.md) | `workspace-toolkit` | `done` | PR #51 promoted skill-led Workspace management; commit `44a502a` passed production CI, four-platform qualification, and verified nine-asset publication. |
 | [search-skill-details-and-collections.md](done/registry/search-skill-details-and-collections.md) | `registry` | `done` | PR #42 released the search details through `main` at `9c8153a`; production CI, four-platform qualification, nine-asset publication, checksum, and binary smoke passed. |
