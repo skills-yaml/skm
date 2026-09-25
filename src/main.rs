@@ -1386,7 +1386,9 @@ where
     config.skills.push(new_skill.clone());
     linker::require_skill_targets(&config.agents, project_root, global)?;
     linker::validate_unique_skill_targets(&config.skills)?;
-    ensure_registries_cached(&config)?;
+    if config.skills.iter().any(|skill| skill.path.is_none()) {
+        ensure_registries_cached(&config)?;
+    }
     let requested =
         linker::resolve_skill_dependency_closure(std::slice::from_ref(&new_skill), project_root)?;
     let resolved = linker::resolve_skill_dependency_closure(&config.skills, project_root)?;
@@ -2053,13 +2055,6 @@ mod search_cli_tests {
     #[serial]
     fn single_skill_confirmation_precedes_project_writes() {
         let environment = Environment::new();
-        BaseConfig {
-            default_registry: "default".into(),
-            registries: HashMap::new(),
-            check_for_updates: false,
-        }
-        .save()
-        .unwrap();
         let project = environment.project();
         let source = project.join("local-skill");
         fs::create_dir_all(&source).unwrap();
