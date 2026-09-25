@@ -1,5 +1,19 @@
 # Memory Changelog
 
+## 2026-09-25 - Record add confirmation development integration
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #56's confirmed `development` merge in
+`workspace/agents/memory/facts.md` and moved the add-confirmation
+specification to `test` with a matching catalog rationale.
+
 ## 2026-09-25 - Record planned add confirmation behavior
 
 - Type: decision
