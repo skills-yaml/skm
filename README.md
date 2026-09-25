@@ -182,12 +182,25 @@ published bundles by name:
 skm search spec
 ```
 
-Each result labels its kind, name, registry, and a ready-to-run `skm add`
-command. Skill results include the available version, `SKILL.md` description,
-and exact declared dependencies when present. Published schema-2 bundle
-results show their member skills. Namespace collections remain browse-only;
-they are not installable bundles. Toolkit bundles are a separate
-source-repository feature. Use the add command shown by a result:
+Text results use two columns. The first shows each name, with the version
+immediately after a skill name and a `skill` or `bundle` label. The second shows
+the description and registry on separate lines. Skill dependencies appear
+below the registry when present; published schema-2 bundles show a summary of
+their member skills. For example:
+
+```text
+NAME (TYPE)                         DESCRIPTION
+──────────────────────────────────  ─────────────────────────────────────────────
+software/spec@1.2.0 (skill)         Write clear, reviewable software specs.
+                                    Registry: default
+
+software/starter (bundle)           Includes 2 skills: software/spec, software/review.
+                                    Registry: default
+```
+
+Namespace collections remain browse-only; they are not installable bundles.
+Toolkit bundles are a separate source-repository feature. Add a selected skill
+with:
 
 ```sh
 skm add software-development/spec --source default --kind skill

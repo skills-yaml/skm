@@ -37,6 +37,7 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
+| [search-two-column-output.md](development/registry/search-two-column-output.md) | `registry` | `development` | The user approved the two-column search example and requested implementation; integration into the configured test channel is not yet confirmed. |
 | [unified-skill-bundle-discovery.md](done/registry/unified-skill-bundle-discovery.md) | `registry` | `done` | PR #51 promoted SKM 0.7.0; commit `44a502a` passed production CI, four-platform qualification, and verified nine-asset publication. |
 | [remove-workspace-cli.md](done/workspace-toolkit/remove-workspace-cli.md) | `workspace-toolkit` | `done` | PR #51 promoted skill-led Workspace management; commit `44a502a` passed production CI, four-platform qualification, and verified nine-asset publication. |
 | [search-skill-details-and-collections.md](done/registry/search-skill-details-and-collections.md) | `registry` | `done` | PR #42 released the search details through `main` at `9c8153a`; production CI, four-platform qualification, nine-asset publication, checksum, and binary smoke passed. |
