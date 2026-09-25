@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: The user accepted an explicit plan-and-confirm example for `skm add` and requested implementation. The change has not been integrated into the configured `development` test channel.
+Rationale: PR #56 merged the implementation into the configured `development` test channel on 2026-09-25 at `ed645db0bd5c4f31aa15411ebb3aa9adaaf38a87` after its Validate check passed. Production release through `main` is not yet confirmed.
 
 ## Problem and Users
 

@@ -1,5 +1,20 @@
 # Facts
 
+## 2026-09-25 - Add confirmation integrated into development
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+PR #56 merged the plan-and-confirm `skm add` behavior for skills and bundles
+into `development` at `ed645db0bd5c4f31aa15411ebb3aa9adaaf38a87` on
+2026-09-25 after its Validate check passed. The specification is in `test`
+pending a confirmed production release.
+
 ## 2026-09-25 - Two-column search results integrated into development
 
 - Type: fact
