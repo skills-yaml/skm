@@ -1,5 +1,19 @@
 # Memory Changelog
 
+## 2026-09-25 - Record planned add confirmation behavior
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded the approved default-No confirmation for planned single-skill and
+bundle adds in `workspace/agents/memory/decisions.md`, including `--yes` for
+non-interactive use and read-only bundle previews.
+
 ## 2026-09-25 - Record two-column search development integration
 
 - Type: fact

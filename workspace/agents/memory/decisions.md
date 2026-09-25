@@ -1,5 +1,21 @@
 # Decisions
 
+## 2026-09-25 - Confirm planned skill and bundle adds
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+`skm add` shows the planned configuration, resolved skills, and agent link
+impact before an interactive confirmation for both individual skills and
+published bundles. The default answer is No. `--yes` applies without a prompt;
+bundle `--dry-run` and `--json` remain read-only previews. Non-interactive adds
+need `--yes`.
+
 ## 2026-09-24 - Use one registry search and add interface for skills and bundles
 
 - Type: decision
