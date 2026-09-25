@@ -1,5 +1,19 @@
 # Memory Changelog
 
+## 2026-09-25 - Record two-column search development integration
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #54's confirmed `development` merge in
+`workspace/agents/memory/facts.md` and moved the two-column search
+specification to `test` with a matching catalog rationale.
+
 ## 2026-09-25 - Record two-column search display preference
 
 - Type: preference

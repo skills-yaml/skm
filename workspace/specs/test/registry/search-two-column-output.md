@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: The user approved the example layout and requested implementation. Work has not been integrated into the configured `development` test channel as a reviewed change.
+Rationale: PR #54 merged the implementation into the configured `development` test channel on 2026-09-25 at `9033c29891a688deb053bda4b800bbe598e29dbb` after its Validate check passed. Production release through `main` is not yet confirmed.
 
 ## Problem and Users
 
