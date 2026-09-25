@@ -1,5 +1,20 @@
 # Facts
 
+## 2026-09-25 - Two-column search results integrated into development
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+PR #54 merged the two-column `skm search` text presentation into `development`
+at `9033c29891a688deb053bda4b800bbe598e29dbb` on 2026-09-25 after its
+Validate check passed. The corresponding specification is in `test` pending a
+confirmed production release.
+
 ## 2026-09-24 - SKM 0.7.0 bundle workflow released to production
 
 - Type: fact
