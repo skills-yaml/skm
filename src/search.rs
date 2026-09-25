@@ -2,6 +2,7 @@ use crate::config::SkillsConfig;
 use crate::config_manager::BaseConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::fs;
 use std::io::{Read, Seek};
 use std::path::Path;
@@ -709,28 +710,7 @@ pub fn print_results(
     if visible.is_empty() {
         println!("No skills or bundles found matching '{}'.", query.trim());
     }
-    for entry in visible {
-        println!("Name: {}", entry.name);
-        println!("  Kind: {}  Registry: {}", entry.kind, entry.registry);
-        if let Some(version) = entry.version {
-            println!("  Version: {version}");
-        }
-        if let Some(description) = entry.description {
-            println!("  Description: {description}");
-        }
-        if !entry.dependencies.is_empty() {
-            println!("  Dependencies: {}", entry.dependencies.join(", "));
-        }
-        if let Some(packages) = entry.packages {
-            println!("  Includes: {}", packages.join(", "));
-        }
-        if let Some(command) = entry.apply_command {
-            println!("  Preview: {}", entry.add_command);
-            println!("  Add: {command}");
-        } else {
-            println!("  Add: {}", entry.add_command);
-        }
-    }
+    print!("{}", format_text_results(&visible));
     if matches.len() > limit {
         println!("Showing {} of {} matches.", limit, matches.len());
     } else if !matches.is_empty() {
@@ -746,6 +726,78 @@ pub fn print_results(
         }
     }
     Ok(())
+}
+
+fn format_text_results(entries: &[SearchMatch<'_>]) -> String {
+    if entries.is_empty() {
+        return String::new();
+    }
+
+    let names: Vec<_> = entries
+        .iter()
+        .map(|entry| match entry.version {
+            Some(version) => format!("{}@{} ({})", entry.name, version, entry.kind),
+            None => format!("{} ({})", entry.name, entry.kind),
+        })
+        .collect();
+    let name_width = names.iter().map(String::len).max().unwrap_or(0).max(34);
+    let description_width = 100_usize.saturating_sub(name_width + 2).max(30);
+    let mut output = String::new();
+    writeln!(output, "{:<name_width$}  DESCRIPTION", "NAME (TYPE)").unwrap();
+    writeln!(
+        output,
+        "{}  {}",
+        "─".repeat(name_width),
+        "─".repeat(description_width)
+    )
+    .unwrap();
+
+    for (index, (entry, name)) in entries.iter().zip(names).enumerate() {
+        if index > 0 {
+            output.push('\n');
+        }
+        let summary = match (entry.description, entry.packages) {
+            (Some(description), _) => description.to_string(),
+            (_, Some(packages)) => format!(
+                "Includes {} skill{}: {}.",
+                entry.members.unwrap_or(packages.len()),
+                if packages.len() == 1 { "" } else { "s" },
+                packages.join(", ")
+            ),
+            _ => "Description unavailable.".to_string(),
+        };
+        let mut details = wrap_search_text(&summary, description_width);
+        details.push(format!("Registry: {}", entry.registry));
+        if !entry.dependencies.is_empty() {
+            details.extend(wrap_search_text(
+                &format!("Dependencies: {}", entry.dependencies.join(", ")),
+                description_width,
+            ));
+        }
+        for (line_index, detail) in details.iter().enumerate() {
+            let left = if line_index == 0 { name.as_str() } else { "" };
+            writeln!(output, "{left:<name_width$}  {detail}").unwrap();
+        }
+    }
+    output
+}
+
+fn wrap_search_text(text: &str, width: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    for word in text.split_whitespace() {
+        if !current.is_empty() && current.chars().count() + 1 + word.chars().count() > width {
+            lines.push(std::mem::take(&mut current));
+        }
+        if !current.is_empty() {
+            current.push(' ');
+        }
+        current.push_str(word);
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
 }
 
 #[cfg(test)]
@@ -766,6 +818,72 @@ mod tests {
             description: None,
             dependencies: Vec::new(),
         }
+    }
+
+    #[test]
+    fn text_results_show_two_columns_without_add_instructions() {
+        let skill = Entry {
+            name: "software/spec".into(),
+            registry: "default".into(),
+            version: "1.2.0".into(),
+            description: Some("Write clear, reviewable software specs.".into()),
+            dependencies: vec!["software/review@2.0.0".into()],
+        };
+        let bundle = Bundle {
+            id: "software/starter".into(),
+            registry: "company".into(),
+            members: 2,
+            packages: vec!["software/spec".into(), "software/review".into()],
+        };
+        let skill_item = SearchItem::Skill(&skill);
+        let bundle_item = SearchItem::Bundle(&bundle);
+        let displayed = [skill_item.display(), bundle_item.display()];
+
+        let output = format_text_results(&displayed);
+        let lines: Vec<_> = output.lines().collect();
+        assert!(lines[0].starts_with("NAME (TYPE)"));
+        assert!(lines[0].ends_with("DESCRIPTION"));
+        let description_column = lines[0].find("DESCRIPTION").unwrap();
+        assert_eq!(
+            &lines[2][description_column..],
+            "Write clear, reviewable software specs."
+        );
+        assert!(lines[2].starts_with("software/spec@1.2.0 (skill)"));
+        assert_eq!(&lines[3][description_column..], "Registry: default");
+        assert_eq!(
+            &lines[4][description_column..],
+            "Dependencies: software/review@2.0.0"
+        );
+        assert!(lines[6].starts_with("software/starter (bundle)"));
+        assert_eq!(
+            &lines[6][description_column..],
+            "Includes 2 skills: software/spec, software/review."
+        );
+        assert_eq!(&lines[7][description_column..], "Registry: company");
+        assert!(!output.contains("skm add"));
+        assert!(!output.contains("Preview:"));
+    }
+
+    #[test]
+    fn text_results_handle_missing_description_and_wrap_long_details() {
+        let missing = entry("software/undocumented", "default");
+        let bundle = Bundle {
+            id: "software/large-bundle".into(),
+            registry: "default".into(),
+            members: 3,
+            packages: vec![
+                "software/first-long-skill".into(),
+                "software/second-long-skill".into(),
+                "software/third-long-skill".into(),
+            ],
+        };
+        let skill_item = SearchItem::Skill(&missing);
+        let bundle_item = SearchItem::Bundle(&bundle);
+        let output = format_text_results(&[skill_item.display(), bundle_item.display()]);
+        assert!(output.contains("Description unavailable."));
+        assert!(output.contains("Includes 3 skills: software/first-long-skill,"));
+        assert!(output.contains("software/third-long-skill."));
+        assert_eq!(format_text_results(&[]), "");
     }
 
     #[test]

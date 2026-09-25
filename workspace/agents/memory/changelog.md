@@ -1,5 +1,20 @@
 # Memory Changelog
 
+## 2026-09-25 - Record two-column search display preference
+
+- Type: preference
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded the approved `skm search` text layout in
+`workspace/agents/memory/preferences.md`: name and kind in the first column,
+skill version beside its name, and description plus registry in the second
+column, without add or preview instructions.
+
 ## 2026-09-24 - Record SKM 0.7.0 production release
 
 - Type: fact
