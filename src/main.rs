@@ -3,6 +3,7 @@ mod cleaner;
 mod config;
 mod config_editor;
 mod config_manager;
+mod confirmation;
 mod dev;
 mod linker;
 mod registry;
@@ -113,7 +114,7 @@ enum Commands {
         /// Emit a bundle plan as JSON without writing
         #[arg(long, conflicts_with = "yes")]
         json: bool,
-        /// Apply a published bundle to this project
+        /// Apply without prompting for confirmation
         #[arg(long)]
         yes: bool,
     },
@@ -462,7 +463,7 @@ enum BundleCommands {
         /// Emit a JSON plan without writing
         #[arg(long, conflicts_with = "yes")]
         json: bool,
-        /// Apply the complete project change
+        /// Apply the complete project change without prompting
         #[arg(long)]
         yes: bool,
     },
@@ -1289,7 +1290,7 @@ fn add_registry_item(
     yes: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     linker::validate_skill_name(name)?;
-    let bundle_options = dry_run || json || yes;
+    let bundle_options = dry_run || json;
     if kind == Some(AddKind::Bundle) && path.is_some() {
         return Err("--path applies only to local skills".into());
     }
@@ -1325,7 +1326,7 @@ fn add_registry_item(
         }
     }
     if bundle_options {
-        return Err("--dry-run, --json, and --yes apply only to published bundles".into());
+        return Err("--dry-run and --json apply only to published bundles".into());
     }
     add_skill(
         config_path,
@@ -1337,6 +1338,7 @@ fn add_registry_item(
             path,
         },
         global,
+        yes,
     )
 }
 
@@ -1345,7 +1347,30 @@ fn add_skill(
     project_root: &Path,
     new_skill: SkillSpec,
     global: bool,
+    yes: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    add_skill_with_confirmation(
+        config_path,
+        project_root,
+        new_skill,
+        global,
+        yes,
+        confirmation::confirm,
+    )
+}
+
+fn add_skill_with_confirmation<F>(
+    config_path: &Path,
+    project_root: &Path,
+    new_skill: SkillSpec,
+    global: bool,
+    yes: bool,
+    confirm: F,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    F: FnOnce(&str) -> Result<bool, Box<dyn std::error::Error>>,
+{
+    let original = std::fs::read(config_path)?;
     let mut config = load_config(config_path)?;
     validate_config(&config)?;
     linker::validate_skill_name(&new_skill.name)?;
@@ -1358,18 +1383,120 @@ fn add_skill(
     }
 
     let skill_name = new_skill.name.clone();
-    config.skills.push(new_skill);
+    config.skills.push(new_skill.clone());
     linker::require_skill_targets(&config.agents, project_root, global)?;
     linker::validate_unique_skill_targets(&config.skills)?;
     ensure_registries_cached(&config)?;
+    let requested =
+        linker::resolve_skill_dependency_closure(std::slice::from_ref(&new_skill), project_root)?;
     let resolved = linker::resolve_skill_dependency_closure(&config.skills, project_root)?;
     linker::validate_unique_skill_targets(&resolved)?;
+    let link_changes = plan_skill_link_changes(&resolved, project_root, &config.agents, global)?;
+    eprintln!(
+        "{}",
+        skill_add_summary(&new_skill, &requested, &resolved, link_changes, global)
+    );
+    if !yes {
+        let question = format!(
+            "Install {} skill{} and create or repair {link_changes} link{}?",
+            resolved.len(),
+            if resolved.len() == 1 { "" } else { "s" },
+            if link_changes == 1 { "" } else { "s" }
+        );
+        if !confirm(&question)? {
+            eprintln!("Add cancelled.");
+            return Ok(());
+        }
+    }
+    if std::fs::read(config_path)? != original {
+        return Err("skills.yaml changed after add planning; retry".into());
+    }
     config.save_to_file(config_path)?;
     eprintln!("Added skill '{}' to skills.yaml", skill_name);
     for skill in &resolved {
         linker::link_skill(skill, project_root, &config.agents, global)?;
     }
     Ok(())
+}
+
+fn skill_add_summary(
+    requested: &SkillSpec,
+    requested_closure: &[SkillSpec],
+    resolved: &[SkillSpec],
+    link_changes: usize,
+    global: bool,
+) -> String {
+    let requested_names: std::collections::BTreeSet<_> = requested_closure
+        .iter()
+        .map(|skill| skill.name.as_str())
+        .collect();
+    let source = match &requested.path {
+        Some(path) => format!("local path: {path}"),
+        None => format!(
+            "registry: {}",
+            requested.source.as_deref().unwrap_or("default")
+        ),
+    };
+    let mut lines = vec![
+        format!("Skill: {}", requested.name),
+        format!("Scope: {}", if global { "global" } else { "project" }),
+        format!(
+            "skills.yaml entry: {}@{} ({source})",
+            requested.name,
+            requested.version.as_deref().unwrap_or("latest")
+        ),
+        "Resolved skills to link:".to_string(),
+    ];
+    for skill in resolved {
+        let role = if skill.name == requested.name {
+            "requested"
+        } else if requested_names.contains(skill.name.as_str()) {
+            "dependency"
+        } else {
+            "already configured"
+        };
+        lines.push(format!(
+            "  {}@{} ({role})",
+            skill.name,
+            skill.version.as_deref().unwrap_or("latest")
+        ));
+    }
+    lines.push(format!("Agent links to create or repair: {link_changes}"));
+    lines.join("\n")
+}
+
+fn plan_skill_link_changes(
+    skills: &[SkillSpec],
+    project_root: &Path,
+    agents: &[String],
+    global: bool,
+) -> Result<usize, Box<dyn std::error::Error>> {
+    let targets = linker::resolve_agent_skill_targets(agents, project_root, global)?;
+    let mut changes = 0;
+    for skill in skills {
+        let source = linker::resolve_skill_source_dir(skill, project_root)?;
+        for target in &targets {
+            linker::validate_skill_target_parent(&target.path, &skill.name)?;
+            let path = linker::get_skill_target_path(&target.path, &skill.name)?;
+            match std::fs::symlink_metadata(&path) {
+                Ok(metadata) if metadata.file_type().is_symlink() => {
+                    if !linker::symlink_points_to(&path, &source)? {
+                        changes += 1;
+                    }
+                }
+                Ok(_) => {
+                    return Err(format!(
+                        "Refusing to replace existing non-symlink path: {}",
+                        path.display()
+                    )
+                    .into());
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => changes += 1,
+                Err(error) => return Err(error.into()),
+            }
+        }
+    }
+    Ok(changes)
 }
 
 fn ensure_registries_cached(config: &SkillsConfig) -> Result<(), Box<dyn std::error::Error>> {
@@ -1698,6 +1825,45 @@ mod search_cli_tests {
         }
     }
 
+    #[test]
+    fn single_skill_plan_distinguishes_configured_skills_and_dependencies() {
+        let requested = SkillSpec {
+            name: "acme/alpha".into(),
+            version: Some("latest".into()),
+            source: Some("company".into()),
+            path: None,
+        };
+        let resolved_request = SkillSpec {
+            version: Some("1.0.0".into()),
+            ..requested.clone()
+        };
+        let dependency = SkillSpec {
+            name: "acme/helper".into(),
+            version: Some("2.0.0".into()),
+            source: Some("company".into()),
+            path: None,
+        };
+        let existing = SkillSpec {
+            name: "acme/other".into(),
+            version: Some("3.0.0".into()),
+            source: Some("company".into()),
+            path: None,
+        };
+        let summary = skill_add_summary(
+            &requested,
+            &[resolved_request.clone(), dependency.clone()],
+            &[resolved_request, dependency, existing],
+            2,
+            false,
+        );
+        assert!(summary.contains("Scope: project"));
+        assert!(summary.contains("skills.yaml entry: acme/alpha@latest (registry: company)"));
+        assert!(summary.contains("acme/alpha@1.0.0 (requested)"));
+        assert!(summary.contains("acme/helper@2.0.0 (dependency)"));
+        assert!(summary.contains("acme/other@3.0.0 (already configured)"));
+        assert!(summary.contains("Agent links to create or repair: 2"));
+    }
+
     fn git(repository: &Path, args: &[&str]) {
         let output = Command::new("git")
             .arg("-C")
@@ -1866,7 +2032,11 @@ mod search_cli_tests {
             .join(".agents/skills/alpha")
             .is_symlink());
 
-        run(add("acme/beta", false, false)).unwrap();
+        assert!(run(add("acme/beta", false, false))
+            .unwrap_err()
+            .to_string()
+            .contains("--yes"));
+        run(add("acme/beta", false, true)).unwrap();
         let config = SkillsConfig::load_from_file(&config_path).unwrap();
         assert_eq!(config.skills.len(), 2);
         assert!(environment
@@ -1877,6 +2047,99 @@ mod search_cli_tests {
             .unwrap_err()
             .to_string()
             .contains("only to published bundles"));
+    }
+
+    #[test]
+    #[serial]
+    fn single_skill_confirmation_precedes_project_writes() {
+        let environment = Environment::new();
+        BaseConfig {
+            default_registry: "default".into(),
+            registries: HashMap::new(),
+            check_for_updates: false,
+        }
+        .save()
+        .unwrap();
+        let project = environment.project();
+        let source = project.join("local-skill");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("SKILL.md"),
+            "---\nname: alpha\nmetadata:\n  skm-version: 1.0.0\n---\n# Alpha\n",
+        )
+        .unwrap();
+        let config_path = project.join("skills.yaml");
+        SkillsConfig {
+            name: "confirmation".into(),
+            version: None,
+            registries: None,
+            agents: vec!["codex".into()],
+            skills: Vec::new(),
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            workspace: None,
+            trusted_sources: Vec::new(),
+        }
+        .save_to_file(&config_path)
+        .unwrap();
+        let requested = SkillSpec {
+            name: "acme/alpha".into(),
+            version: Some("latest".into()),
+            source: None,
+            path: Some("local-skill".into()),
+        };
+        let before = fs::read(&config_path).unwrap();
+        let target = project.join(".agents/skills/alpha");
+
+        add_skill_with_confirmation(
+            &config_path,
+            &project,
+            requested.clone(),
+            false,
+            false,
+            |question| {
+                assert_eq!(question, "Install 1 skill and create or repair 1 link?");
+                Ok(false)
+            },
+        )
+        .unwrap();
+        assert_eq!(fs::read(&config_path).unwrap(), before);
+        assert!(!target.exists());
+
+        let error = add_skill(&config_path, &project, requested.clone(), false, false).unwrap_err();
+        assert!(error.to_string().contains("--yes"));
+        assert_eq!(fs::read(&config_path).unwrap(), before);
+        assert!(!target.exists());
+
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(&target, "unmanaged").unwrap();
+        let error = add_skill_with_confirmation(
+            &config_path,
+            &project,
+            requested.clone(),
+            false,
+            false,
+            |_| panic!("a link collision must fail before confirmation"),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("non-symlink path"));
+        assert_eq!(fs::read(&config_path).unwrap(), before);
+        assert_eq!(fs::read(&target).unwrap(), b"unmanaged");
+        fs::remove_file(&target).unwrap();
+
+        add_skill_with_confirmation(&config_path, &project, requested, false, false, |_| {
+            Ok(true)
+        })
+        .unwrap();
+        assert_eq!(
+            SkillsConfig::load_from_file(&config_path)
+                .unwrap()
+                .skills
+                .len(),
+            1
+        );
+        assert!(target.is_symlink());
     }
 
     #[test]
@@ -1974,7 +2237,7 @@ mod search_cli_tests {
             false,
             false,
             false,
-            false,
+            true,
         )
         .unwrap();
         assert_eq!(

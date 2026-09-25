@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
@@ -90,20 +90,66 @@ pub fn add(
     json: bool,
     yes: bool,
 ) -> Result<()> {
-    if !dry_run && !json && !yes {
-        return Err("bundle add requires --yes; use --dry-run or --json to preview".into());
-    }
-    let prepared = prepare(project, bundle, source, yes && !dry_run && !json)?;
+    add_with_confirmation(
+        project,
+        bundle,
+        source,
+        dry_run,
+        json,
+        yes,
+        crate::confirmation::confirm,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn add_with_confirmation<F>(
+    project: &Path,
+    bundle: &str,
+    source: &str,
+    dry_run: bool,
+    json: bool,
+    yes: bool,
+    confirm: F,
+) -> Result<()>
+where
+    F: FnOnce(&str) -> Result<bool>,
+{
+    let prepared = prepare(project, bundle, source, !dry_run && !json)?;
     if json {
         println!("{}", serde_json::to_string_pretty(&prepared.public)?);
     } else {
-        println!("Bundle: {}  Registry: {}", prepared.public.bundle, source);
+        println!("Bundle: {}", prepared.public.bundle);
+        println!("Registry: {source}");
+        println!("Skills to install:");
         for pin in &prepared.public.pins {
-            println!("  {}: {}@{}", pin.action, pin.name, pin.version);
+            let role = if pin.requested_member {
+                "bundle member"
+            } else {
+                "dependency"
+            };
+            println!("  {} {}@{} ({role})", pin.action, pin.name, pin.version);
         }
-        println!("{} link(s) to create or repair", prepared.links.len());
+        println!("Agent links to create or repair: {}", prepared.links.len());
     }
-    if yes && !dry_run && !json {
+    if !dry_run && !json {
+        if !yes {
+            io::stdout().flush()?;
+            let question = format!(
+                "Install {} skill{} and create or repair {} link{}?",
+                prepared.public.pins.len(),
+                if prepared.public.pins.len() == 1 {
+                    ""
+                } else {
+                    "s"
+                },
+                prepared.links.len(),
+                if prepared.links.len() == 1 { "" } else { "s" }
+            );
+            if !confirm(&question)? {
+                eprintln!("Add cancelled.");
+                return Ok(());
+            }
+        }
         apply(project, &prepared)?;
     }
     Ok(())
@@ -833,6 +879,68 @@ mod tests {
             fs::read(fixture.project.path().join("skills.yaml")).unwrap(),
             after
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    #[serial]
+    fn confirmation_controls_bundle_application() {
+        let fixture = Fixture::new();
+        let home = tempfile::tempdir().unwrap();
+        let _home = HomeGuard::set(home.path());
+        let config_path = fixture.project.path().join("skills.yaml");
+        let before = fs::read(&config_path).unwrap();
+
+        add_with_confirmation(
+            fixture.project.path(),
+            "acme/starter",
+            "local",
+            false,
+            false,
+            false,
+            |question| {
+                assert!(question.contains("2 skills"));
+                assert!(question.contains("2 links"));
+                Ok(false)
+            },
+        )
+        .unwrap();
+        assert_eq!(fs::read(&config_path).unwrap(), before);
+        assert!(!fixture.project.path().join(".agents/skills/alpha").exists());
+
+        add_with_confirmation(
+            fixture.project.path(),
+            "acme/starter",
+            "local",
+            false,
+            false,
+            false,
+            |_| Ok(true),
+        )
+        .unwrap();
+        let config = SkillsConfig::load_from_file(&config_path).unwrap();
+        assert_eq!(config.skills.len(), 2);
+        assert!(fixture
+            .project
+            .path()
+            .join(".agents/skills/alpha")
+            .is_symlink());
+        assert!(fixture
+            .project
+            .path()
+            .join(".agents/skills/helper")
+            .is_symlink());
+
+        add_with_confirmation(
+            fixture.project.path(),
+            "acme/starter",
+            "local",
+            false,
+            false,
+            true,
+            |_| panic!("--yes must skip confirmation"),
+        )
+        .unwrap();
     }
 
     #[test]
