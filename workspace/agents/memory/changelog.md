@@ -1,5 +1,19 @@
 # Memory Changelog
 
+## 2026-09-25 - Record Workspace documentation separation decision
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded in `workspace/agents/memory/decisions.md` that SKM documentation stays
+independent of Workspace, with Workspace toolkit material in
+`workspace/docs/workspace-toolkit.md`.
+
 ## 2026-09-25 - Record add confirmation development integration
 
 - Type: fact

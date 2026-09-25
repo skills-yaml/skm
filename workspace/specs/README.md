@@ -37,6 +37,7 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
+| [separate-workspace-docs.md](development/workspace-toolkit/separate-workspace-docs.md) | `workspace-toolkit` | `development` | The user requested documentation-only separation of SKM from Workspace on 2026-09-25; implementation is active on `docs/separate-workspace-docs`. |
 | [add-confirmation.md](test/registry/add-confirmation.md) | `registry` | `test` | PR #56 merged into the configured `development` test channel at `ed645db` on 2026-09-25 after Validate passed; production release is pending. |
 | [search-two-column-output.md](test/registry/search-two-column-output.md) | `registry` | `test` | PR #54 merged into the configured `development` test channel at `9033c29` on 2026-09-25 after Validate passed; production release is pending. |
 | [unified-skill-bundle-discovery.md](done/registry/unified-skill-bundle-discovery.md) | `registry` | `done` | PR #51 promoted SKM 0.7.0; commit `44a502a` passed production CI, four-platform qualification, and verified nine-asset publication. |

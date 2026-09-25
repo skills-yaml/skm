@@ -1,15 +1,14 @@
 # skm
 
-`skm` is a Rust CLI for managing AI agent skills and Workspace development
-toolkits from a declarative `skills.yaml` manifest.
+`skm` is a Rust CLI for managing AI agent skills from a declarative
+`skills.yaml` manifest.
 
-It installs skills by creating symlinks into supported agent skill directories,
-so a project can declare the skills it needs once and keep all sixteen
-supported agent clients in sync. Toolkit projects can also select
-versioned bundles and portable role profiles, render agent-specific projections,
-and commit a deterministic `skills.lock.yaml`.
+It installs skills from any registry by creating symlinks into supported agent
+skill directories, so a project can declare the skills it needs once and keep
+all sixteen supported agent clients in sync. `skm install` commits a
+deterministic `skills.lock.yaml`.
 
-[Install](#install) | [Release Channels](#release-channels) | [Quick Start](#quick-start) | [Commands](#commands) | [Configuration](#configuration)
+[Install](#install) | [Release Channels](#release-channels) | [Quick Start](#quick-start) | [Commands](#commands) | [Configuration](#configuration) | [Workspace Toolkits](#workspace-toolkits)
 
 ## Install
 
@@ -136,7 +135,7 @@ skm init
 
 `init` loads `skills.yaml` if present, or starts a new draft, and then walks
 through ordinary line-by-line prompts for project details, agents, registries,
-skills, optional toolkit/workspace settings, and final review.
+skills, optional settings, and final review.
 
 - Press **Enter** to keep the value shown in a prompt.
 - Enter **-** to clear an optional text value.
@@ -199,8 +198,7 @@ software/starter (bundle)           Includes 2 skills: software/spec, software/r
 ```
 
 Namespace collections remain browse-only; they are not installable bundles.
-Toolkit bundles are a separate source-repository feature. Add a selected skill
-with:
+Add a selected skill with:
 
 ```sh
 skm add software-development/spec --source default --kind skill
@@ -222,9 +220,9 @@ the combined result list. Search is read-only; use `skm add` to install a skill
 or every member of a published bundle. Preview or add a bundle with:
 
 ```sh
-skm add workspace/all-workspace-skills --source default --kind bundle --dry-run
-skm add workspace/all-workspace-skills --source default --kind bundle
-skm add workspace/all-workspace-skills --source default --kind bundle --yes
+skm add skills-yaml/authoring-toolkit --source default --kind bundle --dry-run
+skm add skills-yaml/authoring-toolkit --source default --kind bundle
+skm add skills-yaml/authoring-toolkit --source default --kind bundle --yes
 ```
 
 For bundles, `--dry-run` and `--json` preview without asking or changing the
@@ -245,29 +243,11 @@ skm install
 
 Select at least one agent with a project skill directory in `skills.yaml`
 before a skills-only install. For example, `agents: [codex]` links
-`workspace/wk-spec` as `.agents/skills/wk-spec` so Codex can discover it.
+`software-development/spec` as `.agents/skills/spec` so Codex can discover it.
 `agents: []` and project-only Hermes configurations now report an error for
 skills-only installs. Hermes uses `skm install --global` for its global target.
-If an older SKM version created a nested `skills/workspace/wk-spec` link,
-review and remove that old link after confirming it points to the same source.
 
-For Workspace Docs assessment, adoption, upgrade, or repair, install the
-published `wk-adopt` skill in a project with an effective agent target:
-
-```sh
-skm add workspace/wk-adopt --source default
-skm check
-```
-
-SKM also links its exact `adopt-workspace-structure` dependency. Invoke
-`wk-adopt` in your agent and state whether you want an assessment, adoption,
-upgrade, or repair. The skill verifies the standard and performs authorized
-repository work. Existing `.skm/workspace-plan.yaml` files from older SKM
-versions remain available for review; SKM no longer creates or updates them.
-Existing `trusted_sources` manifest values are preserved but no longer grant
-source authorization in SKM.
-
-For a configured toolkit, preview every write and then apply non-interactively:
+Preview every write and then apply non-interactively:
 
 ```sh
 skm install --dry-run
@@ -291,7 +271,7 @@ Use `--global` with `install`, `list`, or `check` to work against user-level age
 ## Commands
 
 ```txt
-skm init [--name <name>] [--global] [--non-interactive] [--advanced] [--toolkit-manifest <path>] [--toolkit-version <version>] [--bundle <id>] [--profile <id>] [--workspace-standard <id>] [--workspace-source <path-or-git-url>] [--workspace-revision <commit>] [--workspace-integrity <sha256>]
+skm init [--name <name>] [--global] [--non-interactive] [--advanced]
 skm install [--global] [--dry-run] [--json] [--yes]
 skm add <skill-or-bundle> [--source <registry>] [--kind skill|bundle] [--path <local-path>] [--global] [--dry-run | --json | --yes]
 skm bundle add <namespace/bundle> [--source <registry>] [--dry-run | --json | --yes]
@@ -310,10 +290,10 @@ skm dev mode [on|off|status] [--global]
 ```
 
 - `init`: creates or edits `skills.yaml` through sequential prompts; use
-  `--non-interactive` to create a default manifest for scripts.
-- `install`: resolves configured skills and toolkit bundles once, preflights
-  every target, transactionally materializes each adapter, and writes the
-  lockfile last.
+  `--non-interactive` to create a default manifest for scripts. Toolkit flags
+  are described in [Workspace Toolkits](#workspace-toolkits).
+- `install`: resolves configured skills once, preflights every target,
+  transactionally links each one, and writes the lockfile last.
 - `add`: adds and links one skill, or expands a published registry bundle and
   exact dependencies into project skill pins. Both paths show a plan and prompt
   unless `--yes` is set. `--dry-run` and `--json` preview bundles without
@@ -369,7 +349,7 @@ string metadata map:
 ```yaml
 metadata:
   skm-version: "0.1.0"
-  skm-dependencies: "workspace/write-spec@0.2.0, workspace/review-changes@0.2.0"
+  skm-dependencies: "my-namespace/write-spec@0.2.0, my-namespace/review-changes@0.2.0"
 ```
 
 Dependencies must use `namespace/name@MAJOR.MINOR.PATCH`. Resolution inherits
@@ -378,45 +358,6 @@ rejects missing packages, malformed or duplicate declarations, cycles, and
 conflicting exact versions. Local-path skills cannot declare registry
 dependencies. When a `latest` or `default` package declares `skm-version`, the
 lockfile records that immutable version instead of the moving alias.
-
-### Workspace toolkit configuration
-
-Toolkit fields are optional, so existing skills-only manifests remain valid:
-
-```yaml
-name: my-project
-version: 1.0.0
-agents:
-  - codex
-  - cursor
-skills: []
-toolkit:
-  manifest: workspace/instructions/toolkit/manifest.yaml
-  version: 0.3.0
-bundles:
-  - development-core
-profiles:
-  - security-reviewer
-workspace:
-  standard: workspace-docs@5.0.0
-  source: workspace/instructions/standards/workspace-docs
-```
-
-Toolkit and local workspace source paths must be repository-relative and may not
-contain symlinks. The committed `skills.lock.yaml` records toolkit and workspace
-versions and integrity, resolved skill and profile versions and integrity,
-adapter versions and capabilities, and every managed output.
-
-SKM accepts toolkit packages targeting Workspace Docs 4.x, 5.x, or 6.x and
-toolkit skill entries with dependency IDs. Selected bundles expand the complete
-toolkit dependency closure. The current Workspace toolkit uses the 5.x
-`backlog -> development -> test -> done`
-lifecycle; `develop` and `main` are conventional targets that repositories may
-replace with explicitly documented equivalents.
-
-The initial profile adapters are deliberately different: Codex receives native
-project custom-agent TOML under `.codex/agents/`; Cursor receives an explicitly
-labeled generated skill fallback under `.cursor/skills/`.
 
 ## Link Targets
 
@@ -456,33 +397,18 @@ name cannot be installed together into one project.
 
 `skm` validates skill names and registry names before filesystem operations. It rejects absolute paths, `..`, empty path components, unsupported agents, and unsafe registry names.
 
-Toolkit installation scans sources without following symlinks, computes SHA-256
-integrity, and refuses every unmanaged collision before writing. SKM replaces or
-removes only outputs owned by the previous lockfile. A repository-local journal
-backs up managed paths during apply, rolls back a partial failure, and writes the
-new lockfile last. An unchanged second install is byte-idempotent.
+Linking never overwrites a real file or directory; SKM only replaces existing
+symlinks, and `skm check` verifies that each link points to its expected source.
 
-Toolkit Workspace pins remain project-scoped. SKM validates and hashes local
-standard sources before recording their integrity in a lockfile, rejecting
-unsafe source paths and symlinks. Remote Workspace source pins keep their
-configured revision and integrity. Adoption and migration are handled by the
-installed Workspace skills. Toolkit installation writes only inside the current
-repository; skill commands use their documented project or `--global` targets.
+## Workspace Toolkits
 
-Installed Workspace workflows enforce OpenTofu as the only infrastructure
-mutation mechanism and repository CI/CD as the only mutation environment.
-Local work is limited to OpenTofu source changes and non-mutating validation or
-review. Applies, destroys, imports, and state mutations run only in CI/CD.
-Provider CLIs and consoles are diagnostic-only even in CI/CD; alternative IaC
-engines and imperative provisioning are not valid fallbacks.
-
-Installed mutable Workspace workflows also treat the user's delivery request
-as standing authority for routine repository work: implementation, tests,
-feature-branch commits and pushes, pull-request updates, bounded CI repair,
-test integration, and non-destructive releases continue without repeated
-approval prompts. Read-only review roles remain read-only. Human approval is
-reserved for a specifically identified destructive production action; SKM does
-not bypass repository, branch, environment, or CI/CD protections.
+SKM can also install Workspace development toolkits: versioned bundles, role
+profiles, and a pinned workspace-docs standard declared with optional
+`toolkit`, `bundles`, `profiles`, and `workspace` fields in `skills.yaml`.
+Projects that only manage skills never need these fields. Configuration,
+`init` flags, adoption with the `wk-adopt` skill, integrity guarantees, and the
+policy of installed Workspace workflows are documented in
+[workspace/docs/workspace-toolkit.md](workspace/docs/workspace-toolkit.md).
 
 ## Development
 

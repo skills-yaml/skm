@@ -1,5 +1,22 @@
 # Decisions
 
+## 2026-09-25 - Keep SKM documentation independent of Workspace
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+The README and website present SKM and `skills.yaml` as a general skill
+manager for any registry. Workspace toolkit configuration, toolkit `init`
+flags, `wk-adopt` adoption, toolkit integrity, and installed Workspace
+workflow policy live in `workspace/docs/workspace-toolkit.md`, linked from one
+README section. The separation is documentation only; toolkit behavior and
+manifest fields are unchanged.
+
 ## 2026-09-25 - Confirm planned skill and bundle adds
 
 - Type: decision
