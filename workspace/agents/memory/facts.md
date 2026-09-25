@@ -1,5 +1,24 @@
 # Facts
 
+## 2026-09-25 - SKM 0.8.0 search and add workflow released to production
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: none
+- Supersedes: 2026-09-25 - Add confirmation integrated into development; 2026-09-25 - Two-column search results integrated into development
+
+Content:
+
+PR #58 promoted two-column `skm search` results and planned `skm add`
+confirmation to `main`. PR #59 prepared SKM 0.8.0 at
+`07b4bba9c1d5f3de3964f398ff8296afb617db6e`. Production CI
+`36197428227` and four-platform update qualification `36198106673` passed.
+After required reviewer approval, Release Artifacts run `36197428257`
+published the nine-asset `prod-latest` release. Its manifest, Linux archive
+checksum, and released binary identity matched version 0.8.0 and the exact
+production commit.
+
 ## 2026-09-25 - Add confirmation integrated into development
 
 - Type: fact
