@@ -56,6 +56,21 @@ Recorded in `workspace/agents/memory/decisions.md` that the proposed CLI
 command reorganization may break old command names without compatibility
 aliases. The new command contract is not yet approved.
 
+## 2026-09-25 - Record Workspace documentation separation decision
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded in `workspace/agents/memory/decisions.md` that SKM documentation stays
+independent of Workspace, with Workspace toolkit material in
+`workspace/docs/workspace-toolkit.md`.
+
+
 ## 2026-09-25 - Record SKM 0.8.0 production release
 
 - Type: fact
