@@ -45,7 +45,7 @@ Remove top-level `version`, `versions`, `use`, `update-skill`, `update`, and `ca
 
 ## Compatibility, Safety, and Rollback
 
-Old names deliberately fail for ordinary CLI use. The older released updater invokes top-level `version` with `SKM_NO_UPDATE_CHECK=1` on a staged candidate and again after replacement on Windows. The separate [legacy updater identity handshake](../../development/updates/legacy-updater-identity-handshake.md) accepts only that internal probe; new CLI help and normal command parsing retain the breaking command names. Production promotion requires qualification of an old bootstrap updating to the new candidate. Cache refresh and self checks may use the network only when explicitly invoked; `skill outdated` is cache-only by default. Cache clear and prune keep the existing dry-run, confirmation, and pin-protection behavior. Rollback is a source revert before release; existing configuration files need no migration.
+Old names deliberately fail for ordinary CLI use. The older released updater invokes top-level `version` with `SKM_NO_UPDATE_CHECK=1` on a staged candidate and again after replacement on Windows. The separate [legacy updater identity handshake](../updates/legacy-updater-identity-handshake.md) accepts only that internal probe; new CLI help and normal command parsing retain the breaking command names. Production promotion requires qualification of an old bootstrap updating to the new candidate. Cache refresh and self checks may use the network only when explicitly invoked; `skill outdated` is cache-only by default. Cache clear and prune keep the existing dry-run, confirmation, and pin-protection behavior. Rollback is a source revert before release; existing configuration files need no migration.
 
 ## Acceptance Criteria
 

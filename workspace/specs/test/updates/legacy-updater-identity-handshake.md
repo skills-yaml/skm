@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: The user reproduced an SKM 0.8.0 development self-update failure on 2026-09-26 and approved an internal compatibility handshake. Implementation is active locally; no new test-channel integration is claimed.
+Rationale: PR #66 merged the internal compatibility handshake into the configured `development` test channel on 2026-09-26 at `ed5b0a0987964b2c4aa0f7e92c948f937d56a9ee` after CI Validate run `36270555944` passed. Development Release Artifacts run `36271054364` published all nine assets, and an older Linux binary self-updated to that release. Cross-platform qualification and production promotion remain pending.
 
 ## Problem and Users
 
@@ -59,4 +59,4 @@ The compatibility response is gated by the exact environment value and argument 
 
 Status: `updated`
 
-Rationale: The user-approved compatibility contract is recorded in `workspace/agents/memory/decisions.md`; the reproduced failure and superseded bridge prerequisite are recorded in `workspace/agents/memory/facts.md`. Both have a corresponding entry in `workspace/agents/memory/changelog.md`.
+Rationale: The user-approved compatibility contract is recorded in `workspace/agents/memory/decisions.md`; the reproduced failure, superseded bridge prerequisite, and confirmed development integration are recorded in `workspace/agents/memory/facts.md`. They have corresponding entries in `workspace/agents/memory/changelog.md`.
