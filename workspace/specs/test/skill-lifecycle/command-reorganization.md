@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: The user approved implementation on 2026-09-26 and explicitly allowed breaking command names without compatibility aliases. Implementation is active locally; no test-branch integration is claimed.
+Rationale: PR #63 merged this implementation into the configured `development` test channel on 2026-09-26 at `2c852c248b54e6982a92584c956dd2bc036ab8fc` after Validate run `36212734539` passed. Production promotion remains pending the bridge updater release.
 
 ## Problem and Users
 

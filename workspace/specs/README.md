@@ -37,7 +37,7 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
-| [command-reorganization.md](development/skill-lifecycle/command-reorganization.md) | `skill-lifecycle` | `development` | The user approved implementation and breaking command names on 2026-09-26; implementation is active locally, with no test integration claimed. |
+| [command-reorganization.md](test/skill-lifecycle/command-reorganization.md) | `skill-lifecycle` | `test` | PR #63 merged into `development` at `2c852c2` on 2026-09-26 after Validate run `36212734539` passed; production promotion awaits a bridge updater release. |
 | [add-confirmation.md](done/registry/add-confirmation.md) | `registry` | `done` | PR #58 promoted add confirmation to `main`; SKM 0.8.0 at `07b4bba` passed production CI and four-platform qualification, then published through reviewed `release-prod` with verified assets on 2026-09-25. |
 | [search-two-column-output.md](done/registry/search-two-column-output.md) | `registry` | `done` | PR #58 promoted two-column search to `main`; SKM 0.8.0 at `07b4bba` passed production CI and four-platform qualification, then published through reviewed `release-prod` with verified assets on 2026-09-25. |
 | [unified-skill-bundle-discovery.md](done/registry/unified-skill-bundle-discovery.md) | `registry` | `done` | PR #51 promoted SKM 0.7.0; commit `44a502a` passed production CI, four-platform qualification, and verified nine-asset publication. |
