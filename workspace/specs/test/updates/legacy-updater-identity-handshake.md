@@ -4,7 +4,7 @@
 
 State: `test`
 
-Rationale: PR #66 merged the internal compatibility handshake into the configured `development` test channel on 2026-09-26 at `ed5b0a0987964b2c4aa0f7e92c948f937d56a9ee` after CI Validate run `36270555944` passed. Development release publication and old-to-new update qualification remain pending.
+Rationale: PR #66 merged the internal compatibility handshake into the configured `development` test channel on 2026-09-26 at `ed5b0a0987964b2c4aa0f7e92c948f937d56a9ee` after CI Validate run `36270555944` passed. Development Release Artifacts run `36271054364` published all nine assets, and an older Linux binary self-updated to that release. Cross-platform qualification and production promotion remain pending.
 
 ## Problem and Users
 

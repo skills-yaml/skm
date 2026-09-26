@@ -10,8 +10,9 @@
 
 Content:
 
-Recorded PR #66's confirmed `development` merge and passing Validate run in
-`workspace/agents/memory/facts.md`, and moved the identity handshake spec to
+Recorded PR #66's confirmed `development` merge, passing Validate run,
+successful nine-asset development publication, and older Linux binary update
+in `workspace/agents/memory/facts.md`. Moved the identity handshake spec to
 `test` with a matching catalog rationale.
 
 ## 2026-09-26 - Record legacy updater compatibility decision and defect
