@@ -136,7 +136,7 @@ skm init
 
 `init` loads `skills.yaml` if present, or starts a new draft, and then walks
 through ordinary line-by-line prompts for project details, agents, registries,
-skills, optional toolkit/workspace settings, and final review.
+skills, optional toolkit settings, and final review.
 
 - Press **Enter** to keep the value shown in a prompt.
 - Enter **-** to clear an optional text value.

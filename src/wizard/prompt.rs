@@ -39,7 +39,7 @@ fn run_prompts<R: BufRead, W: Write>(
             || !edit_agents(document, input, output)?
             || !edit_registries(document, input, output)?
             || !edit_skills(document, input, output)?
-            || !edit_workspace(document, input, output)?
+            || !edit_toolkit(document, input, output)?
         {
             return Ok(false);
         }
@@ -569,14 +569,13 @@ fn edit_skill<R: BufRead, W: Write>(
     )
 }
 
-fn edit_workspace<R: BufRead, W: Write>(
+fn edit_toolkit<R: BufRead, W: Write>(
     document: &mut Document,
     input: &mut R,
     output: &mut W,
 ) -> Result<bool> {
-    section(output, "Optional toolkit and workspace settings")?;
+    section(output, "Optional toolkit settings")?;
     let configured = !document.value["toolkit"].is_null()
-        || !document.value["workspace"].is_null()
         || document.value["bundles"]
             .as_sequence()
             .is_some_and(|v| !v.is_empty())
@@ -585,10 +584,10 @@ fn edit_workspace<R: BufRead, W: Write>(
             .is_some_and(|v| !v.is_empty());
     writeln!(
         output,
-        "Current optional configuration: {}.",
+        "Current toolkit configuration: {}.",
         if configured { "configured" } else { "none" }
     )?;
-    let Some(edit) = confirm(input, output, "Edit these advanced settings?", false)? else {
+    let Some(edit) = confirm(input, output, "Edit these toolkit settings?", false)? else {
         return Ok(false);
     };
     if !edit {
@@ -625,36 +624,6 @@ fn edit_workspace<R: BufRead, W: Write>(
     ] {
         if !edit_target(document, input, output, target, label, true, |_| Ok(()))? {
             return Ok(false);
-        }
-    }
-    if !edit_target(
-        document,
-        input,
-        output,
-        Target::Nested("workspace", "standard"),
-        "Workspace standard",
-        true,
-        |_| Ok(()),
-    )? {
-        return Ok(false);
-    }
-    if !document.value["workspace"].is_null() {
-        for (key, label) in [
-            ("source", "Workspace source"),
-            ("revision", "Workspace revision"),
-            ("integrity", "Workspace integrity"),
-        ] {
-            if !edit_target(
-                document,
-                input,
-                output,
-                Target::Nested("workspace", key),
-                label,
-                true,
-                |_| Ok(()),
-            )? {
-                return Ok(false);
-            }
         }
     }
     Ok(true)
@@ -882,6 +851,55 @@ mod tests {
         assert!(output.contains("== Review =="));
         assert!(output.contains("name: demo"));
         assert!(!output.contains("\u{1b}["));
+    }
+
+    #[test]
+    fn toolkit_prompts_preserve_existing_workspace_pins_without_editing_them() {
+        let (_directory, mut document) = fresh();
+        let workspace: Value = serde_yaml::from_str(
+            "standard: workspace-docs@5.0.0\nsource: workspace/standards\nrevision: abc123\nintegrity: sha256:example\n",
+        )
+        .unwrap();
+        document.value["workspace"] = workspace.clone();
+        document.value["extension"] = Value::String("keep".into());
+        document.save(false).unwrap();
+        document = Document::load(&document.path, None, false).unwrap();
+
+        // Change the project name, keep the core selections, edit toolkit settings, then save.
+        let answers = concat!(
+            "updated\n",
+            "\n\n",
+            "\n\n",
+            "y\n",
+            "toolkit/manifest.yaml\n1.0.0\ncore\nreviewer\n",
+            "\n"
+        );
+        let (saved, output) = run(&mut document, answers);
+        assert!(saved);
+        assert!(output.contains("== Optional toolkit settings =="));
+        assert!(output.contains("Current toolkit configuration: none."));
+        assert!(output.contains("Toolkit manifest ["));
+        assert!(output.contains("Toolkit version ["));
+        assert!(output.contains("Bundles (comma-separated) ["));
+        assert!(output.contains("Profiles (comma-separated) ["));
+        for label in [
+            "Workspace standard [",
+            "Workspace source [",
+            "Workspace revision [",
+            "Workspace integrity [",
+        ] {
+            assert!(!output.contains(label));
+        }
+        assert!(output.contains("workspace:"));
+        let saved: Value =
+            serde_yaml::from_str(&fs::read_to_string(&document.path).unwrap()).unwrap();
+        assert_eq!(saved["name"], "updated");
+        assert_eq!(saved["toolkit"]["manifest"], "toolkit/manifest.yaml");
+        assert_eq!(saved["toolkit"]["version"], "1.0.0");
+        assert_eq!(saved["bundles"][0], "core");
+        assert_eq!(saved["profiles"][0], "reviewer");
+        assert_eq!(saved["workspace"], workspace);
+        assert_eq!(saved["extension"], "keep");
     }
 
     #[test]
