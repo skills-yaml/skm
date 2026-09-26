@@ -33,8 +33,6 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Show the installed version and managed build identity
-    Version,
     /// Create or edit skills.yaml with sequential prompts, or create defaults for scripts
     Init {
         /// Override the project name (new configurations default to the current folder name)
@@ -169,19 +167,84 @@ enum Commands {
         #[arg(short, long)]
         global: bool,
     },
-    /// Check for or install a verified SKM release update
-    Update(updater::UpdateArgs),
-    /// Update local cache of skill registries
-    CacheUpdate {
-        /// Specific registry to update (updates all if not specified)
-        #[arg(long)]
-        registry: Option<String>,
-    },
+    /// Manage the local registry cache
+    #[command(subcommand)]
+    Cache(CacheCommands),
+    /// Inspect and change configured skill versions
+    #[command(subcommand)]
+    Skill(SkillCommands),
+    /// Inspect and update the SKM binary
+    #[command(name = "self")]
+    #[command(subcommand)]
+    SelfUpdate(SelfCommands),
     /// Run first-time setup (initialize base config and cache)
     Setup,
     /// Initialize global base configuration with default registry
     InitConfig,
-    /// List all available versions for a skill
+    /// Clean up SKM artifacts (broken symlinks, cache, etc.)
+    #[command(subcommand)]
+    Clean(CleanCommands),
+    /// Manage SKM configuration
+    #[command(subcommand)]
+    Config(ConfigCommands),
+    /// Manage skill registries
+    #[command(subcommand)]
+    Registry(RegistryCommands),
+    /// Manage local development skills
+    #[command(subcommand)]
+    Dev(DevCommands),
+}
+
+#[derive(Subcommand)]
+enum CacheCommands {
+    /// Fetch current contents of one registry or all configured registries
+    Refresh {
+        /// Registry to refresh (all when omitted)
+        registry: Option<String>,
+    },
+    /// Show local registry cache statistics
+    Status {
+        /// Registry to inspect (all when omitted)
+        registry: Option<String>,
+    },
+    /// Remove old, unprotected cached skill versions
+    Prune {
+        /// Registry to prune
+        #[arg(required_unless_present = "all", conflicts_with = "all")]
+        registry: Option<String>,
+        /// Prune all configured registries
+        #[arg(long)]
+        all: bool,
+        /// Keep this many recent versions per skill
+        #[arg(long, default_value_t = 5)]
+        keep: usize,
+        /// Preview removals without writing
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip confirmation
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Remove selected registry cache directories
+    Clear {
+        /// Registry to clear
+        #[arg(required_unless_present = "all", conflicts_with = "all")]
+        registry: Option<String>,
+        /// Clear all configured registry caches
+        #[arg(long)]
+        all: bool,
+        /// Preview removals without writing
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip confirmation
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum SkillCommands {
+    /// List versions available in a cached registry
     Versions {
         /// Name of the skill
         skill_name: String,
@@ -198,11 +261,10 @@ enum Commands {
         #[arg(long)]
         pre: bool,
         /// Limit number of versions shown
-        #[arg(short, long, default_value = "50")]
+        #[arg(short, long, default_value_t = 50)]
         limit: usize,
     },
-
-    /// Switch a skill to a specific version
+    /// Switch a skill to a specific cached version
     Use {
         /// Skill and version (format: skill@v1.2.0)
         skill_version: String,
@@ -216,11 +278,20 @@ enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
-
-    /// Update a skill to its latest version
-    #[command(name = "update-skill")]
-    UpdateSkill {
-        /// Name of the skill to update
+    /// Show configured skills with newer cached versions
+    Outdated {
+        /// Skill to inspect (all configured skills when omitted)
+        skill_name: Option<String>,
+        /// Refresh relevant registries before comparing versions
+        #[arg(long)]
+        refresh: bool,
+        /// Include prerelease versions
+        #[arg(long)]
+        pre: bool,
+    },
+    /// Change a skill pin and links to the newest cached version
+    Upgrade {
+        /// Name of the skill to upgrade
         skill_name: String,
         /// Update in global configuration
         #[arg(short, long)]
@@ -231,22 +302,31 @@ enum Commands {
         /// Preview changes
         #[arg(long)]
         dry_run: bool,
-        /// Update to prerelease version
+        /// Include prerelease versions
         #[arg(long)]
         pre: bool,
     },
-    /// Clean up SKM artifacts (broken symlinks, cache, etc.)
-    #[command(subcommand)]
-    Clean(CleanCommands),
-    /// Manage SKM configuration
-    #[command(subcommand)]
-    Config(ConfigCommands),
-    /// Manage skill registries
-    #[command(subcommand)]
-    Registry(RegistryCommands),
-    /// Manage local development skills
-    #[command(subcommand)]
-    Dev(DevCommands),
+}
+
+#[derive(Subcommand)]
+enum SelfCommands {
+    /// Show the installed version and managed build identity
+    Version,
+    /// Check the selected release channel for a newer SKM binary
+    Check {
+        /// Release channel to check
+        #[arg(long, value_enum)]
+        channel: Option<updater::UpdateChannel>,
+    },
+    /// Install a verified SKM release update
+    Upgrade {
+        /// Release channel to follow
+        #[arg(long, value_enum)]
+        channel: Option<updater::UpdateChannel>,
+        /// Confirm a non-interactive update
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -274,33 +354,6 @@ enum CleanCommands {
         /// Show verbose output
         #[arg(short, long)]
         verbose: bool,
-    },
-
-    /// Clean up registry cache
-    Cache {
-        /// Clean all registry caches
-        #[arg(long)]
-        all: bool,
-        /// Remove old skill versions
-        #[arg(long)]
-        old_versions: bool,
-        /// Keep N most recent versions
-        #[arg(short, long, default_value = "5")]
-        keep: usize,
-        /// Preview what would be removed
-        #[arg(long)]
-        dry_run: bool,
-        /// Skip confirmation
-        #[arg(short, long)]
-        yes: bool,
-        /// Show cache statistics
-        #[arg(long)]
-        stats: bool,
-        /// Show verbose output
-        #[arg(short, long)]
-        verbose: bool,
-        /// Specific registry to clean
-        registry: Option<String>,
     },
 
     /// Reset SKM to clean state
@@ -517,18 +570,6 @@ enum RegistryCommands {
         /// Show detailed information
         #[arg(short, long)]
         verbose: bool,
-    },
-
-    /// Update a registry cache
-    Update {
-        /// Name of the registry to update
-        name: Option<String>,
-        /// Update all registries
-        #[arg(long)]
-        all: bool,
-        /// Force update even if already up-to-date
-        #[arg(long)]
-        force: bool,
     },
 
     /// Set the default registry
@@ -994,20 +1035,55 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 return Err("Validation checks failed. Some skills or links are missing.".into());
             }
         }
-        Commands::Version => version::show_version(),
-        Commands::Update(args) => {
-            println!("{}", updater::run_update(&args)?);
-        }
-        Commands::CacheUpdate { registry } => {
-            config_manager::update_cache(registry.as_deref())?;
-        }
+        Commands::SelfUpdate(command) => match command {
+            SelfCommands::Version => version::show_version(),
+            SelfCommands::Check { channel } => {
+                let args = updater::UpdateArgs {
+                    channel,
+                    check: true,
+                    yes: false,
+                };
+                println!("{}", updater::run_update(&args)?);
+            }
+            SelfCommands::Upgrade { channel, yes } => {
+                let args = updater::UpdateArgs {
+                    channel,
+                    check: false,
+                    yes,
+                };
+                println!("{}", updater::run_update(&args)?);
+            }
+        },
+        Commands::Cache(command) => match command {
+            CacheCommands::Refresh { registry } => {
+                if let Some(name) = registry {
+                    registry::update(name)?;
+                } else {
+                    registry::update_all()?;
+                }
+            }
+            CacheCommands::Status { registry } => cleaner::show_cache_stats(registry)?,
+            CacheCommands::Prune {
+                registry,
+                all,
+                keep,
+                dry_run,
+                yes,
+            } => cleaner::clean_cache(all, true, keep, dry_run, yes, false, false, registry)?,
+            CacheCommands::Clear {
+                registry,
+                all,
+                dry_run,
+                yes,
+            } => cleaner::clean_cache(all, false, 5, dry_run, yes, false, false, registry)?,
+        },
         Commands::Setup => {
             first_time_setup()?;
         }
         Commands::InitConfig => {
             config_manager::ensure_global_env()?;
             eprintln!("Base configuration initialized.");
-            eprintln!("You can now use 'skm cache-update' to populate the skill registry cache.");
+            eprintln!("You can now use 'skm cache refresh' to populate the skill registry cache.");
         }
         Commands::Clean(cmd) => match cmd {
             CleanCommands::Symlinks {
@@ -1020,27 +1096,6 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 verbose,
             } => {
                 cleaner::clean_symlinks(global, broken, orphaned, all, dry_run, yes, verbose)?;
-            }
-            CleanCommands::Cache {
-                all,
-                old_versions,
-                keep,
-                dry_run,
-                yes,
-                stats,
-                verbose,
-                registry,
-            } => {
-                cleaner::clean_cache(
-                    all,
-                    old_versions,
-                    keep,
-                    dry_run,
-                    yes,
-                    stats,
-                    verbose,
-                    registry,
-                )?;
             }
             CleanCommands::Reset {
                 config,
@@ -1135,15 +1190,6 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             RegistryCommands::List { json, verbose } => {
                 registry::list(json, verbose)?;
             }
-            RegistryCommands::Update { name, all, force } => {
-                if all {
-                    registry::update_all(force)?;
-                } else if let Some(name) = name {
-                    registry::update(name, force)?;
-                } else {
-                    return Err("Must specify a registry name or use --all".into());
-                }
-            }
             RegistryCommands::Default { name } => {
                 registry::set_default(name)?;
             }
@@ -1193,14 +1239,14 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 dev::toggle_dev_mode(&action, global)?;
             }
         },
-        Commands::Versions {
+        Commands::Skill(SkillCommands::Versions {
             skill_name,
             registry,
             json,
             stable_only,
             pre,
             limit,
-        } => {
+        }) => {
             version_manager::list_versions_cmd(
                 &skill_name,
                 registry.as_deref(),
@@ -1210,12 +1256,12 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 json,
             )?;
         }
-        Commands::Use {
+        Commands::Skill(SkillCommands::Use {
             skill_version,
             global,
             yes,
             dry_run,
-        } => {
+        }) => {
             let (skill_name, version) = SkillSpec::parse_with_version(&skill_version)?;
             let version = version.unwrap_or_else(|| "latest".to_string());
             version_manager::use_version(
@@ -1227,13 +1273,20 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 dry_run,
             )?;
         }
-        Commands::UpdateSkill {
+        Commands::Skill(SkillCommands::Outdated {
+            skill_name,
+            refresh,
+            pre,
+        }) => {
+            version_manager::show_outdated(&config_path, skill_name.as_deref(), refresh, pre)?;
+        }
+        Commands::Skill(SkillCommands::Upgrade {
             skill_name,
             global,
             yes,
             dry_run,
             pre,
-        } => {
+        }) => {
             version_manager::update_to_latest(
                 &skill_name,
                 &config_path,
@@ -1551,7 +1604,7 @@ mod help_tests {
         for args in [
             vec!["skm", "help"],
             vec!["skm", "--help"],
-            vec!["skm", "update", "--help"],
+            vec!["skm", "self", "upgrade", "--help"],
         ] {
             let notified = Cell::new(false);
             let error = parse_cli_with_help_notice(args, || notified.set(true))
@@ -1564,7 +1617,7 @@ mod help_tests {
 
     #[test]
     fn ordinary_commands_and_invalid_arguments_do_not_notify_during_parsing() {
-        for args in [vec!["skm", "version"], vec!["skm", "--invalid"]] {
+        for args in [vec!["skm", "self", "version"], vec!["skm", "--invalid"]] {
             let notified = Cell::new(false);
             let _ = parse_cli_with_help_notice(args, || notified.set(true));
             assert!(!notified.get());

@@ -25,7 +25,7 @@ skm init-config
 
 echo ""
 echo "Updating skill registry cache..."
-skm cache-update
+skm cache refresh
 
 echo ""
 echo "First-time setup completed!"

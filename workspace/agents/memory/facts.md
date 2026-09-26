@@ -1,5 +1,21 @@
 # Facts
 
+## 2026-09-26 - Breaking CLI requires a bridge updater release
+
+- Type: fact
+- Source: code and release qualification contract
+- Confidence: high
+- Review: after bridge release
+- Supersedes: none
+
+Content:
+
+Older SKM updaters verify a staged binary by invoking its top-level `version`
+command. The reorganized CLI removes that command, so old binaries cannot
+self-update directly to it. A separately qualified bridge release with an
+updater that verifies `skm self version` is required before production promotion;
+the official installer can install the new binary directly.
+
 ## 2026-09-25 - SKM 0.8.0 search and add workflow released to production
 
 - Type: fact
