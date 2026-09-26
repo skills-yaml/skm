@@ -1,5 +1,19 @@
 # Memory Changelog
 
+## 2026-09-26 - Record init Workspace prompt boundary
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded the user's decision to keep toolkit, bundle, and profile prompts in
+interactive `init` while removing Workspace pin prompts in
+`workspace/agents/memory/decisions.md`.
+
 ## 2026-09-25 - Record SKM 0.8.0 production release
 
 - Type: fact

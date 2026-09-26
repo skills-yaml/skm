@@ -1,5 +1,20 @@
 # Decisions
 
+## 2026-09-26 - Keep Workspace pins out of interactive init
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+The optional `skm init` wizard step edits toolkit manifest/version, bundles,
+and profiles, but does not prompt for Workspace standard, source, revision, or
+integrity. Existing `workspace` manifest values remain intact during edits,
+and explicit `--workspace-*` initialization flags stay available.
+
 ## 2026-09-25 - Confirm planned skill and bundle adds
 
 - Type: decision
