@@ -13,6 +13,37 @@ Content:
 Recorded in `workspace/agents/memory/decisions.md` that production releases
 notify the Registry to review its documentation.
 
+
+## 2026-09-26 - Record legacy updater handshake test integration
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: after development release qualification
+- Supersedes: none
+
+Content:
+
+Recorded PR #66's confirmed `development` merge, passing Validate run,
+successful nine-asset development publication, and older Linux binary update
+in `workspace/agents/memory/facts.md`. Moved the identity handshake spec to
+`test` with a matching catalog rationale.
+
+## 2026-09-26 - Record legacy updater compatibility decision and defect
+
+- Type: decision and fact
+- Source: user, reproduction, and updater source
+- Confidence: high
+- Review: after cross-platform release qualification
+- Supersedes: 2026-09-26 - Breaking CLI requires a bridge updater release
+
+Content:
+
+Recorded the approved environment-gated identity probe in
+`workspace/agents/memory/decisions.md` and the reproduced old-to-new update
+failure in `workspace/agents/memory/facts.md`. The defect finding supersedes
+the former bridge-release prerequisite; release qualification remains pending.
+
 ## 2026-09-26 - Record Workspace documentation separation test integration
 
 - Type: fact

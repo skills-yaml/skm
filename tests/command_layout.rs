@@ -62,8 +62,7 @@ fn command_groups_replace_old_names() {
         );
     }
     for args in [
-        &["version"][..],
-        &["versions", "sample"],
+        &["versions", "sample"][..],
         &["use", "sample@v1.0.0"],
         &["update-skill", "sample"],
         &["update"],
@@ -77,6 +76,15 @@ fn command_groups_replace_old_names() {
             "old command still works: {args:?}"
         );
     }
+    let old_version = skm(&home)
+        .arg("version")
+        .env_remove("SKM_NO_UPDATE_CHECK")
+        .output()
+        .unwrap();
+    assert!(
+        !old_version.status.success(),
+        "old version command still works"
+    );
     fs::remove_dir_all(home).unwrap();
 }
 

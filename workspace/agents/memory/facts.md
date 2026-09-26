@@ -1,5 +1,42 @@
 # Facts
 
+## 2026-09-26 - Legacy updater identity handshake integrated into development
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: after development release qualification
+- Supersedes: none
+
+Content:
+
+PR #66 merged the environment-gated legacy updater identity probe into
+`development` at `ed5b0a0987964b2c4aa0f7e92c948f937d56a9ee` on
+2026-09-26 after Validate run `36270555944` passed. Development Release
+Artifacts run `36271054364` published the nine-asset release. A preserved
+older 0.8.0 Linux binary at `07b4bba` self-updated to `ed5b0a0`; the updated
+binary reported its expected identity and a repeat upgrade made no change.
+The specification is in `test`; cross-platform qualification and production
+promotion remain pending.
+
+## 2026-09-26 - Legacy updater probes caused the development update failure
+
+- Type: fact
+- Source: reproduced older binary and updater source
+- Confidence: high
+- Review: after cross-platform release qualification
+- Supersedes: 2026-09-26 - Breaking CLI requires a bridge updater release
+
+Content:
+
+The 0.8.0 production updater invokes `version` with `SKM_NO_UPDATE_CHECK=1`
+to verify a staged release and invokes the same probe after replacement on
+Windows. The reorganized development binary removed that command, causing
+`skm update` to fail identity verification. A new candidate that answers only
+this internal probe lets older managed binaries self-update directly; a bridge
+updater release is not a prerequisite. Cross-platform release qualification is
+still required before production promotion.
+
 ## 2026-09-26 - Workspace documentation separation integrated into development
 
 - Type: fact

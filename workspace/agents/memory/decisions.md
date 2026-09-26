@@ -16,6 +16,24 @@ Every SKM production release sends a `skm-released` `repository_dispatch` to
 `workspace-registry-publisher` GitHub App, runs with `continue-on-error`, and
 never gates or changes the release.
 
+
+## 2026-09-26 - Preserve the legacy updater identity handshake
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after cross-platform release qualification
+- Supersedes: none
+
+Content:
+
+Older SKM self-updaters may invoke top-level `version` only as an internal
+identity probe when `SKM_NO_UPDATE_CHECK=1`. The new binary answers that exact
+probe with its embedded identity, including after replacement on Windows.
+Ordinary top-level `version` calls and other removed command names remain
+unavailable. Release qualification must exercise an old bootstrap updating to
+the new candidate.
+
 ## 2026-09-26 - Group cache, skill version, and self-update commands
 
 - Type: decision

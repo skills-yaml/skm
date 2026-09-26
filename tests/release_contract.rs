@@ -46,12 +46,15 @@ fn windows_update_worker_dispatch_precedes_cli_parsing() {
     let worker_dispatch = main
         .find("updater::run_windows_update_worker_if_requested()")
         .expect("main must dispatch the private Windows updater worker");
+    let legacy_probe = main
+        .find("is_legacy_updater_version_probe(&args")
+        .expect("main must handle the legacy updater identity probe");
     let cli_parsing = main
-        .find("parse_cli_with_help_notice(env::args_os()")
+        .find("parse_cli_with_help_notice(args")
         .expect("main must parse the public CLI");
 
     assert!(
-        worker_dispatch < cli_parsing,
-        "the argument-free Windows updater helper must run before Clap parsing"
+        worker_dispatch < legacy_probe && legacy_probe < cli_parsing,
+        "the Windows updater worker and legacy probe must run before Clap parsing"
     );
 }
