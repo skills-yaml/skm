@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `test`
+State: `done`
 
-Rationale: PR #54 merged the implementation into the configured `development` test channel on 2026-09-25 at `9033c29891a688deb053bda4b800bbe598e29dbb` after its Validate check passed. Production release through `main` is not yet confirmed.
+Rationale: PR #54 integrated the implementation into `development`; PR #58 promoted it to `main`, and PR #59 prepared SKM 0.8.0 at `07b4bba9c1d5f3de3964f398ff8296afb617db6e`. Production CI and four-platform update qualification passed. The reviewed `release-prod` workflow published all nine `prod-latest` assets on 2026-09-25; the Linux checksum, release manifest, and binary identity matched the production commit.
 
 ## Problem and Users
 
