@@ -1,5 +1,19 @@
 # Memory Changelog
 
+## 2026-09-26 - Record command reorganization test integration
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #63's confirmed `development` merge and passing Validate run in
+`workspace/agents/memory/facts.md`, and moved the command reorganization
+specification to `test` with a matching catalog rationale.
+
 ## 2026-09-26 - Record bridge release prerequisite
 
 - Type: fact
