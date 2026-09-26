@@ -1,5 +1,19 @@
 # Memory Changelog
 
+## 2026-09-26 - Record Workspace documentation separation test integration
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #60's confirmed `development` merge in
+`workspace/agents/memory/facts.md` and moved the separate-workspace-docs
+specification to `test` with a matching catalog rationale.
+
 ## 2026-09-26 - Record command reorganization test integration
 
 - Type: fact

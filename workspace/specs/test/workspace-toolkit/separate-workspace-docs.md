@@ -2,11 +2,11 @@
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: The user asked on 2026-09-25 to separate `skills.yaml` and SKM from
-Workspace in documentation and the website only. Implementation is active on
-`docs/separate-workspace-docs`; no code change is in scope.
+Rationale: PR #60 merged the documentation into the configured `development`
+test channel at `506d47a` on 2026-09-26 after Validate run `36213304307` passed.
+Production release through `main` is not yet confirmed.
 
 ## Problem and Users
 
