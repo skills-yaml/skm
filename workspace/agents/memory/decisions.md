@@ -1,5 +1,21 @@
 # Decisions
 
+## 2026-09-26 - Notify the Registry after each production release
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after the first production release that sends it
+- Supersedes: none
+
+Content:
+
+Every SKM production release sends a `skm-released` `repository_dispatch` to
+`skills-yaml/registry`, whose `Upstream Release` workflow opens a
+`docs-review` issue. Development releases do not notify. The job uses the
+`workspace-registry-publisher` GitHub App, runs with `continue-on-error`, and
+never gates or changes the release.
+
 ## 2026-09-26 - Group cache, skill version, and self-update commands
 
 - Type: decision

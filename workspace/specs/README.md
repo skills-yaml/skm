@@ -37,6 +37,7 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
+| [notify-registry-docs.md](development/updates/notify-registry-docs.md) | `updates` | `development` | The user requested Registry release notification on 2026-09-26; implementation is active on `feat/notify-registry-docs`. |
 | [separate-workspace-docs.md](test/workspace-toolkit/separate-workspace-docs.md) | `workspace-toolkit` | `test` | PR #60 merged into the configured `development` test channel at `506d47a` on 2026-09-26 after Validate passed; production release is pending. |
 | [command-reorganization.md](test/skill-lifecycle/command-reorganization.md) | `skill-lifecycle` | `test` | PR #63 merged into `development` at `2c852c2` on 2026-09-26 after Validate run `36212734539` passed; production promotion awaits a bridge updater release. |
 | [add-confirmation.md](done/registry/add-confirmation.md) | `registry` | `done` | PR #58 promoted add confirmation to `main`; SKM 0.8.0 at `07b4bba` passed production CI and four-platform qualification, then published through reviewed `release-prod` with verified assets on 2026-09-25. |
