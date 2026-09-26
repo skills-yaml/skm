@@ -1,5 +1,20 @@
 # Memory Changelog
 
+## 2026-09-26 - Record legacy updater compatibility decision and defect
+
+- Type: decision and fact
+- Source: user, reproduction, and updater source
+- Confidence: high
+- Review: after cross-platform release qualification
+- Supersedes: 2026-09-26 - Breaking CLI requires a bridge updater release
+
+Content:
+
+Recorded the approved environment-gated identity probe in
+`workspace/agents/memory/decisions.md` and the reproduced old-to-new update
+failure in `workspace/agents/memory/facts.md`. The defect finding supersedes
+the former bridge-release prerequisite; release qualification remains pending.
+
 ## 2026-09-26 - Record Workspace documentation separation test integration
 
 - Type: fact

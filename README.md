@@ -124,12 +124,10 @@ commit. Set `SKM_NO_UPDATE_CHECK=1` to suppress best-effort terminal startup
 notices. Interactive help requests show the same available-update notice
 before the help text.
 
-This command change requires a bridge release before production promotion:
-older SKM updaters verify downloaded binaries by invoking the removed top-level
-`version` command. Until a bridge updater is released and installed, use the
-official installer to move from an older binary to the new CLI. Release update
-qualification rejects an older bootstrap binary rather than claiming that its
-self-update path works.
+Older managed SKM binaries use `skm update` to install a new release. The new
+binary accepts their internal identity check during that upgrade, then uses
+`skm self upgrade` for later updates. If an already-published build rejects the
+upgrade, install the latest build with the official installer.
 
 ## Quick Start
 

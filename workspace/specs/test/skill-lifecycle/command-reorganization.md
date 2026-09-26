@@ -4,7 +4,7 @@
 
 State: `test`
 
-Rationale: PR #63 merged this implementation into the configured `development` test channel on 2026-09-26 at `2c852c248b54e6982a92584c956dd2bc036ab8fc` after Validate run `36212734539` passed. Production promotion remains pending the bridge updater release.
+Rationale: PR #63 merged this implementation into the configured `development` test channel on 2026-09-26 at `2c852c248b54e6982a92584c956dd2bc036ab8fc` after Validate run `36212734539` passed. Production promotion remains pending the separately specified legacy updater identity handshake and release qualification.
 
 ## Problem and Users
 
@@ -45,11 +45,11 @@ Remove top-level `version`, `versions`, `use`, `update-skill`, `update`, and `ca
 
 ## Compatibility, Safety, and Rollback
 
-Old names deliberately fail at parsing. Active release qualification and staged-binary identity checks must use `self version`. An older released updater invokes the removed top-level `version` command on a staged candidate, so it cannot verify this candidate. Production promotion requires a separately qualified bridge release whose updater can verify `self version`; until then, users must reinstall with the official installer. The qualification scripts reject a legacy bootstrap explicitly. Cache refresh and self checks may use the network only when explicitly invoked; `skill outdated` is cache-only by default. Cache clear and prune keep the existing dry-run, confirmation, and pin-protection behavior. Rollback is a source revert before release; existing configuration files need no migration.
+Old names deliberately fail for ordinary CLI use. The older released updater invokes top-level `version` with `SKM_NO_UPDATE_CHECK=1` on a staged candidate and again after replacement on Windows. The separate [legacy updater identity handshake](../../development/updates/legacy-updater-identity-handshake.md) accepts only that internal probe; new CLI help and normal command parsing retain the breaking command names. Production promotion requires qualification of an old bootstrap updating to the new candidate. Cache refresh and self checks may use the network only when explicitly invoked; `skill outdated` is cache-only by default. Cache clear and prune keep the existing dry-run, confirmation, and pin-protection behavior. Rollback is a source revert before release; existing configuration files need no migration.
 
 ## Acceptance Criteria
 
-1. New command help and parsing expose the cache, skill, and self operations above; removed names fail without aliases.
+1. New command help and parsing expose the cache, skill, and self operations above; removed names fail for ordinary use without aliases.
 2. Cache refresh, status, prune, and clear route to their existing underlying behaviors with valid scope and safety flags.
 3. Skill versions, use, and upgrade retain existing functionality; outdated reports newer stable or optionally prerelease pins using cached data and never changes a manifest unless explicit refresh changes the registry cache.
 4. Self version, check, and upgrade preserve embedded identity, release-channel selection, and verified update behavior; all active scripts use the new commands.
@@ -65,4 +65,4 @@ Old names deliberately fail at parsing. Active release qualification and staged-
 
 Status: `updated`
 
-Rationale: The accepted command grouping and cache refresh behavior are recorded in `workspace/agents/memory/decisions.md`. The bridge release prerequisite is recorded in `workspace/agents/memory/facts.md`. Both have entries in `workspace/agents/memory/changelog.md`.
+Rationale: The accepted command grouping and cache refresh behavior are recorded in `workspace/agents/memory/decisions.md`. The prior bridge prerequisite in `workspace/agents/memory/facts.md` is superseded by the separate legacy updater identity handshake. Both have entries in `workspace/agents/memory/changelog.md`.
