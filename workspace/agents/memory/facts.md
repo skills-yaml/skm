@@ -1,5 +1,19 @@
 # Facts
 
+## 2026-09-26 - Workspace documentation separation integrated into development
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+PR #60 merged the separation of Workspace toolkit documentation from the
+README into `development` at `506d47a358d406e2759c8ef3dd47eb0863bf52ae` on 2026-09-26 after Validate run `36213304307`
+passed. The specification is in `test`; production release is pending.
+
 ## 2026-09-26 - CLI command reorganization integrated into development
 
 - Type: fact
