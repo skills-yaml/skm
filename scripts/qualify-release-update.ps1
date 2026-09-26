@@ -49,7 +49,14 @@ try {
     }
 
     $env:SKM_NO_UPDATE_CHECK = "1"
-    $bootstrapVersion = (& $skmPath version | Out-String).Trim()
+    $bootstrapHelp = (& $skmPath --help | Out-String)
+    if ($LASTEXITCODE -ne 0) {
+        throw "bootstrap binary help failed"
+    }
+    if ($bootstrapHelp -notmatch '(?m)^\s+self\s') {
+        throw "bootstrap binary lacks 'skm self version'; release a bridge updater before qualifying this breaking CLI"
+    }
+    $bootstrapVersion = (& $skmPath self version | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or
         $bootstrapVersion -notmatch '^skm ([^ ]+) \(development - ([0-9a-f]{40})\)$' -or
         $Matches[2] -cne $BootstrapCommit) {
@@ -66,7 +73,7 @@ try {
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         $noticeResult = Invoke-WindowsPseudoTerminal `
             -Executable $skmPath `
-            -Arguments @("version") `
+            -Arguments @("self", "version") `
             -TimeoutMilliseconds 60000
         $noticeOutput = $noticeResult.Output
         if ($noticeResult.ExitCode -eq 0 -and
@@ -80,7 +87,7 @@ try {
         throw "bootstrap binary did not emit the candidate update notice in a terminal: $noticeOutput"
     }
 
-    $updateOutput = (& $skmPath update 2>&1 | Out-String).Trim()
+    $updateOutput = (& $skmPath self upgrade 2>&1 | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or
         -not $updateOutput.Contains('Updated skm:') -or
         -not $updateOutput.Contains($BootstrapCommit.Substring(0, 7)) -or
@@ -90,7 +97,7 @@ try {
     Write-Output $updateOutput
 
     $env:SKM_NO_UPDATE_CHECK = "1"
-    $candidateIdentity = (& $skmPath version | Out-String).Trim()
+    $candidateIdentity = (& $skmPath self version | Out-String).Trim()
     $expectedCandidate = "skm $ExpectedCandidateVersion (development - $CandidateCommit)"
     if ($LASTEXITCODE -ne 0 -or $candidateIdentity -cne $expectedCandidate) {
         throw "updated executable has the wrong identity: $candidateIdentity"
@@ -121,7 +128,7 @@ try {
     }
 
     Remove-Item Env:SKM_NO_UPDATE_CHECK
-    $noopOutput = (& $skmPath update 2>&1 | Out-String).Trim()
+    $noopOutput = (& $skmPath self upgrade 2>&1 | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or
         -not $noopOutput.Contains('skm is already up to date:') -or
         -not $noopOutput.Contains($candidateShort)) {
@@ -136,4 +143,3 @@ try {
     Remove-Item Env:SKM_NO_UPDATE_CHECK -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $qualificationRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
-

@@ -7,15 +7,14 @@ fn skm() -> Command {
 #[test]
 fn update_command_documents_channels_and_compatibility_flags() {
     let output = skm()
-        .args(["update", "--help"])
+        .args(["self", "upgrade", "--help"])
         .env("SKM_NO_UPDATE_CHECK", "1")
         .output()
-        .expect("run skm update help");
+        .expect("run skm self upgrade help");
 
     assert!(output.status.success());
     let help = String::from_utf8(output.stdout).expect("UTF-8 help");
     assert!(help.contains("--channel <CHANNEL>"));
-    assert!(help.contains("--check"));
     assert!(help.contains("--yes"));
     assert!(help.contains("prod"));
     assert!(help.contains("development"));
@@ -24,11 +23,11 @@ fn update_command_documents_channels_and_compatibility_flags() {
 #[test]
 fn local_build_update_fails_before_network_or_replacement() {
     let output = skm()
-        .args(["update", "--yes"])
+        .args(["self", "upgrade", "--yes"])
         .env("SKM_UPDATE_BASE_URL", "http://127.0.0.1:1/")
         .env("SKM_NO_UPDATE_CHECK", "1")
         .output()
-        .expect("run skm update");
+        .expect("run skm self upgrade");
 
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
@@ -40,10 +39,10 @@ fn local_build_update_fails_before_network_or_replacement() {
 #[test]
 fn version_command_reports_the_embedded_identity() {
     let output = skm()
-        .args(["version"])
+        .args(["self", "version"])
         .env("SKM_NO_UPDATE_CHECK", "1")
         .output()
-        .expect("run skm version");
+        .expect("run skm self version");
 
     assert!(output.status.success());
     let version = String::from_utf8(output.stdout).expect("UTF-8 version");
