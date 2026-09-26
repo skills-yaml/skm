@@ -1,5 +1,19 @@
 # Memory Changelog
 
+## 2026-09-26 - Record legacy updater handshake test integration
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: after development release qualification
+- Supersedes: none
+
+Content:
+
+Recorded PR #66's confirmed `development` merge and passing Validate run in
+`workspace/agents/memory/facts.md`, and moved the identity handshake spec to
+`test` with a matching catalog rationale.
+
 ## 2026-09-26 - Record legacy updater compatibility decision and defect
 
 - Type: decision and fact

@@ -1,5 +1,21 @@
 # Facts
 
+## 2026-09-26 - Legacy updater identity handshake integrated into development
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: after development release qualification
+- Supersedes: none
+
+Content:
+
+PR #66 merged the environment-gated legacy updater identity probe into
+`development` at `ed5b0a0987964b2c4aa0f7e92c948f937d56a9ee` on
+2026-09-26 after Validate run `36270555944` passed. The specification is in
+`test`; development publication and old-to-new update qualification are
+pending.
+
 ## 2026-09-26 - Legacy updater probes caused the development update failure
 
 - Type: fact
