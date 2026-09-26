@@ -53,10 +53,14 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "bootstrap binary help failed"
     }
-    if ($bootstrapHelp -notmatch '(?m)^\s+self\s') {
-        throw "bootstrap binary lacks 'skm self version'; release a bridge updater before qualifying this breaking CLI"
+    if ($bootstrapHelp -match '(?m)^\s+self\s') {
+        $bootstrapVersionArgs = @("self", "version")
+        $bootstrapUpgradeArgs = @("self", "upgrade")
+    } else {
+        $bootstrapVersionArgs = @("version")
+        $bootstrapUpgradeArgs = @("update")
     }
-    $bootstrapVersion = (& $skmPath self version | Out-String).Trim()
+    $bootstrapVersion = (& $skmPath @bootstrapVersionArgs | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or
         $bootstrapVersion -notmatch '^skm ([^ ]+) \(development - ([0-9a-f]{40})\)$' -or
         $Matches[2] -cne $BootstrapCommit) {
@@ -73,7 +77,7 @@ try {
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         $noticeResult = Invoke-WindowsPseudoTerminal `
             -Executable $skmPath `
-            -Arguments @("self", "version") `
+            -Arguments $bootstrapVersionArgs `
             -TimeoutMilliseconds 60000
         $noticeOutput = $noticeResult.Output
         if ($noticeResult.ExitCode -eq 0 -and
@@ -87,7 +91,7 @@ try {
         throw "bootstrap binary did not emit the candidate update notice in a terminal: $noticeOutput"
     }
 
-    $updateOutput = (& $skmPath self upgrade 2>&1 | Out-String).Trim()
+    $updateOutput = (& $skmPath @bootstrapUpgradeArgs 2>&1 | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or
         -not $updateOutput.Contains('Updated skm:') -or
         -not $updateOutput.Contains($BootstrapCommit.Substring(0, 7)) -or

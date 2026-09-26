@@ -20,6 +20,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use config::{SkillSpec, SkillsConfig};
 use config_manager::{ensure_global_env, first_time_setup};
 use std::env;
+use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
 #[derive(Parser)]
@@ -676,7 +677,13 @@ fn main() {
         std::process::exit(exit_code);
     }
 
-    let cli = parse_cli_with_help_notice(env::args_os(), updater::maybe_print_startup_notice)
+    let args: Vec<OsString> = env::args_os().collect();
+    if is_legacy_updater_version_probe(&args, env::var_os("SKM_NO_UPDATE_CHECK").as_deref()) {
+        version::show_version();
+        return;
+    }
+
+    let cli = parse_cli_with_help_notice(args, updater::maybe_print_startup_notice)
         .unwrap_or_else(|error| error.exit());
 
     // Always ensure global environment is configured
@@ -692,6 +699,12 @@ fn main() {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     }
+}
+
+fn is_legacy_updater_version_probe(args: &[OsString], no_update_check: Option<&OsStr>) -> bool {
+    no_update_check == Some(OsStr::new("1"))
+        && args.len() == 2
+        && args[1].as_os_str() == OsStr::new("version")
 }
 
 fn parse_cli_with_help_notice<I, T>(args: I, notify: impl FnOnce()) -> Result<Cli, clap::Error>

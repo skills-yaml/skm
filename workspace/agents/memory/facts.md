@@ -1,5 +1,23 @@
 # Facts
 
+## 2026-09-26 - Legacy updater probes caused the development update failure
+
+- Type: fact
+- Source: reproduced older binary and updater source
+- Confidence: high
+- Review: after cross-platform release qualification
+- Supersedes: 2026-09-26 - Breaking CLI requires a bridge updater release
+
+Content:
+
+The 0.8.0 production updater invokes `version` with `SKM_NO_UPDATE_CHECK=1`
+to verify a staged release and invokes the same probe after replacement on
+Windows. The reorganized development binary removed that command, causing
+`skm update` to fail identity verification. A new candidate that answers only
+this internal probe lets older managed binaries self-update directly; a bridge
+updater release is not a prerequisite. Cross-platform release qualification is
+still required before production promotion.
+
 ## 2026-09-26 - Workspace documentation separation integrated into development
 
 - Type: fact
