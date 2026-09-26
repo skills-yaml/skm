@@ -192,3 +192,34 @@ jobs:
       - name: Publish staged release transaction
         shell: bash
         run: scripts/publish-release.sh
+
+  notify-registry:
+    # Tells skills-yaml/registry to open a docs-review issue for this production
+    # release. The registry reads the release itself from skm-release.json and
+    # also polls hourly, so a failure here never affects the release.
+    name: Notify registry documentation
+    needs:
+      - prepare
+      - release
+    if: needs.prepare.outputs.channel == 'prod' && vars.REGISTRY_APP_CLIENT_ID != ''
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions: {}
+    steps:
+      - name: Create registry GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.REGISTRY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.REGISTRY_APP_PRIVATE_KEY }}
+          owner: skills-yaml
+          repositories: registry
+          permission-contents: write
+
+      - name: Send skm-released
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh api repos/skills-yaml/registry/dispatches \
+            -f event_type=skm-released \
+            -f "client_payload[commit]=$GITHUB_SHA"
