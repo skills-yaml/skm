@@ -93,7 +93,7 @@ release asset set. Production installers use `prod-latest` by default; pass
 ## Updates
 
 Release builds embed the Git commit and release channel they were built from.
-`skm update` reads the selected channel's release manifest over HTTPS, verifies
+`skm self upgrade` reads the selected channel's release manifest over HTTPS, verifies
 the exact platform archive against both its checksum file and manifest digest,
 extracts one expected binary, verifies its embedded identity, then replaces the
 installed regular file using a guarded update transaction. Local builds are not
@@ -102,28 +102,34 @@ self-update managed; reinstall them with Cargo or the official installer.
 Check for a production update:
 
 ```sh
-skm update --check
+skm self check
 ```
 
 Install the latest production build:
 
 ```sh
-skm update --yes
+skm self upgrade --yes
 ```
 
 Check or install the development channel:
 
 ```sh
-skm update --channel development --check
-skm update --channel development --yes
+skm self check --channel development
+skm self upgrade --channel development --yes
 ```
 
-`--check` retains compatibility for scripts and reports whether the managed
-channel has a newer build. `--yes` is accepted for compatibility with older
-automation. Use `skm version` to print the embedded version, channel, and
+`skm self check` reports whether the managed channel has a newer build. Use
+`skm self version` to print the embedded version, channel, and
 commit. Set `SKM_NO_UPDATE_CHECK=1` to suppress best-effort terminal startup
 notices. Interactive help requests show the same available-update notice
 before the help text.
+
+This command change requires a bridge release before production promotion:
+older SKM updaters verify downloaded binaries by invoking the removed top-level
+`version` command. Until a bridge updater is released and installed, use the
+official installer to move from an older binary to the new CLI. Release update
+qualification rejects an older bootstrap binary rather than claiming that its
+self-update path works.
 
 ## Quick Start
 
@@ -278,10 +284,17 @@ skm bundle add <namespace/bundle> [--source <registry>] [--dry-run | --json | --
 skm search <query> [--registry <registry>] [--json] [--limit <limit>]
 skm list [--global]
 skm check [--global]
-skm update [--channel prod|development] [--check] [--yes]
-skm versions <skill-name> [--registry <registry>] [--json] [--stable-only] [--pre] [--limit <limit>]
-skm use <skill-name>@<version> [--global] [--yes] [--dry-run]
-skm update-skill <skill-name> [--global] [--yes] [--dry-run] [--pre]
+skm cache refresh [registry]
+skm cache status [registry]
+skm cache prune <registry>|--all [--keep <number>] [--dry-run] [--yes]
+skm cache clear <registry>|--all [--dry-run] [--yes]
+skm skill versions <skill-name> [--registry <registry>] [--json] [--stable-only] [--pre] [--limit <limit>]
+skm skill use <skill-name>@<version> [--global] [--yes] [--dry-run]
+skm skill outdated [skill-name] [--refresh] [--pre]
+skm skill upgrade <skill-name> [--global] [--yes] [--dry-run] [--pre]
+skm self version
+skm self check [--channel prod|development]
+skm self upgrade [--channel prod|development] [--yes]
 skm dev link <path> [--name <name>] [--source <source>] [--global] [--all-agents] [--agent <agents>] [--force] [--verbose]
 skm dev unlink <skill-name> [--global] [--yes] [--verbose]
 skm dev list [--global] [--all] [--json] [--paths]
@@ -304,10 +317,13 @@ skm dev mode [on|off|status] [--global]
   browse-only namespace collections without changing project state.
 - `list`: reports current link status, including missing sources and bad links.
 - `check`: verifies source directories, `SKILL.md`, symlink existence, and symlink targets; intended for CI.
-- `update`: checks the selected release channel and installs the latest release artifact.
-- `versions`: lists all available versions for a skill from a registry.
-- `use`: switches a skill to a specific version (e.g. `skill@v1.2.0`) in `skills.yaml` and re-links it.
-- `update-skill`: updates a skill to its latest version in `skills.yaml` and re-links it.
+- `cache refresh`: updates one registry cache or all configured registry caches when no name is given.
+- `cache status`, `prune`, and `clear`: inspect cached registries, remove unprotected older versions, or clear selected caches.
+- `skill versions`: lists available versions from a cached registry.
+- `skill use`: switches a skill to a specific version (e.g. `skill@v1.2.0`) in `skills.yaml` and re-links it.
+- `skill outdated`: compares pinned registry skills with cached versions; `--refresh` fetches relevant registries first. Local and `latest`-tracking skills are skipped.
+- `skill upgrade`: updates a skill pin to its latest cached version and re-links it.
+- `self check`, `self upgrade`, and `self version`: inspect and update the SKM binary.
 - `dev`: manages local development skills (linking local paths as symlinks directly, toggling dev mode).
 
 ## Configuration

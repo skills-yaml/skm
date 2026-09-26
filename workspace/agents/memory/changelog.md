@@ -1,5 +1,61 @@
 # Memory Changelog
 
+## 2026-09-26 - Record command reorganization test integration
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #63's confirmed `development` merge and passing Validate run in
+`workspace/agents/memory/facts.md`, and moved the command reorganization
+specification to `test` with a matching catalog rationale.
+
+## 2026-09-26 - Record bridge release prerequisite
+
+- Type: fact
+- Source: code and release qualification contract
+- Confidence: high
+- Review: after bridge release
+- Supersedes: none
+
+Content:
+
+Recorded in `workspace/agents/memory/facts.md` that the older self-updater
+cannot verify a binary without top-level `version`, so the breaking command
+change requires a bridge release before production promotion.
+
+## 2026-09-26 - Record implemented CLI command grouping
+
+- Type: decision
+- Source: user and implementation
+- Confidence: high
+- Review: after development integration
+- Supersedes: 2026-09-26 - Record CLI command compatibility decision
+
+Content:
+
+Recorded the final cache, skill version, self-update, and installation-check
+command grouping in `workspace/agents/memory/decisions.md`, including removed
+old names and the explicit cache refresh boundary.
+
+## 2026-09-26 - Record CLI command compatibility decision
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: when command redesign is specified
+- Supersedes: none
+
+Content:
+
+Recorded in `workspace/agents/memory/decisions.md` that the proposed CLI
+command reorganization may break old command names without compatibility
+aliases. The new command contract is not yet approved.
+
 ## 2026-09-25 - Record Workspace documentation separation decision
 
 - Type: decision
@@ -13,6 +69,7 @@ Content:
 Recorded in `workspace/agents/memory/decisions.md` that SKM documentation stays
 independent of Workspace, with Workspace toolkit material in
 `workspace/docs/workspace-toolkit.md`.
+
 
 ## 2026-09-25 - Record SKM 0.8.0 production release
 

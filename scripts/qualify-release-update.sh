@@ -39,8 +39,12 @@ skm_path="$install_dir/skm"
 chmod 755 "$skm_path"
 
 unset SKM_NO_UPDATE_CHECK
+if ! SKM_NO_UPDATE_CHECK=1 "$skm_path" self version >/dev/null 2>&1; then
+  echo "bootstrap binary lacks 'skm self version'; release a bridge updater before qualifying this breaking CLI" >&2
+  exit 1
+fi
 bootstrap_version=$(
-  SKM_NO_UPDATE_CHECK=1 "$skm_path" version
+  SKM_NO_UPDATE_CHECK=1 "$skm_path" self version
 )
 if [[ "$bootstrap_version" =~ ^skm[[:space:]]+([^[:space:]]+)[[:space:]]+\(development[[:space:]]-[[:space:]]$bootstrap_commit\)$ ]]; then
   package_version=${BASH_REMATCH[1]}
@@ -56,9 +60,9 @@ candidate_short=${candidate_commit:0:7}
 for attempt in 1 2 3; do
   : >"$transcript"
   if [ "$(uname -s)" = "Darwin" ]; then
-    script -q "$transcript" "$skm_path" version >/dev/null 2>&1
+    script -q "$transcript" "$skm_path" self version >/dev/null 2>&1
   else
-    script -q -e -c "$skm_path version" "$transcript" >/dev/null 2>&1
+    script -q -e -c "$skm_path self version" "$transcript" >/dev/null 2>&1
   fi
   if grep -Fq '[skm] Channel update available:' "$transcript" &&
      grep -Fq "$candidate_short" "$transcript"; then
@@ -72,13 +76,13 @@ if [ "$notice_seen" -ne 1 ]; then
   exit 1
 fi
 
-update_output=$("$skm_path" update)
+update_output=$("$skm_path" self upgrade)
 printf '%s\n' "$update_output"
 grep -Fq 'Updated skm:' <<<"$update_output"
 grep -Fq "${bootstrap_commit:0:7}" <<<"$update_output"
 grep -Fq "$candidate_short" <<<"$update_output"
 
-candidate_identity=$(SKM_NO_UPDATE_CHECK=1 "$skm_path" version)
+candidate_identity=$(SKM_NO_UPDATE_CHECK=1 "$skm_path" self version)
 expected_candidate="skm $expected_candidate_version (development - $candidate_commit)"
 if [ "$candidate_identity" != "$expected_candidate" ]; then
   echo "updated executable has the wrong identity: $candidate_identity" >&2
@@ -90,7 +94,7 @@ if [ "$candidate_digest" = "$bootstrap_digest" ]; then
   exit 1
 fi
 
-noop_output=$("$skm_path" update)
+noop_output=$("$skm_path" self upgrade)
 printf '%s\n' "$noop_output"
 grep -Fq 'skm is already up to date:' <<<"$noop_output"
 grep -Fq "$candidate_short" <<<"$noop_output"
@@ -99,4 +103,3 @@ if [ "$noop_digest" != "$candidate_digest" ]; then
   echo "already-current update changed the executable" >&2
   exit 1
 fi
-

@@ -448,7 +448,7 @@ fn startup_notice(availability: &Availability) -> Option<String> {
     match availability {
         Availability::Current(_) => None,
         Availability::Available { latest, .. } => Some(format!(
-            "[skm] Channel update available: {}. Run `skm update`.",
+            "[skm] Channel update available: {}. Run `skm self upgrade`.",
             latest.display()
         )),
     }
@@ -862,7 +862,9 @@ fn write_staged_binary(path: &Path, binary: &[u8]) -> Result<(), UpdateError> {
 
 fn verify_staged_binary(path: &Path, expected: &BuildIdentity) -> Result<(), UpdateError> {
     let mut command = Command::new(path);
-    command.arg("version").env("SKM_NO_UPDATE_CHECK", "1");
+    command
+        .args(["self", "version"])
+        .env("SKM_NO_UPDATE_CHECK", "1");
     #[cfg(windows)]
     command
         .env_remove(WINDOWS_CLEANUP_REQUEST_ENV)
@@ -1789,7 +1791,7 @@ mod tests {
         .expect("available update");
         assert_eq!(
             startup_notice(&available).as_deref(),
-            Some("[skm] Channel update available: 0.1.0 (prod, 2222222). Run `skm update`.")
+            Some("[skm] Channel update available: 0.1.0 (prod, 2222222). Run `skm self upgrade`.")
         );
         assert!(startup_notice(&Availability::Current(BuildIdentity {
             channel: ReleaseChannel::Prod,

@@ -1,5 +1,37 @@
 # Decisions
 
+## 2026-09-26 - Group cache, skill version, and self-update commands
+
+- Type: decision
+- Source: user and implementation
+- Confidence: high
+- Review: after development integration
+- Supersedes: 2026-09-26 - Allow breaking command names in CLI reorganization
+
+Content:
+
+SKM groups registry cache operations under `skm cache refresh|status|prune|clear`,
+skill version operations under `skm skill versions|use|outdated|upgrade`, and
+binary identity and update operations under `skm self version|check|upgrade`.
+`skm check` remains the full installation health check. The previous top-level
+version and update names, `registry update`, and `clean cache` have no aliases.
+Cache refresh fetches remote changes; skill outdated reads cache by default and
+refreshes only with `--refresh`.
+
+## 2026-09-26 - Allow breaking command names in CLI reorganization
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: when command redesign is specified
+- Supersedes: none
+
+Content:
+
+The proposed cache, skill lifecycle, and SKM self-update command reorganization
+may replace existing command names without compatibility aliases. The final
+command names and behavior remain to be specified before implementation.
+
 ## 2026-09-25 - Keep SKM documentation independent of Workspace
 
 - Type: decision
@@ -16,6 +48,7 @@ flags, `wk-adopt` adoption, toolkit integrity, and installed Workspace
 workflow policy live in `workspace/docs/workspace-toolkit.md`, linked from one
 README section. The separation is documentation only; toolkit behavior and
 manifest fields are unchanged.
+
 
 ## 2026-09-25 - Confirm planned skill and bundle adds
 
