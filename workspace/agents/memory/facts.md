@@ -1,5 +1,20 @@
 # Facts
 
+## 2026-09-28 - Command contracts integrated into development
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+PR #69 merged the command contract reconciliation into `development` at
+`46d70fadc5a3c92bd4013e89e578ce03bb587733` on 2026-09-28 after
+Validate run `36476786848` passed. The specification is in `test`;
+production release remains pending.
+
 ## 2026-09-26 - Legacy updater identity handshake integrated into development
 
 - Type: fact
