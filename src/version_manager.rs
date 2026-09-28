@@ -1,11 +1,12 @@
 use crate::config::SkillsConfig;
 use crate::config_manager::BaseConfig;
+use crate::installer;
 use crate::linker;
 use crate::registry;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::Path;
 
 /// Compare two version strings semantically
@@ -202,7 +203,13 @@ pub fn list_versions_cmd(
     limit: usize,
     json_output: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let registry = registry_name.unwrap_or("default");
+    let default_registry;
+    let registry = if let Some(name) = registry_name {
+        name
+    } else {
+        default_registry = BaseConfig::load()?.default_registry;
+        &default_registry
+    };
     let mut versions = list_skill_versions(skill_name, registry)?;
 
     if stable_only {
@@ -395,6 +402,68 @@ pub fn update_to_latest(
 
     // Use the latest version
     use_version(skill_name, latest, config_path, global, yes, dry_run)
+}
+
+/// Upgrade all exact registry pins from the local cache as one transaction.
+pub fn upgrade_all(
+    config_path: &Path,
+    global: bool,
+    pre: bool,
+    yes: bool,
+    dry_run: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let metadata = fs::symlink_metadata(config_path)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err("skills.yaml must be a regular file".into());
+    }
+    let original = fs::read(config_path)?;
+    let mut config: SkillsConfig = serde_yaml::from_slice(&original)?;
+    let mut changes = Vec::new();
+    for skill in &mut config.skills {
+        if skill.path.is_some() {
+            continue;
+        }
+        let current = skill.version.as_deref().unwrap_or("latest");
+        if current == "latest" {
+            continue;
+        }
+        let source = skill.source.as_deref().unwrap_or("default");
+        let versions = list_skill_versions(&skill.name, source)?;
+        if let Some(newest) = newest_published_version(&versions, pre) {
+            if compare_versions(newest, current) == Ordering::Greater {
+                changes.push((skill.name.clone(), current.to_string(), newest.to_string()));
+                skill.version = Some(newest.to_string());
+            }
+        }
+    }
+    if changes.is_empty() {
+        println!("All pinned registry skills are current in the local cache.");
+        return Ok(());
+    }
+    let project = config_path.parent().unwrap_or_else(|| Path::new("."));
+    let updated = serde_yaml::to_string(&config)?.into_bytes();
+    let plan = installer::prepare(&config, project, global, Some((original, updated)))?;
+    println!("Skill upgrades:");
+    for (name, old, new) in &changes {
+        println!("  {name}: {old} -> {new}");
+    }
+    plan.print(false)?;
+    if dry_run {
+        return Ok(());
+    }
+    if !yes {
+        print!("Upgrade {} skill(s)? [y/N] ", changes.len());
+        io::stdout().flush()?;
+        let mut response = String::new();
+        io::stdin().read_line(&mut response)?;
+        if !matches!(response.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
+            println!("Cancelled.");
+            return Ok(());
+        }
+    }
+    plan.apply()?;
+    println!("Upgraded {} skill(s).", changes.len());
+    Ok(())
 }
 
 #[cfg(test)]

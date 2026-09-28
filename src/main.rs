@@ -5,6 +5,7 @@ mod config_editor;
 mod config_manager;
 mod confirmation;
 mod dev;
+mod installer;
 mod linker;
 mod registry;
 mod remover;
@@ -40,10 +41,10 @@ enum Commands {
         #[arg(long)]
         name: Option<String>,
         /// Open the interactive prompts (the default)
-        #[arg(short, long, default_value = "true")]
+        #[arg(short, long, default_value = "true", hide = true)]
         interactive: bool,
         /// Compatibility alias for the complete interactive prompt flow
-        #[arg(long)]
+        #[arg(long, hide = true)]
         advanced: bool,
         /// Prepare for global installation; skills.yaml stays in the current directory
         #[arg(short, long)]
@@ -95,8 +96,8 @@ enum Commands {
     Add {
         /// Skill or bundle ID (e.g. software-development/spec)
         name: String,
-        /// Source registry name (defaults to 'default')
-        #[arg(long)]
+        /// Registry to add from (defaults to the configured default registry)
+        #[arg(long = "registry", alias = "source", value_name = "REGISTRY")]
         source: Option<String>,
         /// Select skill or bundle explicitly when an ID names both
         #[arg(long, value_enum)]
@@ -116,11 +117,6 @@ enum Commands {
         /// Apply without prompting for confirmation
         #[arg(long)]
         yes: bool,
-    },
-    /// Add every skill in a published registry bundle to this project
-    Bundle {
-        #[command(subcommand)]
-        command: BundleCommands,
     },
     /// Search configured registries for skills and published bundles
     Search {
@@ -180,8 +176,6 @@ enum Commands {
     SelfUpdate(SelfCommands),
     /// Run first-time setup (initialize base config and cache)
     Setup,
-    /// Initialize global base configuration with default registry
-    InitConfig,
     /// Clean up SKM artifacts (broken symlinks, cache, etc.)
     #[command(subcommand)]
     Clean(CleanCommands),
@@ -292,8 +286,12 @@ enum SkillCommands {
     },
     /// Change a skill pin and links to the newest cached version
     Upgrade {
-        /// Name of the skill to upgrade
-        skill_name: String,
+        /// Name of the skill to upgrade (omit with --all)
+        #[arg(required_unless_present = "all", conflicts_with = "all")]
+        skill_name: Option<String>,
+        /// Upgrade every outdated pinned registry skill
+        #[arg(long)]
+        all: bool,
         /// Update in global configuration
         #[arg(short, long)]
         global: bool,
@@ -396,7 +394,7 @@ enum ConfigCommands {
         #[arg(short, long)]
         global: bool,
         /// Get from project configuration
-        #[arg(short, long)]
+        #[arg(short, long, hide = true, conflicts_with = "global")]
         project: bool,
         /// Output in JSON format
         #[arg(long)]
@@ -416,7 +414,7 @@ enum ConfigCommands {
         #[arg(short, long)]
         global: bool,
         /// Set in project configuration
-        #[arg(short, long)]
+        #[arg(short, long, hide = true, conflicts_with = "global")]
         project: bool,
         /// Parse value as JSON
         #[arg(long)]
@@ -437,7 +435,7 @@ enum ConfigCommands {
         #[arg(short, long)]
         global: bool,
         /// Unset from project configuration
-        #[arg(short, long)]
+        #[arg(short, long, hide = true, conflicts_with = "global")]
         project: bool,
         /// Preview changes without applying
         #[arg(long)]
@@ -502,27 +500,6 @@ enum ConfigCommands {
     },
 }
 
-#[derive(Subcommand)]
-enum BundleCommands {
-    /// Expand a published registry bundle into exact project skill pins
-    Add {
-        /// Published bundle ID in namespace/name form
-        bundle: String,
-        /// Configured registry containing the bundle
-        #[arg(long, default_value = "default")]
-        source: String,
-        /// Preview all skill and link changes without writing
-        #[arg(long, conflicts_with = "yes")]
-        dry_run: bool,
-        /// Emit a JSON plan without writing
-        #[arg(long, conflicts_with = "yes")]
-        json: bool,
-        /// Apply the complete project change without prompting
-        #[arg(long)]
-        yes: bool,
-    },
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 enum AddKind {
     Skill,
@@ -574,7 +551,8 @@ enum RegistryCommands {
     },
 
     /// Set the default registry
-    Default {
+    #[command(name = "set-default", alias = "default")]
+    SetDefault {
         /// Name of the registry to set as default
         name: String,
     },
@@ -660,15 +638,6 @@ enum DevCommands {
         #[arg(long)]
         json: bool,
     },
-
-    /// Toggle development mode
-    Mode {
-        /// Action: on, off, or status
-        action: String,
-        /// Apply to global configuration
-        #[arg(short, long)]
-        global: bool,
-    },
 }
 
 fn main() {
@@ -686,14 +655,22 @@ fn main() {
     let cli = parse_cli_with_help_notice(args, updater::maybe_print_startup_notice)
         .unwrap_or_else(|error| error.exit());
 
-    // Always ensure global environment is configured
-    if let Err(e) = ensure_global_env() {
-        eprintln!("Warning: Failed to initialize global configuration: {}", e);
-        eprintln!("SKM may not function correctly. Run 'skm setup' to manually configure.");
+    // A skills-only install preview must not initialize machine-local state.
+    let install_preview = matches!(
+        &cli.command,
+        Commands::Install { dry_run: true, .. } | Commands::Install { json: true, .. }
+    );
+    if !install_preview {
+        if let Err(e) = ensure_global_env() {
+            eprintln!("Warning: Failed to initialize global configuration: {}", e);
+            eprintln!("SKM may not function correctly. Run 'skm setup' to manually configure.");
+        }
     }
 
     // Managed releases check their own channel in the background of normal commands.
-    updater::maybe_print_startup_notice();
+    if !install_preview {
+        updater::maybe_print_startup_notice();
+    }
 
     if let Err(e) = run(cli.command) {
         eprintln!("Error: {}", e);
@@ -814,7 +791,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 linker::require_skill_targets(&config.agents, &current_dir, global)?;
             }
 
-            if config.skills.iter().any(|skill| skill.path.is_none()) {
+            if !dry_run && !json && config.skills.iter().any(|skill| skill.path.is_none()) {
                 ensure_registries_cached(&config)?;
             }
 
@@ -835,17 +812,12 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                     toolkit::InstallOptions { dry_run, json },
                 )?;
             } else {
-                if dry_run || json {
-                    return Err("--dry-run and --json require a configured toolkit".into());
+                let plan = installer::prepare(&config, &current_dir, global, None)?;
+                plan.print(json)?;
+                if !dry_run && !json {
+                    plan.apply()?;
+                    eprintln!("Successfully installed all skills.");
                 }
-                eprintln!("Installing skills for agents: {:?}", config.agents);
-                let resolved =
-                    linker::resolve_skill_dependency_closure(&config.skills, &current_dir)?;
-                linker::validate_unique_skill_targets(&resolved)?;
-                for skill in &resolved {
-                    linker::link_skill(skill, &current_dir, &config.agents, global)?;
-                }
-                eprintln!("Successfully installed all skills.");
             }
         }
         Commands::Add {
@@ -858,6 +830,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             json,
             yes,
         } => {
+            let original = std::fs::read(&config_path).ok();
             add_registry_item(
                 &config_path,
                 &current_dir,
@@ -870,16 +843,10 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 json,
                 yes,
             )?;
+            if !global && !dry_run && !json && std::fs::read(&config_path).ok() != original {
+                installer::sync_existing_lock(&config_path, &current_dir)?;
+            }
         }
-        Commands::Bundle { command } => match command {
-            BundleCommands::Add {
-                bundle,
-                source,
-                dry_run,
-                json,
-                yes,
-            } => bundle::add(&current_dir, &bundle, &source, dry_run, json, yes)?,
-        },
         Commands::Search {
             query,
             registry,
@@ -919,6 +886,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             dry_run,
             verbose,
         } => {
+            let original = std::fs::read(&config_path).ok();
             remover::remove_skill(
                 &skill_name,
                 &current_dir,
@@ -928,6 +896,9 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 dry_run,
                 verbose,
             )?;
+            if !global && !dry_run && std::fs::read(&config_path).ok() != original {
+                installer::sync_existing_lock(&config_path, &current_dir)?;
+            }
         }
         Commands::List { global } => {
             let config = load_config(&config_path)?;
@@ -1043,6 +1014,9 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             if all_ok && config.toolkit.is_some() {
                 toolkit::check(&config, &current_dir)?;
             } else if all_ok {
+                if !global {
+                    installer::verify_lock(&config, &current_dir)?;
+                }
                 eprintln!("[SUCCESS] All skills validated and correctly linked.");
             } else {
                 return Err("Validation checks failed. Some skills or links are missing.".into());
@@ -1069,11 +1043,12 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
         },
         Commands::Cache(command) => match command {
             CacheCommands::Refresh { registry } => {
-                if let Some(name) = registry {
-                    registry::update(name)?;
+                let config = if config_path.exists() {
+                    Some(load_config(&config_path)?)
                 } else {
-                    registry::update_all()?;
-                }
+                    None
+                };
+                registry::refresh_effective(config.as_ref(), registry.as_deref())?;
             }
             CacheCommands::Status { registry } => cleaner::show_cache_stats(registry)?,
             CacheCommands::Prune {
@@ -1092,11 +1067,6 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
         },
         Commands::Setup => {
             first_time_setup()?;
-        }
-        Commands::InitConfig => {
-            config_manager::ensure_global_env()?;
-            eprintln!("Base configuration initialized.");
-            eprintln!("You can now use 'skm cache refresh' to populate the skill registry cache.");
         }
         Commands::Clean(cmd) => match cmd {
             CleanCommands::Symlinks {
@@ -1203,7 +1173,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             RegistryCommands::List { json, verbose } => {
                 registry::list(json, verbose)?;
             }
-            RegistryCommands::Default { name } => {
+            RegistryCommands::SetDefault { name } => {
                 registry::set_default(name)?;
             }
             RegistryCommands::Info { name, json } => {
@@ -1248,9 +1218,6 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             } => {
                 dev::show_local_skill(&skill_name, global, json)?;
             }
-            DevCommands::Mode { action, global } => {
-                dev::toggle_dev_mode(&action, global)?;
-            }
         },
         Commands::Skill(SkillCommands::Versions {
             skill_name,
@@ -1275,6 +1242,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             yes,
             dry_run,
         }) => {
+            let original = std::fs::read(&config_path).ok();
             let (skill_name, version) = SkillSpec::parse_with_version(&skill_version)?;
             let version = version.unwrap_or_else(|| "latest".to_string());
             version_manager::use_version(
@@ -1285,6 +1253,9 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 yes,
                 dry_run,
             )?;
+            if !global && !dry_run && std::fs::read(&config_path).ok() != original {
+                installer::sync_existing_lock(&config_path, &current_dir)?;
+            }
         }
         Commands::Skill(SkillCommands::Outdated {
             skill_name,
@@ -1295,19 +1266,28 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Skill(SkillCommands::Upgrade {
             skill_name,
+            all,
             global,
             yes,
             dry_run,
             pre,
         }) => {
-            version_manager::update_to_latest(
-                &skill_name,
-                &config_path,
-                global,
-                pre,
-                yes,
-                dry_run,
-            )?;
+            if all {
+                version_manager::upgrade_all(&config_path, global, pre, yes, dry_run)?;
+            } else if let Some(skill_name) = skill_name {
+                let original = std::fs::read(&config_path).ok();
+                version_manager::update_to_latest(
+                    &skill_name,
+                    &config_path,
+                    global,
+                    pre,
+                    yes,
+                    dry_run,
+                )?;
+                if !global && !dry_run && std::fs::read(&config_path).ok() != original {
+                    installer::sync_existing_lock(&config_path, &current_dir)?;
+                }
+            }
         }
     }
 
@@ -1356,6 +1336,11 @@ fn add_registry_item(
     yes: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     linker::validate_skill_name(name)?;
+    let source = if path.is_none() {
+        Some(source.unwrap_or(config_manager::BaseConfig::load()?.default_registry))
+    } else {
+        source
+    };
     let bundle_options = dry_run || json;
     if kind == Some(AddKind::Bundle) && path.is_some() {
         return Err("--path applies only to local skills".into());
@@ -1654,47 +1639,43 @@ mod help_tests {
     }
 
     #[test]
-    fn bundle_add_help_and_modes_are_project_scoped() {
+    fn retired_commands_are_absent_and_bundle_add_remains_available() {
+        for args in [
+            vec!["skm", "bundle", "add", "acme/starter"],
+            vec!["skm", "dev", "mode", "on"],
+            vec!["skm", "init-config"],
+        ] {
+            assert!(Cli::try_parse_from(args).is_err());
+        }
         let parsed = Cli::try_parse_from([
             "skm",
-            "bundle",
             "add",
             "acme/starter",
-            "--source",
+            "--kind",
+            "bundle",
+            "--registry",
             "local",
             "--dry-run",
         ])
         .unwrap();
         assert!(matches!(
             parsed.command,
-            Commands::Bundle {
-                command: BundleCommands::Add { dry_run: true, .. }
-            }
+            Commands::Add { dry_run: true, .. }
         ));
-        assert!(Cli::try_parse_from(["skm", "bundle", "add", "acme/starter", "--global"]).is_err());
-        assert!(Cli::try_parse_from([
-            "skm",
-            "bundle",
-            "add",
-            "acme/starter",
-            "--yes",
-            "--dry-run",
-        ])
-        .is_err());
-        let help = Cli::try_parse_from(["skm", "bundle", "add", "--help"])
-            .err()
-            .expect("help exits through Clap")
-            .to_string();
-        for flag in ["--source", "--dry-run", "--json", "--yes"] {
-            assert!(help.contains(flag));
-        }
         let add_help = Cli::try_parse_from(["skm", "add", "--help"])
             .err()
             .expect("help exits through Clap")
             .to_string();
-        for flag in ["--kind", "--source", "--dry-run", "--json", "--yes"] {
+        for flag in ["--kind", "--registry", "--dry-run", "--json", "--yes"] {
             assert!(add_help.contains(flag));
         }
+        assert!(!add_help.contains("--source"));
+        assert!(Cli::try_parse_from(["skm", "add", "acme/alpha", "--source", "local"]).is_ok());
+        assert!(Cli::try_parse_from(["skm", "registry", "set-default", "local"]).is_ok());
+        assert!(Cli::try_parse_from(["skm", "registry", "default", "local"]).is_ok());
+        assert!(
+            Cli::try_parse_from(["skm", "config", "get", "name", "--global", "--project"]).is_err()
+        );
     }
 }
 
@@ -1825,6 +1806,8 @@ mod init_tests {
         };
         assert!(help.contains("--non-interactive"));
         assert!(help.contains("sequential prompts"));
+        assert!(!help.contains("--interactive"));
+        assert!(!help.contains("--advanced"));
     }
 }
 

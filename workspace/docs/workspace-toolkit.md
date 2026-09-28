@@ -84,7 +84,7 @@ For Workspace Docs assessment, adoption, upgrade, or repair, install the
 published `wk-adopt` skill in a project with an effective agent target:
 
 ```sh
-skm add workspace/wk-adopt --source default
+skm add workspace/wk-adopt --registry default
 skm check
 ```
 
@@ -99,8 +99,8 @@ source authorization in SKM.
 To add every published Workspace skill at once, use the registry bundle:
 
 ```sh
-skm add workspace/all-workspace-skills --source default --kind bundle --dry-run
-skm add workspace/all-workspace-skills --source default --kind bundle --yes
+skm add workspace/all-workspace-skills --registry default --kind bundle --dry-run
+skm add workspace/all-workspace-skills --registry default --kind bundle --yes
 ```
 
 ## Safety

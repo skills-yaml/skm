@@ -5,8 +5,8 @@
 
 It installs skills from any registry by creating symlinks into supported agent
 skill directories, so a project can declare the skills it needs once and keep
-all sixteen supported agent clients in sync. `skm install` commits a
-deterministic `skills.lock.yaml`.
+all sixteen supported agent clients in sync. Project-local `skm install`
+writes a deterministic `skills.lock.yaml` after linking succeeds.
 
 [Install](#install) | [Release Channels](#release-channels) | [Quick Start](#quick-start) | [Commands](#commands) | [Configuration](#configuration) | [Workspace Toolkits](#workspace-toolkits)
 
@@ -174,7 +174,8 @@ skm init --non-interactive --name my-project
 ```
 
 Non-interactive initialization refuses to replace an existing manifest.
-`--advanced` is a compatibility alias for the same complete prompt flow.
+The older `--interactive` and `--advanced` flags remain accepted but are
+hidden from help; interactive prompts are already the default.
 `--global` prepares for global installation; `skills.yaml` remains in the
 current directory.
 
@@ -205,7 +206,7 @@ Namespace collections remain browse-only; they are not installable bundles.
 Add a selected skill with:
 
 ```sh
-skm add software-development/spec --source default --kind skill
+skm add software-development/spec --registry default --kind skill
 ```
 
 `skm add` shows the planned configuration, resolved skills, and agent link
@@ -224,9 +225,9 @@ the combined result list. Search is read-only; use `skm add` to install a skill
 or every member of a published bundle. Preview or add a bundle with:
 
 ```sh
-skm add skills-yaml/authoring-toolkit --source default --kind bundle --dry-run
-skm add skills-yaml/authoring-toolkit --source default --kind bundle
-skm add skills-yaml/authoring-toolkit --source default --kind bundle --yes
+skm add skills-yaml/authoring-toolkit --registry default --kind bundle --dry-run
+skm add skills-yaml/authoring-toolkit --registry default --kind bundle
+skm add skills-yaml/authoring-toolkit --registry default --kind bundle --yes
 ```
 
 For bundles, `--dry-run` and `--json` preview without asking or changing the
@@ -251,12 +252,19 @@ before a skills-only install. For example, `agents: [codex]` links
 `agents: []` and project-only Hermes configurations now report an error for
 skills-only installs. Hermes uses `skm install --global` for its global target.
 
-Preview every write and then apply non-interactively:
+Preview link and lockfile changes, then apply:
 
 ```sh
 skm install --dry-run
 skm install --yes
 ```
+
+`--json` emits the same read-only plan as structured data. Project installs
+write `skills.lock.yaml` last and restore prior links if an operation fails.
+Global installs link into user-level agent directories and do not write a
+project lockfile. When a project already has a skills-only lockfile, `add`,
+`remove`, and named version changes refresh it after a successful manifest
+change. Run `skm install` after direct edits to `skills.yaml`.
 
 List link status:
 
@@ -275,11 +283,11 @@ Use `--global` with `install`, `list`, or `check` to work against user-level age
 ## Commands
 
 ```txt
-skm init [--name <name>] [--global] [--non-interactive] [--advanced]
+skm init [--name <name>] [--global] [--non-interactive]
 skm install [--global] [--dry-run] [--json] [--yes]
-skm add <skill-or-bundle> [--source <registry>] [--kind skill|bundle] [--path <local-path>] [--global] [--dry-run | --json | --yes]
-skm bundle add <namespace/bundle> [--source <registry>] [--dry-run | --json | --yes]
+skm add <skill-or-bundle> [--registry <registry>] [--kind skill|bundle] [--path <local-path>] [--global] [--dry-run | --json | --yes]
 skm search <query> [--registry <registry>] [--json] [--limit <limit>]
+skm remove <skill-name> [--global] [--dry-run] [--yes]
 skm list [--global]
 skm check [--global]
 skm cache refresh [registry]
@@ -289,7 +297,7 @@ skm cache clear <registry>|--all [--dry-run] [--yes]
 skm skill versions <skill-name> [--registry <registry>] [--json] [--stable-only] [--pre] [--limit <limit>]
 skm skill use <skill-name>@<version> [--global] [--yes] [--dry-run]
 skm skill outdated [skill-name] [--refresh] [--pre]
-skm skill upgrade <skill-name> [--global] [--yes] [--dry-run] [--pre]
+skm skill upgrade <skill-name>|--all [--global] [--yes] [--dry-run] [--pre]
 skm self version
 skm self check [--channel prod|development]
 skm self upgrade [--channel prod|development] [--yes]
@@ -297,32 +305,45 @@ skm dev link <path> [--name <name>] [--source <source>] [--global] [--all-agents
 skm dev unlink <skill-name> [--global] [--yes] [--verbose]
 skm dev list [--global] [--all] [--json] [--paths]
 skm dev show <skill-name> [--global] [--json]
-skm dev mode [on|off|status] [--global]
+skm setup
+skm registry add|remove|list|set-default|info ...
+skm config get|set|unset|show|reset|validate ...
+skm clean symlinks|reset ...
 ```
 
 - `init`: creates or edits `skills.yaml` through sequential prompts; use
   `--non-interactive` to create a default manifest for scripts. Toolkit flags
   are described in [Workspace Toolkits](#workspace-toolkits).
 - `install`: resolves configured skills once, preflights every target,
-  transactionally links each one, and writes the lockfile last.
+  transactionally links each one, and writes the project lockfile last.
 - `add`: adds and links one skill, or expands a published registry bundle and
   exact dependencies into project skill pins. Both paths show a plan and prompt
   unless `--yes` is set. `--dry-run` and `--json` preview bundles without
   applying; bundle application remains transactional.
-- `bundle add`: compatibility command with the same bundle confirmation flow.
 - `search`: searches configured registries for skills and published bundles in
   one result list, shows a matching `skm add` command for each, and lists
   browse-only namespace collections without changing project state.
 - `list`: reports current link status, including missing sources and bad links.
 - `check`: verifies source directories, `SKILL.md`, symlink existence, and symlink targets; intended for CI.
-- `cache refresh`: updates one registry cache or all configured registry caches when no name is given.
+- `cache refresh`: updates one effective project or inherited global registry,
+  or all effective registries when no name is given.
 - `cache status`, `prune`, and `clear`: inspect cached registries, remove unprotected older versions, or clear selected caches.
 - `skill versions`: lists available versions from a cached registry.
 - `skill use`: switches a skill to a specific version (e.g. `skill@v1.2.0`) in `skills.yaml` and re-links it.
 - `skill outdated`: compares pinned registry skills with cached versions; `--refresh` fetches relevant registries first. Local and `latest`-tracking skills are skipped.
-- `skill upgrade`: updates a skill pin to its latest cached version and re-links it.
+- `skill upgrade`: updates one skill pin, or uses `--all` to preview and apply
+  every outdated exact pin together from the local cache.
 - `self check`, `self upgrade`, and `self version`: inspect and update the SKM binary.
-- `dev`: manages local development skills (linking local paths as symlinks directly, toggling dev mode).
+- `dev`: links, unlinks, lists, and inspects local development skills.
+- `setup`: ensures global base configuration and fetches the default registry.
+- `registry set-default`: selects the global default for new additions and
+  unqualified version lookups. Existing manifest entries without `source`
+  still use the literal registry named `default`.
+- `config reset`: writes default configuration; `clean reset` removes selected
+  configuration, cache, or managed links after confirmation.
+
+`skm add --source` and `skm registry default` remain accepted compatibility
+spellings. `skm bundle`, `skm dev mode`, and `skm init-config` have been retired.
 
 ## Configuration
 
