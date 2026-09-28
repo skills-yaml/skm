@@ -1,5 +1,20 @@
 # Memory Changelog
 
+## 2026-09-28 - Record SKM command consolidation
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+Recorded the approved command retirement, ordinary install plan and lock,
+bulk skill upgrade, and effective registry selection in
+`workspace/agents/memory/decisions.md`. The local implementation remains in
+the `development` spec pending confirmed test-channel integration.
+
 ## 2026-09-26 - Record legacy updater handshake test integration
 
 - Type: fact
