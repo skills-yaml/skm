@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: The user authorized implementation on 2026-09-28 after a read-only audit of the current `development` CLI. Local implementation is active; integration into the configured test channel is not yet confirmed.
+Rationale: PR #69 merged the implementation into the configured `development` test channel at `46d70fadc5a3c92bd4013e89e578ce03bb587733` on 2026-09-28 after Validate run `36476786848` passed. Production release remains pending.
 
 ## Problem and Users
 
@@ -79,4 +79,4 @@ The pinned workspace-docs 5.0 standard has no `workspace/releases.json` reservat
 
 Status: `updated`
 
-Rationale: The accepted command retirement and install/update contract are recorded in `workspace/agents/memory/decisions.md`, with a corresponding `workspace/agents/memory/changelog.md` entry. Production and test integration evidence is still pending.
+Rationale: The accepted command retirement and install/update contract are recorded in `workspace/agents/memory/decisions.md`. Confirmed test-channel integration is recorded in `workspace/agents/memory/facts.md`, with corresponding entries in `workspace/agents/memory/changelog.md`. Production release remains pending.

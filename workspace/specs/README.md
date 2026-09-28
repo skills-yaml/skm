@@ -37,7 +37,7 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
-| [command-contract-reconciliation.md](development/skill-lifecycle/command-contract-reconciliation.md) | `skill-lifecycle` | `development` | User-authorized CLI reconciliation is under local implementation; integration into `development` is not yet confirmed. |
+| [command-contract-reconciliation.md](test/skill-lifecycle/command-contract-reconciliation.md) | `skill-lifecycle` | `test` | PR #69 merged into `development` at `46d70fa` on 2026-09-28 after Validate run `36476786848` passed; production release is pending. |
 | [legacy-updater-identity-handshake.md](test/updates/legacy-updater-identity-handshake.md) | `updates` | `test` | PR #66 merged into `development` at `ed5b0a0` after Validate run `36270555944` passed; release run `36271054364` published nine assets and an older Linux binary self-updated successfully. Cross-platform qualification remains pending. |
 | [separate-workspace-docs.md](test/workspace-toolkit/separate-workspace-docs.md) | `workspace-toolkit` | `test` | PR #60 merged into the configured `development` test channel at `506d47a` on 2026-09-26 after Validate passed; production release is pending. |
 | [command-reorganization.md](test/skill-lifecycle/command-reorganization.md) | `skill-lifecycle` | `test` | PR #63 merged into `development` at `2c852c2` on 2026-09-26 after Validate run `36212734539` passed; production promotion awaits the separately specified legacy updater handshake and release qualification. |
