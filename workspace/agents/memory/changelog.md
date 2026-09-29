@@ -14,6 +14,36 @@ Recorded in `workspace/agents/memory/decisions.md` that production releases
 notify the Registry to review its documentation.
 
 
+
+## 2026-09-28 - Record command contract test integration
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #69's confirmed `development` merge and passing Validate run in
+`workspace/agents/memory/facts.md`. Moved the command contract specification
+to `test` with the merge evidence in the catalog.
+
+## 2026-09-28 - Record SKM command consolidation
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+Recorded the approved command retirement, ordinary install plan and lock,
+bulk skill upgrade, and effective registry selection in
+`workspace/agents/memory/decisions.md`. The local implementation remains in
+the `development` spec pending confirmed test-channel integration.
+
 ## 2026-09-26 - Record legacy updater handshake test integration
 
 - Type: fact

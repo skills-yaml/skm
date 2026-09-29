@@ -17,6 +17,27 @@ Every SKM production release sends a `skm-released` `repository_dispatch` to
 never gates or changes the release.
 
 
+
+## 2026-09-28 - Consolidate the SKM command surface
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: 2026-09-24 - Use one registry search and add interface for skills and bundles (bundle command alias only)
+
+Content:
+
+Published bundles use `skm add --kind bundle`; the separate `skm bundle`
+command is retired. The inert `skm dev mode` command and redundant
+`skm init-config` command are retired. Skills-only installation gains a
+read-only plan, rollback-protected link application, and a deterministic
+project lockfile. `skm skill upgrade --all` updates cached exact pins as one
+reviewed change. The configured default registry governs new additions, while
+source-less existing pins keep their historical `default` source. Cache refresh
+honors project registry overrides. `--registry` is the preferred add spelling;
+older `--source` remains accepted.
+
 ## 2026-09-26 - Preserve the legacy updater identity handshake
 
 - Type: decision

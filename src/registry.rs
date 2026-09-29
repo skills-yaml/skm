@@ -1,5 +1,7 @@
+use crate::config::SkillsConfig;
 use crate::config_manager::BaseConfig;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -223,17 +225,6 @@ pub fn list(json_output: bool, verbose: bool) -> Result<(), Box<dyn std::error::
     Ok(())
 }
 
-/// Update a specific registry
-pub fn update(name: String) -> Result<(), Box<dyn std::error::Error>> {
-    let config = BaseConfig::load()?;
-
-    let url = config
-        .registries
-        .get(&name)
-        .ok_or_else(|| format!("Registry '{}' not found", name))?;
-    refresh_from_url(&name, url)
-}
-
 /// Refresh a configured registry, allowing project registries to override the global URL.
 pub fn refresh_from_url(name: &str, url: &str) -> Result<(), Box<dyn std::error::Error>> {
     if !is_valid_registry_name(name) {
@@ -270,14 +261,27 @@ pub fn refresh_from_url(name: &str, url: &str) -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
-/// Update all registries
-pub fn update_all() -> Result<(), Box<dyn std::error::Error>> {
-    let config = BaseConfig::load()?;
+/// Refresh the effective project and inherited global registry set.
+pub fn refresh_effective(
+    project: Option<&SkillsConfig>,
+    selected: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = BaseConfig::load()?;
+    let mut registries: BTreeMap<String, String> = base.registries.into_iter().collect();
+    if let Some(project_registries) = project.and_then(|config| config.registries.as_ref()) {
+        registries.extend(project_registries.clone());
+    }
+    if let Some(name) = selected {
+        let url = registries
+            .get(name)
+            .ok_or_else(|| format!("Registry '{name}' not found in effective configuration"))?;
+        return refresh_from_url(name, url);
+    }
     let mut updated = 0;
     let mut failed = 0;
 
-    for name in config.registries.keys() {
-        match update(name.clone()) {
+    for (name, url) in &registries {
+        match refresh_from_url(name, url) {
             Ok(_) => updated += 1,
             Err(e) => {
                 eprintln!("Failed to update registry '{}': {}", name, e);

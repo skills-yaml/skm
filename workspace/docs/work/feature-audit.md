@@ -1,6 +1,10 @@
 # SKM Feature Audit & Gap Analysis
 
-## Current Feature List
+This is a historical audit. Use the root README and `skm --help` for the
+current command interface; several names below have since been reorganized or
+retired.
+
+## Historical Feature List
 
 ### ✅ Implemented Features
 
