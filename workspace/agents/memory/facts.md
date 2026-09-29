@@ -1,5 +1,21 @@
 # Facts
 
+## 2026-09-29 - Registry release notification integrated into development
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+PR #67 merged the production-only `notify-registry` release job into
+`development` at `a8ad8d795ccaeadf64291a693de785c2ec520d2b` on 2026-09-29 after Validate run `36548080616` passed. The
+job is skipped until the `REGISTRY_APP_CLIENT_ID` variable and
+`REGISTRY_APP_PRIVATE_KEY` secret are configured; the Registry's hourly poll
+covers releases meanwhile.
+
 ## 2026-09-28 - Command contracts integrated into development
 
 - Type: fact
