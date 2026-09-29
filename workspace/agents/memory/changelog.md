@@ -1,5 +1,19 @@
 # Memory Changelog
 
+## 2026-09-29 - Record Registry release notification test integration
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #67's confirmed `development` merge in
+`workspace/agents/memory/facts.md` and moved the notify-registry-docs
+specification to `test` with a matching catalog rationale.
+
 ## 2026-09-26 - Record Registry release notification decision
 
 - Type: decision

@@ -2,11 +2,14 @@
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: The user asked on 2026-09-26 that every SKM release notify the
-Registry so its documentation is updated. Implementation is active on
-`feat/notify-registry-docs`.
+Rationale: PR #67 merged the job into the configured `development` test
+channel at `a8ad8d7` on 2026-09-29 after Validate run `36548080616` passed. The
+job only runs on production releases, so it is exercised by the next release
+through `main`, which is not yet confirmed. The Registry side is live:
+skills-yaml/registry#31 released the Upstream Release workflow, and its first
+run opened skills-yaml/registry#32 for SKM 0.8.0.
 
 ## Problem and Users
 
