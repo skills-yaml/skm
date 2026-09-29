@@ -1,5 +1,20 @@
 # Memory Changelog
 
+## 2026-09-26 - Record Registry release notification decision
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded in `workspace/agents/memory/decisions.md` that production releases
+notify the Registry to review its documentation.
+
+
+
 ## 2026-09-28 - Record command contract test integration
 
 - Type: fact

@@ -37,6 +37,7 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
+| [notify-registry-docs.md](development/updates/notify-registry-docs.md) | `updates` | `development` | The user requested Registry release notification on 2026-09-26; implementation is active on `feat/notify-registry-docs`. |
 | [command-contract-reconciliation.md](test/skill-lifecycle/command-contract-reconciliation.md) | `skill-lifecycle` | `test` | PR #69 merged into `development` at `46d70fa` on 2026-09-28 after Validate run `36476786848` passed; production release is pending. |
 | [legacy-updater-identity-handshake.md](test/updates/legacy-updater-identity-handshake.md) | `updates` | `test` | PR #66 merged into `development` at `ed5b0a0` after Validate run `36270555944` passed; release run `36271054364` published nine assets and an older Linux binary self-updated successfully. Cross-platform qualification remains pending. |
 | [separate-workspace-docs.md](test/workspace-toolkit/separate-workspace-docs.md) | `workspace-toolkit` | `test` | PR #60 merged into the configured `development` test channel at `506d47a` on 2026-09-26 after Validate passed; production release is pending. |

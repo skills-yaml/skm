@@ -30,6 +30,8 @@ fn release_workflows_gate_and_qualify_publication() {
     assert!(release.contains("scripts/publish-release.sh"));
     assert!(release.contains("SKM_BUILD_COMMIT"));
     assert!(release.contains("SKM_BUILD_CHANNEL"));
+    assert!(release.contains("event_type=skm-released"));
+    assert!(release.contains("needs.prepare.outputs.channel == 'prod'"));
 
     let qualification = repository_text(".github/workflows/release-update-qualification.yml");
     assert!(qualification.contains("release-prod"));
