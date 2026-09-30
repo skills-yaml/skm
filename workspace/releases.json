@@ -44,13 +44,13 @@
       "owner": "skm-development-release",
       "version_source": "Cargo.toml",
       "specs": [
-        "workspace/specs/development/workspace-governance/adopt-workspace-docs-6.md",
+        "workspace/specs/test/workspace-governance/adopt-workspace-docs-6.md",
         "workspace/specs/test/skill-lifecycle/command-contract-reconciliation.md",
         "workspace/specs/test/skill-lifecycle/command-reorganization.md",
         "workspace/specs/test/updates/legacy-updater-identity-handshake.md",
         "workspace/specs/test/workspace-toolkit/separate-workspace-docs.md"
       ],
-      "evidence": "On 2026-09-29, the prod-latest manifest reported SKM 0.8.0 at 07b4bba, and development-latest reported 0.8.0 at 72eaf7d; the remote had no v0.9.0 tag. The shared 0.9.0 candidate is applied once in Cargo.toml and Cargo.lock for active specifications."
+      "evidence": "On 2026-09-29, the prod-latest manifest reported SKM 0.8.0 at 07b4bba, and development-latest reported 0.8.0 at 72eaf7d; the remote had no v0.9.0 tag. The shared 0.9.0 candidate is applied once in Cargo.toml and Cargo.lock for active specifications. PR #72 integrated the Workspace Docs 6.0.0 member into development at c49f1cc on 2026-09-30 after Validate run 36682939489 passed."
     }
   ]
 }

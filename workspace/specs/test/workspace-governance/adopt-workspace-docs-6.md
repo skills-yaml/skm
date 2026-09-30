@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: The user requested the 6.0.0 upgrade on 2026-09-29. The 5.0.0 structure passes its current gates; the 6.0.0 migration is active locally and has not been integrated into the configured `development` test target.
+Rationale: PR #72 merged the Workspace Docs 6.0.0 migration into the configured `development` test channel at `c49f1cc` on 2026-09-30 after Validate run `36682939489` passed. Production release through `main` is pending.
 
 ## Problem and Scope
 
@@ -85,7 +85,8 @@ Rationale: The adoption decision is recorded in `workspace/agents/memory/decisio
 - The generated `AGENTS.md` block exactly matches the 6.0.0 template, and its manual prefix and suffix match the previous committed policy. The copied 6.0.0 package and peer runtime match their trusted sources; current-document relative links passed inspection.
 - `git diff --cached --check` passed. The staged `skills.yaml` change contains only the 5.0.0-to-6.0.0 pin, while the working file retains personal skill entries outside the migration diff.
 - The standard aliases remain on released 5.0.0 because 6.0.0 is still draft. No peer board or historical assignment was created, and existing linked worktrees were not changed.
+- PR #72 passed Validate run `36682939489` and merged into `development` at `c49f1cc47a477d92c2923677d49108ff222e9b01` on 2026-09-30; this confirms the `test` transition.
 
 The peer runtime's bundled file-locking implementation uses Unix `fcntl`; Windows peer coordination has not been qualified. SKM's Windows CLI behavior is outside this migration and remains covered by its existing tests.
 
-The spec remains in `development` until this migration is integrated into the configured `development` test target. A production release and `done` transition are not implied by the local candidate version.
+The spec is in `test` after confirmed integration into the configured `development` test target. A production release and `done` transition remain pending.

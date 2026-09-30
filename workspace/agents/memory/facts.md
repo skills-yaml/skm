@@ -1,5 +1,20 @@
 # Facts
 
+## 2026-09-30 - Workspace Docs 6.0.0 integrated into development
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+PR #72 merged the Workspace Docs 6.0.0 candidate adoption into `development`
+at `c49f1cc47a477d92c2923677d49108ff222e9b01` on 2026-09-30 after
+Validate run `36682939489` passed. The migration spec is in `test`; the draft
+standard is not yet a production release.
+
 ## 2026-09-29 - SKM 0.9.0 candidate reserved for active work
 
 - Type: fact
