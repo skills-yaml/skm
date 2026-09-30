@@ -55,6 +55,12 @@ The compatibility response is gated by the exact environment value and argument 
 - `task check`, `task test`, and `git diff --check`.
 - Development release update qualification across Linux, macOS, and Windows before production promotion.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | patch | skm-next | Restored compatibility for an existing updater probe. |
+
 ## Memory Impact
 
 Status: `updated`

@@ -103,6 +103,12 @@ skills to the legacy `.codex/skills` path.
 - focused success and representative failure tests for dependency resolution
 - Codex target and legacy lockfile migration tests
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released registry published workspace skills work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `updated`

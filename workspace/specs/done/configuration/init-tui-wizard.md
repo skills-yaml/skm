@@ -64,6 +64,12 @@ Release as SKM 0.3.0 through reviewed PRs into `development`, followed by
 - `--global` retains the existing current-directory manifest location and only
   changes the displayed installation scope; toolkit setup remains project-scoped.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released init tui wizard work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: updated

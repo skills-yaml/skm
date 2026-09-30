@@ -185,6 +185,12 @@ release assets.
 - Resolved for release: the `0.6.0` rolling production release at `a6cdef2`
   carries the additive compatibility support.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released workspace docs 6 compatibility work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: updated

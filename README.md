@@ -456,7 +456,9 @@ task build
 ```
 
 `task check` runs formatting checks, Clippy with warnings denied, `cargo check`,
-and the workspace-docs structure, spec-catalog, memory-impact, and privacy gates.
+and the Workspace Docs structure, spec catalog, memory impact, privacy,
+version reservation, and peer record gates. The project currently pins the
+`workspace-docs@6.0.0` candidate; the standard's stable aliases remain on 5.0.0.
 
 After `task build`, run `task test:init` for Linux terminal smoke coverage of
 the sequential init prompts, including registry search, saving, cancellation,

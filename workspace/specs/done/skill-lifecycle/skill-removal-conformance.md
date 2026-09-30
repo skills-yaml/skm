@@ -53,6 +53,12 @@ agents instead of producing the specified partial-success report.
 - Configuration can be removed while an operating-system unlink fails. That
   outcome must be explicit and must not hide successfully processed targets.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | patch | historical | Previously released skill removal conformance work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `updated`

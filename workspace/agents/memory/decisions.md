@@ -1,5 +1,22 @@
 # Decisions
 
+## 2026-09-29 - Adopt the Workspace Docs 6.0.0 candidate
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: 2026-08-19 - Adopt workspace-docs@5.0.0
+
+Content:
+
+This repository adopts the `workspace-docs@6.0.0` candidate while retaining
+the existing Rust CLI layout and task, SDLC, CI, and project-structure guides.
+The stable standard aliases remain on released 5.0.0. Concurrent mutating
+agents use detached linked worktrees, tracked peer records, and the portable
+coordination runtime. Every current spec declares version impact; the shared
+SKM candidate is reserved and checked through `workspace/releases.json`.
+
 ## 2026-09-26 - Notify the Registry after each production release
 
 - Type: decision

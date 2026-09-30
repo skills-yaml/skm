@@ -185,6 +185,12 @@ supported platform assets. The specification is complete.
 
 None. The user selected sequential prompts as the replacement interaction.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released init sequential prompts work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: updated

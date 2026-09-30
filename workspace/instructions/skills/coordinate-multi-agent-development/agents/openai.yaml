@@ -1,0 +1,4 @@
+interface:
+  display_name: "Coordinate Multi-Agent Development"
+  short_description: "Isolate concurrent agents with worktrees and WIP records"
+  default_prompt: "Use $coordinate-multi-agent-development to coordinate concurrent repository changes safely."

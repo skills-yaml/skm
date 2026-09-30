@@ -149,6 +149,12 @@ This change is backward compatible:
 - `config_manager::ensure_base_config()` - Returns base config, creating if needed
 - `config_manager::is_first_time()` - Checks if both config and cache are missing (to be deprecated)
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released global env auto config work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `none`

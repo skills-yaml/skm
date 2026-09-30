@@ -980,6 +980,12 @@ Removed cache directory: $HOME/.cache/skm/registries/company
 - `skm setup` - Initializes with default registry
 - BaseConfig - Stores registry configuration
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released registry management work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `none`

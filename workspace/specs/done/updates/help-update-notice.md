@@ -53,6 +53,12 @@ show an available update notice.
 - Targeted tests for Clap help and invalid-argument classification.
 - `task check` and `task test`.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | patch | historical | Previously released help update notice work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: updated

@@ -68,12 +68,9 @@ Install and bulk upgrade can replace symlinks and write configuration. Preflight
 
 ## Version Impact
 
-| Component | Classification | Rationale |
-| --- | --- | --- |
-| SKM CLI | major candidate | Two public command paths are intentionally retired; the next release version is owned by the repository release workflow and is not bumped in this local change. |
-| Workspace Docs standard | none | No standard or governed instruction file changes. |
-
-The pinned workspace-docs 5.0 standard has no `workspace/releases.json` reservation workflow; no release reservation is created here.
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | skm-next | Retired public commands and changed the install contract in a pre-1.0 candidate. |
 
 ## Memory Impact
 

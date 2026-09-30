@@ -80,6 +80,12 @@ collection as a bundle. No new runtime dependency or migration is needed.
 - `task check` and `task test` pass.
 - Review `git diff` for unrelated changes and preserve local `skills.yaml`.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released unified skill bundle discovery work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `updated`

@@ -194,6 +194,12 @@ The registry describes skills; SKM decides where they land.
 - `task test:tui` for the agent selection step
 - `git diff --check`
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released agent skill directory integration work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: updated

@@ -51,6 +51,12 @@ skill directories instead of limiting removal to symlinks.
 - Registry aliases may be relative symlinks and must be resolved without
   following unrelated directory trees.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | patch | historical | Previously released cleanup safety conformance work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `updated`
