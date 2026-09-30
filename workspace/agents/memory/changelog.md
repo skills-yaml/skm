@@ -1,5 +1,19 @@
 # Memory Changelog
 
+## 2026-09-30 - Record Workspace Docs 6 test integration
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #72's confirmed `development` integration in
+`workspace/agents/memory/facts.md` and moved the migration specification to
+`test` with matching catalog and release-reservation paths.
+
 ## 2026-09-29 - Record Workspace Docs 6 adoption and candidate version
 
 - Type: decision and fact
