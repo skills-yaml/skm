@@ -44,6 +44,7 @@
       "owner": "skm-development-release",
       "version_source": "Cargo.toml",
       "specs": [
+        "workspace/specs/development/updates/bare-help-update-notice.md",
         "workspace/specs/test/workspace-governance/adopt-workspace-docs-6.md",
         "workspace/specs/test/skill-lifecycle/command-contract-reconciliation.md",
         "workspace/specs/test/skill-lifecycle/command-reorganization.md",

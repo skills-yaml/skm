@@ -37,6 +37,7 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
+| [bare-help-update-notice.md](development/updates/bare-help-update-notice.md) | `updates` | `development` | Fixing bare invocation notice handling locally; test-channel integration and release remain pending. |
 | [adopt-workspace-docs-6.md](test/workspace-governance/adopt-workspace-docs-6.md) | `workspace-governance` | `test` | PR #72 merged the 6.0.0 candidate migration into `development` at `c49f1cc` on 2026-09-30 after Validate run `36682939489` passed; production release remains pending. |
 | [notify-registry-docs.md](test/updates/notify-registry-docs.md) | `updates` | `test` | PR #67 merged into the configured `development` test channel at `a8ad8d7` on 2026-09-29 after Validate passed; the first production release that sends the dispatch is pending. |
 | [command-contract-reconciliation.md](test/skill-lifecycle/command-contract-reconciliation.md) | `skill-lifecycle` | `test` | PR #69 merged into `development` at `46d70fa` on 2026-09-28 after Validate run `36476786848` passed; production release is pending. |

@@ -689,10 +689,16 @@ where
     I: IntoIterator<Item = T>,
     T: Into<std::ffi::OsString> + Clone,
 {
+    let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
+    let bare_invocation = args.len() == 1;
     match Cli::try_parse_from(args) {
         Ok(cli) => Ok(cli),
         Err(error) => {
-            if error.kind() == clap::error::ErrorKind::DisplayHelp {
+            if error.kind() == clap::error::ErrorKind::DisplayHelp
+                || (bare_invocation
+                    && error.kind()
+                        == clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand)
+            {
                 notify();
             }
             Err(error)
@@ -1598,6 +1604,20 @@ mod help_tests {
     use std::cell::Cell;
 
     #[test]
+    fn bare_invocation_notifies_without_changing_clap_help_behavior() {
+        let original = Cli::try_parse_from(["skm"]).err().expect("bare help");
+        let notified = Cell::new(false);
+        let error = parse_cli_with_help_notice(["skm"], || notified.set(true))
+            .err()
+            .expect("bare help exits through Clap");
+        assert!(notified.get());
+        assert_eq!(error.kind(), original.kind());
+        assert_eq!(error.to_string(), original.to_string());
+        assert_eq!(error.exit_code(), original.exit_code());
+        assert_eq!(error.use_stderr(), original.use_stderr());
+    }
+
+    #[test]
     fn help_requests_notify_before_clap_exits() {
         for args in [
             vec!["skm", "help"],
@@ -1615,7 +1635,13 @@ mod help_tests {
 
     #[test]
     fn ordinary_commands_and_invalid_arguments_do_not_notify_during_parsing() {
-        for args in [vec!["skm", "self", "version"], vec!["skm", "--invalid"]] {
+        for args in [
+            vec!["skm", "self", "version"],
+            vec!["skm", "--version"],
+            vec!["skm", "--invalid"],
+            vec!["skm", "self"],
+            vec!["skm", "add"],
+        ] {
             let notified = Cell::new(false);
             let _ = parse_cli_with_help_notice(args, || notified.set(true));
             assert!(!notified.get());

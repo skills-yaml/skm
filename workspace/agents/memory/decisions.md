@@ -1,5 +1,20 @@
 # Decisions
 
+## 2026-09-30 - Bare invocation shares help update notices
+
+- Type: decision
+- Source: user and regression test
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Bare `skm` must run the same best-effort startup notice hook as explicit help,
+preserving Clap's help output and exit behavior. Incomplete subcommands and
+invalid arguments remain outside the help notification path. Existing terminal,
+managed-build, and opt-out checks still control whether a notice appears.
+
 ## 2026-09-29 - Adopt the Workspace Docs 6.0.0 candidate
 
 - Type: decision
