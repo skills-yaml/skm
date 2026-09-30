@@ -121,8 +121,8 @@ skm self upgrade --channel development --yes
 `skm self check` reports whether the managed channel has a newer build. Use
 `skm self version` to print the embedded version, channel, and
 commit. Set `SKM_NO_UPDATE_CHECK=1` to suppress best-effort terminal startup
-notices. Interactive help requests show the same available-update notice
-before the help text.
+notices. Interactive help requests, including bare `skm`, show the same
+available-update notice before the help text.
 
 Older managed SKM binaries use `skm update` to install a new release. The new
 binary accepts their internal identity check during that upgrade, then uses

@@ -1,5 +1,18 @@
 # Memory Changelog
 
+## 2026-09-30 - Record bare invocation update notice contract
+
+- Type: decision
+- Source: user and regression test
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded bare root help's shared startup notice behavior and preservation of
+Clap output and exit behavior in `workspace/agents/memory/decisions.md`.
+
 ## 2026-09-30 - Record Workspace Docs 6 test integration
 
 - Type: fact
