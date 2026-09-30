@@ -33,6 +33,12 @@ only when pinned; report unresolved conflicts between current instruction files.
 6. Identify the current pinned `workspace-docs@X.Y.Z` version, if any, and the
    target version requested by the user.
 
+If two or more agents may mutate the repository concurrently, invoke
+`coordinate-multi-agent-development` before delegated edits. Each mutating
+agent needs a dedicated detached linked worktree and its own WIP record. Keep
+the primary checkout coordination-only. A task or delivery branch requires a
+direct user request for that named task.
+
 If no target is specified, use the concrete version referenced by the selected
 standard package's `default` pointer. Never silently select a downgrade.
 
@@ -76,6 +82,20 @@ Choose one mode and record it:
 
 Treat mixed layouts as an update. Do not scaffold a second copy alongside
 existing content.
+
+## Confirm Project Choices
+
+Before changing project-specific guides, inspect this repository's actual
+application layout, build manifests, CI, existing technical documentation,
+and durable decisions. Distinguish observed facts from unknowns. Propose the
+exact guides to retain, adapt, add, or omit with repository-relative evidence,
+and ask the user to approve or correct the proposal before editing those
+guides. Do not infer a backend, database, frontend, or infrastructure component
+from a language choice or from examples in the standard package.
+
+Record the confirmed choices and source/destination decisions in the migration
+spec. A clear choice already supplied by the user is sufficient; do not ask
+twice. Preserve existing authoritative project guidance.
 
 ## Create the Migration Contract
 
@@ -137,6 +157,12 @@ spec system, follow it and document the target workspace spec transition.
    the deterministic spec-catalog gate required by the target version.
 10. Remove empty legacy paths only after verifying that no current-project
    content was lost.
+11. For 6.0, add the multi-agent record home, portable peer runtime, and
+    `coordination:check` gate. Preserve existing worktrees and do not invent
+    active assignments or initialize a board from an unreviewed base.
+12. For 6.0, add per-spec Version Impact tables, freeze historical done paths
+    in `workspace/releases.json`, reserve a shared candidate from real release
+    state, and add `versions:check` to the aggregate Taskfile gate.
 
 ### Repair
 
@@ -165,11 +191,12 @@ map. Do not create a spec or change files unless the user also requested fixes.
 - Do not delete ambiguous content. Stop and request direction when ownership or
   merge precedence cannot be established safely.
 - A requested migration implementation has standing workflow authority for
-  commits, non-protected branch pushes, pull-request updates, bounded CI work,
-  and non-destructive delivery. Do not request repeated approval for those
-  steps or bypass repository protection. Pause for prospective human approval
-  when a governed instruction is outside the directly approved migration scope,
-  and for scoped approval before a destructive production action.
+  commits, pull-request updates, bounded CI work, and non-destructive delivery.
+  Create or push a task or delivery branch only after a direct user request for
+  that named task. Do not request repeated approval for the remaining steps or
+  bypass repository protection. Pause for prospective human approval when a
+  governed instruction is outside the directly approved migration scope, and
+  for scoped approval before a destructive production action.
 
 ## Validate and Complete
 
@@ -183,6 +210,7 @@ map. Do not create a spec or change files unless the user also requested fixes.
 5. Validate current-document relative links.
 6. Run Taskfile gates, normally `task check` and `task test`, plus every
    project-specific gate required by affected areas. Do not bypass Taskfile.
+   For 6.0, include `task versions:check` and `task coordination:check`.
 7. Review the full diff for unintended changes and verify the worktree contains
    only the migration scope.
 8. Confirm every in-scope spec has a valid memory-impact section and the

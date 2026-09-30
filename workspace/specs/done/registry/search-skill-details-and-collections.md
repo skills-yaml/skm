@@ -45,6 +45,12 @@ Read bounded `SKILL.md` frontmatter for the selected version and parse the exact
 
 Registry data is untrusted. Bound reads, sanitize displayed text, and validate identifiers before reporting membership. This is a display-only change; the existing bundle installation backlog controls future mutation behavior.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released search skill details and collections work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `updated`

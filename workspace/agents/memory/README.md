@@ -2,7 +2,7 @@
 
 This directory stores durable project memory for the `skm` repository.
 
-It follows `workspace-docs@5.0.0` from
+It follows the `workspace-docs@6.0.0` candidate from
 `workspace/instructions/standards/workspace-docs`.
 
 - Do not store secrets, credentials, tokens, or transient scratch notes.

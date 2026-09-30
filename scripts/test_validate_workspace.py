@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Success and failure tests for workspace-docs@5.0.0 gates."""
+"""Success and failure tests for workspace-docs@6.0.0 gates."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ class WorkspaceValidationTests(unittest.TestCase):
     def _seed_valid_tree(self) -> None:
         (self.root / "AGENTS.md").write_text(
             "# Agents\n\n"
-            "<!-- AGENT-CONTEXT:START workspace-docs@5.0.0 -->\n"
+            "<!-- AGENT-CONTEXT:START workspace-docs@6.0.0 -->\n"
             "generated\n"
             "<!-- AGENT-CONTEXT:END -->\n",
             encoding="utf-8",
@@ -34,6 +34,10 @@ class WorkspaceValidationTests(unittest.TestCase):
         (self.root / "DESIGN.md").write_text("# Design\n", encoding="utf-8")
         (self.root / "README.md").write_text("# Readme\n", encoding="utf-8")
         (self.root / "Taskfile.yml").write_text("version: '3'\n", encoding="utf-8")
+        (self.root / "skills.yaml").write_text(
+            "workspace:\n  standard: workspace-docs@6.0.0\n",
+            encoding="utf-8",
+        )
         scripts = self.root / "scripts"
         scripts.mkdir()
         (scripts / "validate_workspace.py").write_text("# validator\n", encoding="utf-8")
@@ -42,7 +46,7 @@ class WorkspaceValidationTests(unittest.TestCase):
         for relative in (
             "workspace/agents/memory",
             "workspace/instructions/tech",
-            "workspace/instructions/standards/workspace-docs/v5.0.0",
+            "workspace/instructions/standards/workspace-docs/v6.0.0",
             "workspace/instructions/agents",
             "workspace/instructions/skills",
             "workspace/specs/backlog",
@@ -52,6 +56,7 @@ class WorkspaceValidationTests(unittest.TestCase):
             "workspace/specs/legacy",
             "workspace/docs/architecture",
             "workspace/docs/work",
+            "workspace/docs/work/multi-agent",
             "workspace/company/documents",
             "workspace/company/design",
             "workspace/company/domain",
@@ -60,8 +65,8 @@ class WorkspaceValidationTests(unittest.TestCase):
             (self.root / relative).mkdir(parents=True)
 
         standard = self.root / "workspace/instructions/standards/workspace-docs"
-        (standard / "v5.0.0" / "manifest.yaml").write_text(
-            'id: workspace-docs\nversion: "5.0.0"\n'
+        (standard / "v6.0.0" / "manifest.yaml").write_text(
+            'id: workspace-docs\nversion: "6.0.0"\n'
             "required_root_files:\n"
             "  - AGENTS.md\n"
             "  - DESIGN.md\n"
@@ -79,12 +84,14 @@ class WorkspaceValidationTests(unittest.TestCase):
             "  - workspace/specs/legacy\n"
             "  - workspace/docs/architecture\n"
             "  - workspace/docs/work\n"
+            "  - workspace/docs/work/multi-agent\n"
             "  - workspace/company/documents\n"
             "  - workspace/company/design\n"
             "  - workspace/company/domain\n"
             "  - workspace/company/strategy\n"
             "required_spec_files:\n"
             "  - workspace/specs/README.md\n"
+            "  - workspace/releases.json\n"
             "required_memory_files:\n"
             "  - workspace/agents/memory/README.md\n"
             "  - workspace/agents/memory/decisions.md\n"
@@ -96,6 +103,14 @@ class WorkspaceValidationTests(unittest.TestCase):
         )
         (standard / "default").symlink_to("v5.0.0")
         (standard / "latest").symlink_to("v5.0.0")
+        (standard / "v5.0.0").mkdir()
+        (standard / "v6.0.0" / "agents-template.md").write_text(
+            "<!-- AGENT-CONTEXT:START workspace-docs@6.0.0 -->\n"
+            "generated\n"
+            "<!-- AGENT-CONTEXT:END -->\n",
+            encoding="utf-8",
+        )
+        (self.root / "workspace/releases.json").write_text("{}\n", encoding="utf-8")
 
         memory = self.root / "workspace/agents/memory"
         for name in (
@@ -190,6 +205,13 @@ class WorkspaceValidationTests(unittest.TestCase):
         )
         errors = WorkspaceValidator(self.root).validate(["privacy"])
         self.assertTrue(any("machine-local absolute path is forbidden" in error for error in errors))
+
+    def test_old_project_pin_fails(self) -> None:
+        (self.root / "skills.yaml").write_text(
+            "workspace:\n  standard: workspace-docs@5.0.0\n", encoding="utf-8"
+        )
+        errors = WorkspaceValidator(self.root).validate(["structure"])
+        self.assertTrue(any("must pin workspace-docs@6.0.0" in error for error in errors))
 
 
 if __name__ == "__main__":

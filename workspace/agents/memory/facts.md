@@ -1,5 +1,22 @@
 # Facts
 
+## 2026-09-29 - SKM 0.9.0 candidate reserved for active work
+
+- Type: fact
+- Source: repository and user-directed migration
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+The `prod-latest` manifest reported SKM 0.8.0 at `07b4bba` on 2026-09-29;
+`development-latest` still reported 0.8.0 at `72eaf7d`. The repository
+reserves one applied 0.9.0 candidate for its active test-channel CLI and
+documentation specifications and the Workspace Docs 6.0.0 adoption. The bump
+is recorded once in `Cargo.toml` and `Cargo.lock`; it is not evidence of a
+production release.
+
 ## 2026-09-29 - Registry release notification integrated into development
 
 - Type: fact

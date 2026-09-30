@@ -1339,6 +1339,12 @@ Project configuration: VALID
 - `skm setup` - Creates global configuration
 - Environment variables - Alternative to config files
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released config management work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `none`

@@ -18,6 +18,10 @@ The standard defines:
 
 - `latest` points to `v5.0.0` (newest standard version).
 - `default` points to `v5.0.0` (recommended stable version).
+- `v6.0.0` is an unreleased candidate that adds linked-worktree isolation and
+  repository WIP records for concurrent mutating agents, plus required spec
+  version impact and shared SemVer release reservations. This repository pins
+  that candidate explicitly; the stable aliases remain on 5.0.0.
 - `v4.0.0` / `v3.0.0` / `v2.1.0` / `v2.0.0` / `v1.2.0` /
   `v1.1.0` / `v1.0.0` legacy
   versions are preserved for backward compatibility.
@@ -39,6 +43,17 @@ workspace-docs/
   VERSIONING.md
   latest -> v5.0.0
   default -> v5.0.0
+  v6.0.0/                    # unreleased candidate
+    manifest.yaml
+    agents-template.md
+    docs-tech-template.md
+    process.md
+    sdlc.md
+    memory.md
+    specs-readme-template.md
+    audit-checklist.md
+    migration.md
+    versioning.md
   v5.0.0/
     manifest.yaml
     agents-template.md
@@ -72,6 +87,10 @@ impact, and adds an explicit test state. Specifications move from development
 to test only after shared test integration and from test to done only after
 production release. Conventional branches are `develop` and `main`, but
 repositories may document equivalents.
+
+The 6.0 candidate preserves that lifecycle and requires each concurrent
+mutating agent to use a dedicated linked worktree and repository WIP record.
+Task or delivery branches require a direct user request for the named task.
 
 When the repository includes the
 [`adopt-workspace-structure` skill](../../skills/adopt-workspace-structure/SKILL.md),

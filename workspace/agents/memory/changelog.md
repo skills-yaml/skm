@@ -1,5 +1,21 @@
 # Memory Changelog
 
+## 2026-09-29 - Record Workspace Docs 6 adoption and candidate version
+
+- Type: decision and fact
+- Source: user and repository
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+Recorded the 6.0.0 candidate adoption, preserved Rust CLI layout, and
+concurrent-agent and version-reservation contracts in
+`workspace/agents/memory/decisions.md`. Recorded the applied SKM 0.9.0 shared
+candidate in `workspace/agents/memory/facts.md`. The migration specification
+remains in `development` until confirmed test-channel integration.
+
 ## 2026-09-29 - Record Registry release notification test integration
 
 - Type: fact

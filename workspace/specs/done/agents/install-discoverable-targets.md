@@ -50,6 +50,12 @@ The target directory name is the final component of the validated package name, 
 
 The flat target path changes where namespaced packages appear. Toolkit install reconciles managed links through its lockfile. Skills-only install leaves older nested links untouched; users may remove them after confirming ownership. Existing configuration remains valid.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released install discoverable targets work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `updated`

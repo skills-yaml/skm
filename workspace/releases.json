@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "historical_specs": [
+    "workspace/specs/done/agents/agent-skill-directory-integration.md",
+    "workspace/specs/done/agents/install-discoverable-targets.md",
+    "workspace/specs/done/configuration/config-management.md",
+    "workspace/specs/done/configuration/global-env-auto-config.md",
+    "workspace/specs/done/configuration/init-sequential-prompts.md",
+    "workspace/specs/done/configuration/init-tui-wizard.md",
+    "workspace/specs/done/local-dev/local-dev-mode.md",
+    "workspace/specs/done/maintenance/cleanup-commands.md",
+    "workspace/specs/done/maintenance/cleanup-safety-conformance.md",
+    "workspace/specs/done/registry/add-confirmation.md",
+    "workspace/specs/done/registry/registry-management.md",
+    "workspace/specs/done/registry/search-dedicated-add.md",
+    "workspace/specs/done/registry/search-metadata-and-bundles.md",
+    "workspace/specs/done/registry/search-skill-details-and-collections.md",
+    "workspace/specs/done/registry/search-two-column-output.md",
+    "workspace/specs/done/registry/skill-search.md",
+    "workspace/specs/done/registry/unified-skill-bundle-discovery.md",
+    "workspace/specs/done/skill-lifecycle/skill-removal-conformance.md",
+    "workspace/specs/done/skill-lifecycle/skill-removal.md",
+    "workspace/specs/done/skill-lifecycle/skill-version-management.md",
+    "workspace/specs/done/updates/auto-update-notification.md",
+    "workspace/specs/done/updates/help-update-notice.md",
+    "workspace/specs/done/updates/nib-release-update-parity.md",
+    "workspace/specs/done/workspace-governance/adopt-workspace-docs-5.md",
+    "workspace/specs/done/workspace-toolkit/registry-published-workspace-skills.md",
+    "workspace/specs/done/workspace-toolkit/remove-workspace-cli.md",
+    "workspace/specs/done/workspace-toolkit/workspace-docs-5-compatibility.md",
+    "workspace/specs/done/workspace-toolkit/workspace-docs-6-compatibility.md",
+    "workspace/specs/done/workspace-toolkit/workspace-skill-bundle-install.md",
+    "workspace/specs/done/workspace-toolkit/workspace-toolkit-manager.md"
+  ],
+  "releases": [
+    {
+      "id": "skm-next",
+      "component": "skm",
+      "baseline": "0.8.0",
+      "target": "0.9.0",
+      "impact": "minor",
+      "timing": "development-start",
+      "status": "applied",
+      "owner": "skm-development-release",
+      "version_source": "Cargo.toml",
+      "specs": [
+        "workspace/specs/development/workspace-governance/adopt-workspace-docs-6.md",
+        "workspace/specs/test/skill-lifecycle/command-contract-reconciliation.md",
+        "workspace/specs/test/skill-lifecycle/command-reorganization.md",
+        "workspace/specs/test/updates/legacy-updater-identity-handshake.md",
+        "workspace/specs/test/workspace-toolkit/separate-workspace-docs.md"
+      ],
+      "evidence": "On 2026-09-29, the prod-latest manifest reported SKM 0.8.0 at 07b4bba, and development-latest reported 0.8.0 at 72eaf7d; the remote had no v0.9.0 tag. The shared 0.9.0 candidate is applied once in Cargo.toml and Cargo.lock for active specifications."
+    }
+  ]
+}

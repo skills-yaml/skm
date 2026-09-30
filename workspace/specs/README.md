@@ -37,6 +37,7 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
+| [adopt-workspace-docs-6.md](development/workspace-governance/adopt-workspace-docs-6.md) | `workspace-governance` | `development` | User-requested 6.0.0 candidate migration is active locally; integration into `development` is not yet confirmed. |
 | [notify-registry-docs.md](test/updates/notify-registry-docs.md) | `updates` | `test` | PR #67 merged into the configured `development` test channel at `a8ad8d7` on 2026-09-29 after Validate passed; the first production release that sends the dispatch is pending. |
 | [command-contract-reconciliation.md](test/skill-lifecycle/command-contract-reconciliation.md) | `skill-lifecycle` | `test` | PR #69 merged into `development` at `46d70fa` on 2026-09-28 after Validate run `36476786848` passed; production release is pending. |
 | [legacy-updater-identity-handshake.md](test/updates/legacy-updater-identity-handshake.md) | `updates` | `test` | PR #66 merged into `development` at `ed5b0a0` after Validate run `36270555944` passed; release run `36271054364` published nine assets and an older Linux binary self-updated successfully. Cross-platform qualification remains pending. |

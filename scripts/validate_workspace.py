@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline workspace-docs@5.0.0 gates for this repository."""
+"""Offline workspace-docs@6.0.0 structure, catalog, memory, and privacy gates."""
 
 from __future__ import annotations
 
@@ -37,11 +37,11 @@ class WorkspaceValidator:
     def validate_structure(self) -> None:
         manifest_path = (
             self.root
-            / "workspace/instructions/standards/workspace-docs/v5.0.0/manifest.yaml"
+            / "workspace/instructions/standards/workspace-docs/v6.0.0/manifest.yaml"
         )
         if not manifest_path.is_file():
             self.add_error(
-                "workspace/instructions/standards/workspace-docs/v5.0.0/manifest.yaml",
+                "workspace/instructions/standards/workspace-docs/v6.0.0/manifest.yaml",
                 1,
                 "required file is missing",
             )
@@ -67,16 +67,33 @@ class WorkspaceValidator:
         agents = self.root / "AGENTS.md"
         if agents.is_file():
             content = agents.read_text(encoding="utf-8")
-            start = "<!-- AGENT-CONTEXT:START workspace-docs@5.0.0 -->"
+            start = "<!-- AGENT-CONTEXT:START workspace-docs@6.0.0 -->"
             end = "<!-- AGENT-CONTEXT:END -->"
             if content.count(start) != 1 or content.count(end) != 1:
                 self.add_error(
                     "AGENTS.md",
                     1,
-                    "generated context must be one balanced block pinned to workspace-docs@5.0.0",
+                    "generated context must be one balanced block pinned to workspace-docs@6.0.0",
                 )
             elif content.index(end) < content.index(start):
                 self.add_error("AGENTS.md", 1, "generated context markers are out of order")
+            else:
+                template_path = self.root / "workspace/instructions/standards/workspace-docs/v6.0.0/agents-template.md"
+                if not template_path.is_file():
+                    self.add_error(template_path.relative_to(self.root), 1, "generated context template is missing")
+                else:
+                    template = template_path.read_text(encoding="utf-8")
+                    if start not in template or end not in template:
+                        self.add_error(template_path.relative_to(self.root), 1, "generated context template is invalid")
+                    elif content[content.index(start):content.index(end) + len(end)] != template[template.index(start):template.index(end) + len(end)]:
+                        self.add_error("AGENTS.md", 1, "generated context differs from the pinned 6.0.0 template")
+
+        project_manifest = self.root / "skills.yaml"
+        if not project_manifest.is_file() or not re.search(
+            r"(?m)^workspace:\s*\n(?:  [^\n]*\n)*?  standard: workspace-docs@6\.0\.0\s*$",
+            project_manifest.read_text(encoding="utf-8") if project_manifest.is_file() else "",
+        ):
+            self.add_error("skills.yaml", 1, "project manifest must pin workspace-docs@6.0.0")
 
         standard_root = self.root / "workspace/instructions/standards/workspace-docs"
         for name in ("default", "latest"):
@@ -89,7 +106,7 @@ class WorkspaceValidator:
                 self.add_error(
                     link.relative_to(self.root),
                     1,
-                    "must resolve to v5.0.0",
+                    "stable alias must resolve to released v5.0.0 while 6.0.0 is draft",
                 )
 
     def validate_specs(self) -> None:
@@ -259,7 +276,7 @@ class WorkspaceValidator:
     def validate_memory(self) -> None:
         manifest_path = (
             self.root
-            / "workspace/instructions/standards/workspace-docs/v5.0.0/manifest.yaml"
+            / "workspace/instructions/standards/workspace-docs/v6.0.0/manifest.yaml"
         )
         if manifest_path.is_file():
             manifest = self.parse_manifest(manifest_path)

@@ -22,6 +22,9 @@ The project task management must be handled by gotask (task) [Task](https://gith
   - `fix`      Auto-format code and apply available automatic clippy fixes
   - `test`     Run cargo tests
   - `build`    Build the optimized release binary
+  - `versions:check` Validate spec version impact and the release ledger
+  - `coordination:check` Validate tracked peer work records
+  - `peers`    Optional wrapper for the portable peer coordination runtime
 - Additional section Taskfiles are only required when new independently managed components are added.
 
 ## Taskfile Rules
@@ -29,7 +32,9 @@ The project task management must be handled by gotask (task) [Task](https://gith
 ### Do
 
 - CI workflows MUST use Taskfiles as the execution interface for formatting, checks, builds, publishing, and releases.
-- `task check` MUST be authoritative and MUST aggregate all validations; any failure MUST block progress.
+- `task check` MUST be authoritative and MUST aggregate all validations,
+  including `versions:check` and `coordination:check`; any failure MUST block
+  progress.
 - Task semantics MUST remain consistent as new components are added.
 
 ### Don’t (Taskfile Rules)

@@ -61,6 +61,12 @@ Old names deliberately fail for ordinary CLI use. The older released updater inv
 - Focused CLI and version comparison tests, including old-name rejection and outdated success/failure cases.
 - `task check`, `task test`, and `git diff --check` pass.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | skm-next | Renamed public CLI commands in a pre-1.0 candidate. |
+
 ## Memory Impact
 
 Status: `updated`

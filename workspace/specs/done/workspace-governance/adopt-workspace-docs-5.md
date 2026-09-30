@@ -132,6 +132,12 @@ behavior are out of scope except Taskfile aggregation of the new gates.
   cannot be verified by SKM. Audit uses the complete 5.0.0 package and the
   2.0.0-through-5.0.0 notes required by `AGENT_MIGRATION.md`.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released adopt workspace docs 5 work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `updated`

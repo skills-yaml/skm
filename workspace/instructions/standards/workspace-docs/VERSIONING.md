@@ -26,11 +26,14 @@ workspace-docs/
   v3.0.0/
   v4.0.0/
   v5.0.0/
+  v6.0.0/        # unreleased candidate
   latest -> v5.0.0
   default -> v5.0.0
 ```
 
-The `latest` symlink points to the highest released version. The `default` symlink points to the recommended stable version for project adoption.
+The `latest` symlink points to the highest released version. The `default`
+symlink points to the recommended stable version for project adoption.
+Unreleased candidate directories do not move either pointer.
 
 ## Project Pinning
 
@@ -69,3 +72,11 @@ Requires a new version:
 - changing memory storage schema
 - changing generated block markers
 - changing completion gates
+
+## Per-Spec Release Planning
+
+The unreleased 6.0.0 candidate adds required
+[spec impact and release reservations](./v6.0.0/versioning.md). Each spec
+classifies its SemVer effect, and one owner applies each reserved bump at
+development start or integration. Shared specs reuse the same unreleased
+candidate; a candidate is not a released baseline.

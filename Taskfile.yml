@@ -9,6 +9,8 @@ tasks:
       - cargo clippy --all-targets --all-features -- -D warnings
       - cargo check
       - task: workspace:check
+      - task: versions:check
+      - task: coordination:check
 
   installers:check:
     desc: Validate installer, release, and qualification scripts
@@ -26,6 +28,21 @@ tasks:
     cmds:
       - python3 -B scripts/validate_workspace.py
 
+  versions:check:
+    desc: Validate spec version impact and shared release reservations
+    cmds:
+      - python3 -B scripts/validate_versions.py
+
+  coordination:check:
+    desc: Validate tracked multi-agent work records
+    cmds:
+      - python3 -B scripts/validate_coordination.py
+
+  peers:
+    desc: Run the portable peer coordination runtime
+    cmds:
+      - python3 -B workspace/instructions/skills/coordinate-multi-agent-development/scripts/peer_runtime.py {{.CLI_ARGS}}
+
   fix:
     desc: Auto-format code and apply clippy fixes
     cmds:
@@ -37,6 +54,8 @@ tasks:
     cmds:
       - cargo test -- --test-threads=1
       - python3 -B scripts/test_validate_workspace.py
+      - python3 -B scripts/test_validate_versions.py
+      - python3 -B scripts/test_validate_coordination.py
 
   build:
     desc: Build optimized release binary

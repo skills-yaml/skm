@@ -1,9 +1,9 @@
 # Project Guidelines (skm)
 
-<!-- AGENT-CONTEXT:START workspace-docs@5.0.0 -->
+<!-- AGENT-CONTEXT:START workspace-docs@6.0.0 -->
 ## Workspace Documentation Standard
 
-This project follows `workspace-docs@5.0.0`.
+This project follows `workspace-docs@6.0.0`.
 
 ### Required Reading
 
@@ -58,6 +58,40 @@ confirmed integration or release event in the spec and catalog rationale.
 Do not start implementation until the development spec has scope, acceptance
 criteria, affected areas, validation gates, and a `Memory Impact` section with
 `Status: pending`.
+
+### Spec Versioning
+
+Every non-legacy spec must include a `Version Impact` table with Component,
+Impact (`major`, `minor`, `patch`, or justified `none`), Release, and Rationale.
+Follow the pinned standard's `versioning.md` and `workspace/releases.json`.
+Reserve a target before implementation; one owner applies its bump once at
+`development-start` (default) or `merge`, before integration artifacts are built.
+Each agent checks the latest shared reservations before choosing a version and
+again at handoff. Reuse an already-applied shared release; reconcile an occupied
+independent target through the shared reservation transaction. Run `task versions:check`.
+
+### Multi-Agent Development
+
+No coordinator agent is required. On one machine sharing a Git common directory,
+peers use the installed coordination skill's bundled runtime to discover and
+claim unique tasks and create detached linked worktrees. A Task wrapper is
+optional. Keep the primary checkout coordination-only during concurrent edits.
+Creating or selecting a task branch requires a direct user request for that task.
+Read-only agents need no worktree until they mutate repository files.
+
+All peers may edit the same file in separate worktrees. Declare bounded scopes
+and maintain your own record under
+`workspace/docs/work/multi-agent/<task-id>/<agent-id>.md`; the joining peer owns
+the task index. Use the atomic JSON board in the Git common directory for live
+progress and version reservations. Independent peers review exact revisions;
+any peer may land approved work through serialized integration and explicitly
+configured native validation gates.
+
+Conflicts must be resolved before integration succeeds. Preserve interrupted
+work, obtain fresh review for revised handoffs, and never force-remove dirty
+or uncaptured worktrees. No automatic timeout steals ownership. Keep secrets,
+absolute local paths, machine identities, and raw logs out of tracked records.
+See the coordination skill for commands, recovery, and the local-only boundary.
 
 ### Documentation & Instruction Boundaries
 

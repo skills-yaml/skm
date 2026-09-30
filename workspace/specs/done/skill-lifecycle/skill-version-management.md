@@ -616,6 +616,12 @@ Done. Skill now using v1.5.0
 - `skm check` - Verify skills (should verify correct version)
 - Registry structure - Must support versioned directories
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released skill version management work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `updated`

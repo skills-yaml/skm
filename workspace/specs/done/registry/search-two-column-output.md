@@ -50,6 +50,12 @@ This changes only human-readable output, so scripts parsing that text may need t
 - `task check`, `task test`, and `git diff --check` pass.
 - Review the diff for unrelated changes and preserve the existing local `skills.yaml` modification.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | patch | historical | Previously released search two column output work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `updated`

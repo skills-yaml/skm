@@ -47,6 +47,12 @@ Read bounded frontmatter from the selected skill version for each registry entry
 
 Descriptions and manifests are untrusted input, so reads and display lengths are bounded. Bundle listing is informational until the separate bundle-install contract is implemented and published.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released search metadata and bundles work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `updated`

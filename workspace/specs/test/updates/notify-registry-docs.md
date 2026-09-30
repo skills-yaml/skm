@@ -79,6 +79,12 @@ qualification reads, unchanged.
 - After the next production release, the Registry receives the event and
   opens `Docs review: skm <version>`.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | none | none | The production notification changes the release workflow without changing a versioned SKM artifact or CLI contract. |
+
 ## Memory Impact
 
 Status: `updated`

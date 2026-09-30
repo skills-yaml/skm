@@ -79,6 +79,12 @@ change.
 - `grep -in workspace README.md` returns only the pointer section and the
   repository's own Development gates.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | patch | skm-next | Changed published project documentation without altering CLI behavior. |
+
 ## Memory Impact
 
 Status: `updated`

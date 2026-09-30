@@ -354,6 +354,12 @@ Would you like to update now? [y/N]
 - `updater::check_and_notify_update()` - New function, main entry point
 - `BaseConfig` - Extended with `check_for_updates` field
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released auto update notification work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `none`

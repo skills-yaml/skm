@@ -9,7 +9,9 @@ This document defines CI/CD pipeline rules for the `skm` project. These rules ap
 CI workflows must align with our local task automation setup:
 
 1. **Invoke Taskfiles**: The CI pipeline must call tasks defined in `Taskfile.yml` rather than invoking tools (like rustfmt, clippy, cargo) directly.
-2. **Authoritative Check**: `task check` must be the entrypoint for formatting and static analysis checks. Any failure must block the build.
+2. **Authoritative Check**: `task check` must be the entrypoint for formatting,
+   static analysis, Workspace Docs structure, `versions:check`, and
+   `coordination:check`. Any failure must block the build.
 3. **Deterministic Verification**: `task test` must run to execute unit and integration tests.
 4. **Release Build**: `task build` should run before publishing release artifacts.
 

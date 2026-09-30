@@ -45,6 +45,12 @@ dedicated `skm add` command when they want to install a result.
 - `task build`
 - `git diff --check`
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | patch | historical | Previously released search dedicated add work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: updated

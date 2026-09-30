@@ -138,6 +138,12 @@ check, its binary reported the expected production version and commit, and the
 manifest matched version `0.6.0`, channel `prod`, the release commit, and the
 complete platform asset set.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | patch | historical | Previously released nib release update parity work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: updated
