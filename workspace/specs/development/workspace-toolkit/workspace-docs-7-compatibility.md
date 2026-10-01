@@ -13,7 +13,8 @@ local toolkit validation rejects the same declaration.
 Extend supported majors in `src/bundle.rs` and `src/toolkit.rs` to 4.x, 5.x,
 6.x, and 7.x. Update README, regression fixtures, and production version to 0.8.1. Preserve
 integrity, adapter, minimum-version, transaction, and source-containment checks.
-The repository keeps its Workspace Docs 5 pin; no instruction adoption occurs.
+Existing repository pins are preserved: development uses Workspace Docs 6,
+while the production maintenance branch uses Workspace Docs 5. No adoption occurs.
 
 ## Acceptance Criteria
 
@@ -53,3 +54,9 @@ maintenance candidate into development first, retaining development's existing
 against the live v7 bundle, then release the independently reviewed and fully
 verified 0.8.1 maintenance branch through a main PR. Both actual combined
 revisions must pass native checks; no completion is inferred from branch names.
+
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | patch | skm-next | Add explicit v7 compatibility within the already-applied shared development release; production maintenance is separately 0.8.1. |
