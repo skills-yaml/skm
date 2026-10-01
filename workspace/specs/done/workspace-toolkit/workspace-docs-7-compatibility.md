@@ -1,6 +1,6 @@
 # Workspace Docs 7 Compatibility
 
-State: test
+State: done
 
 ## Problem and Authority
 
@@ -13,7 +13,8 @@ local toolkit validation rejects the same declaration.
 Extend supported majors in `src/bundle.rs` and `src/toolkit.rs` to 4.x, 5.x,
 6.x, and 7.x. Update README, regression fixtures, and production version to 0.8.1. Preserve
 integrity, adapter, minimum-version, transaction, and source-containment checks.
-The repository keeps its Workspace Docs 5 pin; no instruction adoption occurs.
+Existing pins are preserved: production uses Workspace Docs 5 and development
+uses Workspace Docs 6. No instruction adoption occurs.
 
 ## Acceptance Criteria
 
@@ -77,3 +78,25 @@ agree on channel development, version 0.9.0, and that exact commit. The publishe
 binary installed all twenty live v7 bundle members in a fresh project, created
 40 Codex/Cursor links, passed `skm check`, and proposed zero additions or links
 on repetition. Production remains pending; no main release is inferred.
+
+## Confirmed Production Release
+
+PR #75 merged the independently reviewed maintenance candidate
+`54524bb4bce314f9d7bf6978e667f7148514707a` into main on 2026-10-01 at
+`49468aab7f6bbbe9c474001823ad6f79ab207f32`; its actual combined tree equals
+that candidate. Production CI `36849153059` and four-platform release
+`36849152975` passed. The published Linux archive passed SHA-256 verification;
+its manifest and `skm version` identify prod, 0.8.1, and that exact commit.
+
+The production binary installed all twenty live Workspace v7 bundle members
+in a fresh Codex/Cursor project, passed `skm check`, and proposed no additions
+or links on repetition. The bundled adoption default selects released v7.
+All five acceptance criteria are supported by the reviewed positive/negative
+regression fixtures, native check/test/build gates, and both published-channel
+qualifications above. Earlier pending statements are historical checkpoints.
+
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | patch | skm-v7-maintenance | Production maintenance 0.8.1 adds explicit v7 support; development retains its independently applied shared 0.9.0 reservation. |
