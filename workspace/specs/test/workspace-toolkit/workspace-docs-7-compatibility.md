@@ -1,6 +1,6 @@
 # Workspace Docs 7 Compatibility
 
-State: development
+State: test
 
 ## Problem and Authority
 
@@ -53,3 +53,27 @@ maintenance candidate into development first, retaining development's existing
 against the live v7 bundle, then release the independently reviewed and fully
 verified 0.8.1 maintenance branch through a main PR. Both actual combined
 revisions must pass native checks; no completion is inferred from branch names.
+
+## Confirmed Development Integration
+
+PR #76 integrated reviewed candidate
+`3f8e0ddd67bbc82d2ef099d4b7a99e86a6584d99` into development on 2026-10-01
+at `9068581b1294d4a87705994db71e0b37f7b06abf`. The actual combined tree equals
+the reviewed candidate. Native checks, tests, optimized builds, and PR CI
+passed. The local development binary installed all twenty published v7 bundle
+members, passed `skm check`, and proposed zero additions on repetition.
+
+Production maintenance candidate `167c9dd562b536ff0e795ed7fc55fd91d3d911ad`
+passed independent review, `task check`, all 153 Rust and six documentation
+tests, `task build`, and PR #75 CI. Development artifact qualification and
+production publication remain separate release gates.
+
+## Published Development Qualification
+
+Release run `36847929386` passed all four platform builds and published
+development-latest at `9068581b1294d4a87705994db71e0b37f7b06abf`. The downloaded
+Linux archive passed its SHA-256 check; its manifest and `skm self version`
+agree on channel development, version 0.9.0, and that exact commit. The published
+binary installed all twenty live v7 bundle members in a fresh project, created
+40 Codex/Cursor links, passed `skm check`, and proposed zero additions or links
+on repetition. Production remains pending; no main release is inferred.
