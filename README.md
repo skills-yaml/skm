@@ -407,7 +407,7 @@ contain symlinks. The committed `skills.lock.yaml` records toolkit and workspace
 versions and integrity, resolved skill and profile versions and integrity,
 adapter versions and capabilities, and every managed output.
 
-SKM accepts toolkit packages targeting Workspace Docs 4.x, 5.x, or 6.x and
+SKM accepts toolkit packages targeting Workspace Docs 4.x, 5.x, 6.x, or 7.x and
 toolkit skill entries with dependency IDs. Selected bundles expand the complete
 toolkit dependency closure. The current Workspace toolkit uses the 5.x
 `backlog -> development -> test -> done`

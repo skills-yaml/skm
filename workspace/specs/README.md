@@ -67,4 +67,5 @@ reopened, is superseded, or materially changes why it is in its state.
 | [skill-search.md](done/registry/skill-search.md) | `registry` | `done` | PR #18 released SKM 0.5.0 through `main` at `488860f`; production CI and all platform packages passed, and the Linux checksum, version, and search help were verified. |
 | [search-dedicated-add.md](done/registry/search-dedicated-add.md) | `registry` | `done` | PR #32 released the read-only search boundary in SKM 0.6.0 at `769f5a4`; production CI, publication, checksum, binary identity, and manifest verification passed. |
 | [agent-skill-directory-integration.md](done/agents/agent-skill-directory-integration.md) | `agents` | `done` | PR #40 released the tested agent targets through `main` at `a6cdef2`; production CI and the verified complete four-platform publication passed. |
+| [Workspace Docs 7 Compatibility](development/workspace-toolkit/workspace-docs-7-compatibility.md) | `workspace-toolkit` | `development` | User-approved compatibility repair for the published v7 namespace and local toolkit; release and live installation remain pending. |
 <!-- SPEC-CATALOG:END -->
