@@ -601,3 +601,20 @@ Registry bundle and local toolkit validation explicitly support Workspace Docs
 4.x, 5.x, 6.x, and 7.x. Future majors remain rejected; minimum SKM version,
 integrity, adapter, and transaction checks remain independently enforced.
 Production and development release events must be verified separately.
+
+## 2026-10-01 - Release Workspace Docs 7 Compatibility
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: none
+- Supersedes: V7 bundle rejection in previously published SKM builds
+
+Content:
+
+PR #76 integrated v7 compatibility into development at 9068581; the published
+0.9.0 development artifact passed checksum, identity, fresh twenty-member
+bundle installation, skm check, and no-op repetition. PR #75 released the
+focused 0.8.1 maintenance fix through main at 49468aa; production CI and all
+four platforms passed, and the published Linux artifact repeated that live
+qualification. Future compatibility majors remain explicitly rejected.
