@@ -12,7 +12,7 @@ const LOCKFILE_NAME: &str = "skills.lock.yaml";
 const TRANSACTION_PATH: &str = ".skm/transactions/current";
 const ADAPTER_VERSION: &str = "2.0.0";
 const WORKSPACE_DOCS_COMPATIBILITY_ERROR: &str =
-    "toolkit must declare a supported workspace_docs_compatibility: 4.x, 5.x, or 6.x";
+    "toolkit must declare a supported workspace_docs_compatibility: 4.x, 5.x, 6.x, or 7.x";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -740,7 +740,7 @@ fn validate_manifest(
     }
     if !matches!(
         manifest.workspace_docs_compatibility.as_deref(),
-        Some("4.x" | "5.x" | "6.x")
+        Some("4.x" | "5.x" | "6.x" | "7.x")
     ) {
         return Err(WORKSPACE_DOCS_COMPATIBILITY_ERROR.into());
     }
@@ -2100,7 +2100,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unsupported_workspace_docs_compatibility() {
+    fn installs_workspace_docs_7_toolkit_and_is_byte_idempotent() {
         let (temp, config) = fixture();
         let manifest_path = temp
             .path()
@@ -2115,10 +2115,37 @@ mod tests {
         )
         .unwrap();
 
+        let first = build_plan(&config, temp.path()).unwrap();
+        apply_plan(temp.path(), first, None).unwrap();
+        check(&config, temp.path()).unwrap();
+        let lock_path = temp.path().join(LOCKFILE_NAME);
+        let first_lock = fs::read(&lock_path).unwrap();
+        let second = build_plan(&config, temp.path()).unwrap();
+        assert!(second.public.actions.is_empty());
+        apply_plan(temp.path(), second, None).unwrap();
+        assert_eq!(fs::read(lock_path).unwrap(), first_lock);
+    }
+
+    #[test]
+    fn rejects_unsupported_workspace_docs_compatibility() {
+        let (temp, config) = fixture();
+        let manifest_path = temp
+            .path()
+            .join("workspace/instructions/toolkit/manifest.yaml");
+        let manifest = fs::read_to_string(&manifest_path).unwrap();
+        fs::write(
+            manifest_path,
+            manifest.replace(
+                "workspace_docs_compatibility: 4.x",
+                "workspace_docs_compatibility: 8.x",
+            ),
+        )
+        .unwrap();
+
         let error = build_plan(&config, temp.path()).err().unwrap();
         assert!(error
             .to_string()
-            .contains("supported workspace_docs_compatibility: 4.x, 5.x, or 6.x"));
+            .contains("supported workspace_docs_compatibility: 4.x, 5.x, 6.x, or 7.x"));
         assert!(!temp.path().join(LOCKFILE_NAME).exists());
         assert!(!temp.path().join(".agents/skills/write-spec").exists());
     }
@@ -2140,7 +2167,7 @@ mod tests {
             let error = build_plan(&config, temp.path()).err().unwrap();
             assert!(error
                 .to_string()
-                .contains("supported workspace_docs_compatibility: 4.x, 5.x, or 6.x"));
+                .contains("supported workspace_docs_compatibility: 4.x, 5.x, 6.x, or 7.x"));
             assert!(!temp.path().join(LOCKFILE_NAME).exists());
             assert!(!temp.path().join(".agents/skills/write-spec").exists());
         }
@@ -2159,6 +2186,29 @@ mod tests {
                 .replace(
                     "workspace_docs_compatibility: 4.x",
                     "workspace_docs_compatibility: 6.x",
+                )
+                .replace("minimum_skm_version: 0.2.0", "minimum_skm_version: 99.0.0"),
+        )
+        .unwrap();
+
+        let error = build_plan(&config, temp.path()).err().unwrap();
+        assert!(error.to_string().contains("toolkit requires SKM 99.0.0"));
+        assert!(!temp.path().join(LOCKFILE_NAME).exists());
+    }
+
+    #[test]
+    fn workspace_docs_7_does_not_bypass_minimum_skm_version() {
+        let (temp, config) = fixture();
+        let manifest_path = temp
+            .path()
+            .join("workspace/instructions/toolkit/manifest.yaml");
+        let manifest = fs::read_to_string(&manifest_path).unwrap();
+        fs::write(
+            manifest_path,
+            manifest
+                .replace(
+                    "workspace_docs_compatibility: 4.x",
+                    "workspace_docs_compatibility: 7.x",
                 )
                 .replace("minimum_skm_version: 0.2.0", "minimum_skm_version: 99.0.0"),
         )

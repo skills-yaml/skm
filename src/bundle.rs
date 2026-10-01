@@ -436,7 +436,7 @@ fn validate_manifest(manifest: &NamespaceManifest, namespace: &str) -> Result<()
             || manifest.source_revision.as_deref().unwrap().len() != 40
             || !matches!(
                 manifest.workspace_docs_compatibility.as_deref(),
-                Some("4.x" | "5.x" | "6.x")
+                Some("4.x" | "5.x" | "6.x" | "7.x")
             )
             || manifest.skm_adapter_compatibility.as_deref() != Some("2.x")
         {
@@ -1001,6 +1001,30 @@ mod tests {
         );
         let manifest: NamespaceManifest = serde_yaml::from_str(&raw).unwrap();
         validate_manifest(&manifest, "workspace").unwrap();
+        for compatibility in ["4.x", "5.x", "6.x", "7.x"] {
+            let supported = raw.replace(
+                "compatibility: 5.x",
+                &format!("compatibility: {compatibility}"),
+            );
+            let manifest: NamespaceManifest = serde_yaml::from_str(&supported).unwrap();
+            validate_manifest(&manifest, "workspace").unwrap();
+        }
+        for compatibility in ["8.x", "7", ""] {
+            let unsupported = raw.replace(
+                "compatibility: 5.x",
+                &format!("compatibility: {compatibility}"),
+            );
+            let manifest: NamespaceManifest = serde_yaml::from_str(&unsupported).unwrap();
+            assert!(validate_manifest(&manifest, "workspace").is_err());
+        }
+        let v7_minimum = raw
+            .replace("compatibility: 5.x", "compatibility: 7.x")
+            .replace("minimum_skm_version: 0.4.0", "minimum_skm_version: 99.0.0");
+        let manifest: NamespaceManifest = serde_yaml::from_str(&v7_minimum).unwrap();
+        assert!(validate_manifest(&manifest, "workspace")
+            .unwrap_err()
+            .to_string()
+            .contains("or newer"));
         let incomplete = raw.replace("[alpha, beta]", "[alpha]");
         let manifest: NamespaceManifest = serde_yaml::from_str(&incomplete).unwrap();
         assert!(validate_manifest(&manifest, "workspace")

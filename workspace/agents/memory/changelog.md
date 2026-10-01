@@ -819,3 +819,18 @@ Recorded the passing four-platform development release, checksum, manifest,
 released-binary bundle preview, and `skm check` evidence in
 `workspace/agents/memory/facts.md`. Registry publication and production release
 remain pending.
+
+## 2026-10-01 - Support Workspace Docs 7 Compatibility
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: none
+- Supersedes: Supported-major set ending at Workspace Docs 6
+
+Content:
+
+Registry bundle and local toolkit validation explicitly support Workspace Docs
+4.x, 5.x, 6.x, and 7.x. Future majors remain rejected; minimum SKM version,
+integrity, adapter, and transaction checks remain independently enforced.
+Production and development release events must be verified separately.
