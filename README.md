@@ -437,6 +437,10 @@ symlinks, and `skm check` verifies that each link points to its expected source.
 
 ## Workspace Toolkits
 
+Registry bundles and local toolkit manifests support Workspace Docs 4.x, 5.x,
+6.x, and 7.x. Unsupported future majors remain rejected; declared minimum SKM
+versions and existing integrity and transaction checks still apply.
+
 SKM can also install Workspace development toolkits: versioned bundles, role
 profiles, and a pinned workspace-docs standard declared with optional
 `toolkit`, `bundles`, `profiles`, and `workspace` fields in `skills.yaml`.
