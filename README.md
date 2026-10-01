@@ -407,12 +407,12 @@ contain symlinks. The committed `skills.lock.yaml` records toolkit and workspace
 versions and integrity, resolved skill and profile versions and integrity,
 adapter versions and capabilities, and every managed output.
 
-SKM accepts toolkit packages targeting Workspace Docs 4.x, 5.x, or 6.x and
+SKM accepts toolkit packages targeting Workspace Docs 4.x, 5.x, 6.x, or 7.x and
 toolkit skill entries with dependency IDs. Selected bundles expand the complete
-toolkit dependency closure. The current Workspace toolkit uses the 5.x
-`backlog -> development -> test -> done`
-lifecycle; `develop` and `main` are conventional targets that repositories may
-replace with explicitly documented equivalents.
+toolkit dependency closure. Lifecycle rules follow each project's concrete
+Workspace Docs pin. Published Workspace v7 supports blocked specs and verified
+main completion; older pins retain their prior contracts. This SKM repository
+remains pinned to Workspace Docs 5.
 
 The initial profile adapters are deliberately different: Codex receives native
 project custom-agent TOML under `.codex/agents/`; Cursor receives an explicitly
