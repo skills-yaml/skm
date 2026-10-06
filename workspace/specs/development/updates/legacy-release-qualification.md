@@ -38,7 +38,7 @@ Optional inputs retain ordinary qualification compatibility. Historical artifact
 
 Status: `updated`
 
-Rationale: Recorded the supplemental legacy-path requirement and preserved current-pair/protection gates in decisions.md and changelog.md; actual qualification/publication remain unconfirmed.
+Rationale: Recorded the supplemental legacy-path requirement and preserved current-pair/protection gates in `workspace/agents/memory/decisions.md` and `workspace/agents/memory/changelog.md`; actual qualification/publication remain unconfirmed.
 
 ## Local Regression Evidence
 
