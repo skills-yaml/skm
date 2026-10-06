@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: The user explicitly requested migration to 7.0.0 on 2026-10-05. Local implementation has passed independent review and aggregate checks/tests; result-record reconciliation is verified before handoff. Shared-test integration and main merge are not confirmed.
+Rationale: PR #79 merged into development at 6e572b29ca35b4ecafd841d870d5cbc8e08b4a32 on 2026-10-06 after CI run 37450733442 passed. The reviewed combined candidate passed task check, all 202 tests, and task build. Main promotion and publication remain pending.
 
 ## Problem and Scope
 
@@ -132,3 +132,12 @@ validation; their done history and memory entries remain intact. The applied
 links, and staged changes are excluded from delivery. This combined candidate
 receives fresh independent review and full checks/tests before push or merge.
 Actual test integration and main merge remain pending until verified events.
+
+## Confirmed Test Integration
+
+PR #79 merged into development at 6e572b29ca35b4ecafd841d870d5cbc8e08b4a32 on 2026-10-06 after CI run 37450733442 passed. The reviewed combined candidate passed task check, all 202 tests, and task build. Main promotion and publication remain pending.
+
+Earlier local evidence records describe their historical snapshots. The current
+combined delivery supersedes their unconfirmed-integration statements. The main
+promotion preserves the production 0.8.1 history and reuses applied SKM 0.9.0;
+production publication retains its required human approval.

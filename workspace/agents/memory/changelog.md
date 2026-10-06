@@ -901,3 +901,15 @@ boundary. Recorded SKM format ownership, generic namespace/member checks, remova
 of Workspace-only CLI/config/lock/source behavior, preservation of opaque YAML
 data, and retained actual installation safety. Repository governance remains a
 separate contributor contract.
+
+## 2026-10-06 - Record confirmed development integration
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: after main merge
+- Supersedes: none
+
+Content:
+
+Appended the verified PR #79 development merge and checks to facts.md; advanced the three linked specifications to test and reconciled catalog/release membership. Main completion and production publication remain pending.

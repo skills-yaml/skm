@@ -618,3 +618,15 @@ bundle installation, skm check, and no-op repetition. PR #75 released the
 focused 0.8.1 maintenance fix through main at 49468aa; production CI and all
 four platforms passed, and the published Linux artifact repeated that live
 qualification. Future compatibility majors remain explicitly rejected.
+
+## 2026-10-06 - Integrate publisher-independent formats and Workspace Docs 7
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: after main merge
+- Supersedes: none
+
+Content:
+
+PR #79 merged into development at 6e572b29ca35b4ecafd841d870d5cbc8e08b4a32 on 2026-10-06 after CI run 37450733442 passed. The reviewed combined candidate passed task check, all 202 tests, and task build. Main promotion and publication remain pending. The repository governance standard is 7.0.0; SKM runtime owns its registry format without publisher-specific policy. This supersedes the older supported-major runtime rule.
