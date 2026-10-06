@@ -467,3 +467,15 @@ preserving existing YAML data. Generic toolkit/profile installation and actual
 package integrity, ownership, path, dependency, and transaction checks remain.
 Repository development governance is separate. Reuse the applied shared 0.9.0
 candidate; local completion does not prove integration or publication.
+
+## 2026-10-06 - Require actual legacy bootstrap qualification
+
+- Type: decision
+- Source: user and release review
+- Confidence: high
+- Review: after production qualification
+- Supersedes: none
+
+Content:
+
+Before publishing the command-reorganized SKM 0.9.0 release, qualify both the consecutive recent development pair and an immutable older development binary using version/update on Linux, macOS Intel/ARM, and Windows. A recent self-command binary cannot count as legacy evidence. Preserve all current-pair, exact-revision, artifact integrity, and protected-production gates. Use the normal configured-reviewer approval path under the user's explicit production-release instruction without altering protections.

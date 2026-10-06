@@ -19,6 +19,14 @@ on:
         description: Held main Release Artifacts run for the exact candidate commit
         required: true
         type: string
+      legacy_bootstrap_run_id:
+        description: Optional earlier development release using version/update commands
+        required: false
+        type: string
+      legacy_bootstrap_commit:
+        description: Exact commit embedded in the optional legacy development bootstrap
+        required: false
+        type: string
 
 permissions:
   actions: read
@@ -44,6 +52,8 @@ jobs:
           BOOTSTRAP_COMMIT: ${{ inputs.bootstrap_commit }}
           CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
           PRODUCTION_RUN_ID: ${{ inputs.production_run_id }}
+          LEGACY_BOOTSTRAP_RUN_ID: ${{ inputs.legacy_bootstrap_run_id }}
+          LEGACY_BOOTSTRAP_COMMIT: ${{ inputs.legacy_bootstrap_commit }}
         run: |
           set -euo pipefail
 
@@ -93,6 +103,25 @@ jobs:
           comparison=$(gh api "repos/$GITHUB_REPOSITORY/compare/$BOOTSTRAP_COMMIT...$GITHUB_SHA")
           test "$(jq -r .status <<<"$comparison")" = "ahead"
           test "$(jq -r .merge_base_commit.sha <<<"$comparison")" = "$BOOTSTRAP_COMMIT"
+
+          if [ -n "$LEGACY_BOOTSTRAP_RUN_ID" ] || [ -n "$LEGACY_BOOTSTRAP_COMMIT" ]; then
+            grep -Eq '^[0-9]+$' <<<"$LEGACY_BOOTSTRAP_RUN_ID"
+            grep -Eq '^[0-9a-f]{40}$' <<<"$LEGACY_BOOTSTRAP_COMMIT"
+            test "$LEGACY_BOOTSTRAP_COMMIT" != "$GITHUB_SHA"
+            test "$LEGACY_BOOTSTRAP_RUN_ID" -lt "$BOOTSTRAP_RUN_ID"
+            legacy_run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$LEGACY_BOOTSTRAP_RUN_ID")
+            test "$(jq -r .name <<<"$legacy_run")" = "Release Artifacts"
+            test "$(jq -r .path <<<"$legacy_run")" = ".github/workflows/release.yml"
+            test "$(jq -r .workflow_id <<<"$legacy_run")" = "$workflow_id"
+            test "$(jq -r .event <<<"$legacy_run")" = "push"
+            test "$(jq -r .head_branch <<<"$legacy_run")" = "development"
+            test "$(jq -r .head_sha <<<"$legacy_run")" = "$LEGACY_BOOTSTRAP_COMMIT"
+            test "$(jq -r .conclusion <<<"$legacy_run")" = "success"
+            legacy_comparison=$(gh api \
+              "repos/$GITHUB_REPOSITORY/compare/$LEGACY_BOOTSTRAP_COMMIT...$GITHUB_SHA")
+            test "$(jq -r .status <<<"$legacy_comparison")" = "ahead"
+            test "$(jq -r .merge_base_commit.sha <<<"$legacy_comparison")" = "$LEGACY_BOOTSTRAP_COMMIT"
+          fi
 
           bootstrap_created=$(jq -r .created_at <<<"$bootstrap_run")
           candidate_created=$(jq -r .created_at <<<"$candidate_run")
@@ -176,6 +205,88 @@ jobs:
           CANDIDATE_COMMIT="${{ github.sha }}"
           CANDIDATE_VERSION="${{ needs.prepare.outputs.candidate_version }}"
 
+      - name: Download supplemental legacy artifact
+        if: inputs.legacy_bootstrap_run_id != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ matrix.asset }}
+          path: legacy-bootstrap
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.legacy_bootstrap_run_id }}
+
+      - name: Download current artifact for negative legacy check
+        if: inputs.legacy_bootstrap_run_id != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ matrix.asset }}
+          path: current-bootstrap
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.candidate_run_id }}
+
+      - name: Reject modern bootstrap in legacy mode (Unix)
+        if: inputs.legacy_bootstrap_run_id != '' && runner.os != 'Windows'
+        shell: bash
+        env:
+          SKM_REQUIRE_LEGACY_BOOTSTRAP: "1"
+        run: |
+          set -euo pipefail
+          if task ${{ matrix.task }} \
+            BOOTSTRAP_ARCHIVE="current-bootstrap/${{ matrix.asset }}" \
+            BOOTSTRAP_COMMIT="${{ github.sha }}" \
+            CANDIDATE_COMMIT="${{ inputs.legacy_bootstrap_commit }}" \
+            CANDIDATE_VERSION="${{ needs.prepare.outputs.candidate_version }}" \
+            >legacy-negative.log 2>&1; then
+            echo "Modern bootstrap unexpectedly passed legacy qualification." >&2
+            exit 1
+          fi
+          cat legacy-negative.log
+          grep -Fq 'legacy qualification requires a version/update bootstrap' legacy-negative.log
+
+      - name: Reject modern bootstrap in legacy mode (Windows)
+        if: inputs.legacy_bootstrap_run_id != '' && runner.os == 'Windows'
+        shell: pwsh
+        env:
+          SKM_REQUIRE_LEGACY_BOOTSTRAP: "1"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $output = (task ${{ matrix.task }} `
+            BOOTSTRAP_ARCHIVE="current-bootstrap/${{ matrix.asset }}" `
+            BOOTSTRAP_COMMIT="${{ github.sha }}" `
+            CANDIDATE_COMMIT="${{ inputs.legacy_bootstrap_commit }}" `
+            CANDIDATE_VERSION="${{ needs.prepare.outputs.candidate_version }}" 2>&1 | Out-String)
+          $exitCode = $LASTEXITCODE
+          Write-Output $output
+          if ($exitCode -eq 0 -or -not $output.Contains('legacy qualification requires a version/update bootstrap')) {
+            throw "Modern bootstrap was not rejected by the legacy qualification guard."
+          }
+          exit 0
+
+      - name: Exercise legacy notification and replacement (Unix)
+        if: inputs.legacy_bootstrap_run_id != '' && runner.os != 'Windows'
+        shell: bash
+        env:
+          SKM_REQUIRE_LEGACY_BOOTSTRAP: "1"
+        run: >-
+          task ${{ matrix.task }}
+          BOOTSTRAP_ARCHIVE="legacy-bootstrap/${{ matrix.asset }}"
+          BOOTSTRAP_COMMIT="${{ inputs.legacy_bootstrap_commit }}"
+          CANDIDATE_COMMIT="${{ github.sha }}"
+          CANDIDATE_VERSION="${{ needs.prepare.outputs.candidate_version }}"
+
+      - name: Exercise legacy notification and replacement (Windows)
+        if: inputs.legacy_bootstrap_run_id != '' && runner.os == 'Windows'
+        shell: pwsh
+        env:
+          SKM_REQUIRE_LEGACY_BOOTSTRAP: "1"
+        run: >-
+          task ${{ matrix.task }}
+          BOOTSTRAP_ARCHIVE="legacy-bootstrap/${{ matrix.asset }}"
+          BOOTSTRAP_COMMIT="${{ inputs.legacy_bootstrap_commit }}"
+          CANDIDATE_COMMIT="${{ github.sha }}"
+          CANDIDATE_VERSION="${{ needs.prepare.outputs.candidate_version }}"
+
   verify:
     name: Confirm production remains held
     needs:
@@ -208,4 +319,3 @@ jobs:
           test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/development" --jq .object.sha)" = "$GITHUB_SHA"
           test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/development-latest" --jq .object.sha)" = "$GITHUB_SHA"
           test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/prod-latest" --jq .object.sha)" != "$GITHUB_SHA"
-
