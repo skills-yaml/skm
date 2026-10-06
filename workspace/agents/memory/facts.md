@@ -630,3 +630,15 @@ qualification. Future compatibility majors remain explicitly rejected.
 Content:
 
 PR #79 merged into development at 6e572b29ca35b4ecafd841d870d5cbc8e08b4a32 on 2026-10-06 after CI run 37450733442 passed. The reviewed combined candidate passed task check, all 202 tests, and task build. Main promotion and publication remain pending. The repository governance standard is 7.0.0; SKM runtime owns its registry format without publisher-specific policy. This supersedes the older supported-major runtime rule.
+
+## 2026-10-06 - Complete Workspace Docs 7 and publisher-independent formats
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: after production publication
+- Supersedes: none
+
+Content:
+
+PR #80 merged the confirmed development implementation into main at 79658625c5bb30cd84b0ad5185237e28e20038eb on 2026-10-06; actual main CI run 37451646628 passed task check, all 202 tests, and task build. Acceptance, documentation, catalog, applied SKM 0.9.0, and memory are reconciled. Production publication remains separately subject to qualification and human release-prod approval. The earlier supported-major allowlist and Workspace-specific runtime contract are superseded; Workspace skills own governance compatibility while SKM validates its installation format.
