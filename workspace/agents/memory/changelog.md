@@ -925,3 +925,15 @@ Appended the verified PR #79 development merge and checks to facts.md; advanced 
 Content:
 
 Appended verified PR #80 main merge and actual main CI evidence to facts.md. Reconciled the three new specifications to done and updated catalog/release member paths. The existing applied 0.9.0 target is retained; older release-bound specs and production publication remain pending.
+
+## 2026-10-06 - Record supplemental legacy qualification
+
+- Type: decision
+- Source: user and release review
+- Confidence: high
+- Review: after production qualification
+- Supersedes: none
+
+Content:
+
+Appended the release-readiness decision to decisions.md and added the active validation-only follow-up spec. Recorded modern-bootstrap rejection, supplemental old-to-new qualification, unchanged current-pair gates, and normal protected publication authorization.

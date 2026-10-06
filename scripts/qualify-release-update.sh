@@ -49,6 +49,11 @@ else
   echo "bootstrap binary has no supported version identity command" >&2
   exit 1
 fi
+if [ "${SKM_REQUIRE_LEGACY_BOOTSTRAP:-0}" = "1" ] &&
+   [ "${bootstrap_version_args[0]}" != "version" ]; then
+  echo "legacy qualification requires a version/update bootstrap" >&2
+  exit 1
+fi
 bootstrap_version=$(
   SKM_NO_UPDATE_CHECK=1 "$skm_path" "${bootstrap_version_args[@]}"
 )

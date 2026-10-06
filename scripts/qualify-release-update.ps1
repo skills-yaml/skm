@@ -60,6 +60,10 @@ try {
         $bootstrapVersionArgs = @("version")
         $bootstrapUpgradeArgs = @("update")
     }
+    if ($env:SKM_REQUIRE_LEGACY_BOOTSTRAP -ceq "1" -and
+        $bootstrapVersionArgs[0] -cne "version") {
+        throw "legacy qualification requires a version/update bootstrap"
+    }
     $bootstrapVersion = (& $skmPath @bootstrapVersionArgs | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or
         $bootstrapVersion -notmatch '^skm ([^ ]+) \(development - ([0-9a-f]{40})\)$' -or
