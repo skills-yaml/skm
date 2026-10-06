@@ -1130,6 +1130,12 @@ Development mode disabled
 4. **Sync to registry**: Command to sync a dev skill to a registry
 5. **Dev skill dependencies**: Support dependencies between dev skills
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released local dev mode work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `updated`

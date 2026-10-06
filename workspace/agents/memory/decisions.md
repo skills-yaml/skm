@@ -1,5 +1,142 @@
 # Decisions
 
+## 2026-09-30 - Bare invocation shares help update notices
+
+- Type: decision
+- Source: user and regression test
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Bare `skm` must run the same best-effort startup notice hook as explicit help,
+preserving Clap's help output and exit behavior. Incomplete subcommands and
+invalid arguments remain outside the help notification path. Existing terminal,
+managed-build, and opt-out checks still control whether a notice appears.
+
+## 2026-09-29 - Adopt the Workspace Docs 6.0.0 candidate
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: 2026-08-19 - Adopt workspace-docs@5.0.0
+
+Content:
+
+This repository adopts the `workspace-docs@6.0.0` candidate while retaining
+the existing Rust CLI layout and task, SDLC, CI, and project-structure guides.
+The stable standard aliases remain on released 5.0.0. Concurrent mutating
+agents use detached linked worktrees, tracked peer records, and the portable
+coordination runtime. Every current spec declares version impact; the shared
+SKM candidate is reserved and checked through `workspace/releases.json`.
+
+## 2026-09-26 - Notify the Registry after each production release
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after the first production release that sends it
+- Supersedes: none
+
+Content:
+
+Every SKM production release sends a `skm-released` `repository_dispatch` to
+`skills-yaml/registry`, whose `Upstream Release` workflow opens a
+`docs-review` issue. Development releases do not notify. The job uses the
+`workspace-registry-publisher` GitHub App, runs with `continue-on-error`, and
+never gates or changes the release.
+
+
+
+## 2026-09-28 - Consolidate the SKM command surface
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: 2026-09-24 - Use one registry search and add interface for skills and bundles (bundle command alias only)
+
+Content:
+
+Published bundles use `skm add --kind bundle`; the separate `skm bundle`
+command is retired. The inert `skm dev mode` command and redundant
+`skm init-config` command are retired. Skills-only installation gains a
+read-only plan, rollback-protected link application, and a deterministic
+project lockfile. `skm skill upgrade --all` updates cached exact pins as one
+reviewed change. The configured default registry governs new additions, while
+source-less existing pins keep their historical `default` source. Cache refresh
+honors project registry overrides. `--registry` is the preferred add spelling;
+older `--source` remains accepted.
+
+## 2026-09-26 - Preserve the legacy updater identity handshake
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after cross-platform release qualification
+- Supersedes: none
+
+Content:
+
+Older SKM self-updaters may invoke top-level `version` only as an internal
+identity probe when `SKM_NO_UPDATE_CHECK=1`. The new binary answers that exact
+probe with its embedded identity, including after replacement on Windows.
+Ordinary top-level `version` calls and other removed command names remain
+unavailable. Release qualification must exercise an old bootstrap updating to
+the new candidate.
+
+## 2026-09-26 - Group cache, skill version, and self-update commands
+
+- Type: decision
+- Source: user and implementation
+- Confidence: high
+- Review: after development integration
+- Supersedes: 2026-09-26 - Allow breaking command names in CLI reorganization
+
+Content:
+
+SKM groups registry cache operations under `skm cache refresh|status|prune|clear`,
+skill version operations under `skm skill versions|use|outdated|upgrade`, and
+binary identity and update operations under `skm self version|check|upgrade`.
+`skm check` remains the full installation health check. The previous top-level
+version and update names, `registry update`, and `clean cache` have no aliases.
+Cache refresh fetches remote changes; skill outdated reads cache by default and
+refreshes only with `--refresh`.
+
+## 2026-09-26 - Allow breaking command names in CLI reorganization
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: when command redesign is specified
+- Supersedes: none
+
+Content:
+
+The proposed cache, skill lifecycle, and SKM self-update command reorganization
+may replace existing command names without compatibility aliases. The final
+command names and behavior remain to be specified before implementation.
+
+## 2026-09-25 - Keep SKM documentation independent of Workspace
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+The README and website present SKM and `skills.yaml` as a general skill
+manager for any registry. Workspace toolkit configuration, toolkit `init`
+flags, `wk-adopt` adoption, toolkit integrity, and installed Workspace
+workflow policy live in `workspace/docs/workspace-toolkit.md`, linked from one
+README section. The separation is documentation only; toolkit behavior and
+manifest fields are unchanged.
+
+
 ## 2026-09-25 - Confirm planned skill and bundle adds
 
 - Type: decision
@@ -266,3 +403,67 @@ Registry namespace bundles. The existing production 0.6.0 binary lacks that
 command, so the bundle-capable candidate uses version 0.7.0 and the generated
 Workspace schema-2 manifest requires SKM 0.7.0 or newer. This decision does
 not claim a production release.
+
+## 2026-10-05 - Adopt Workspace Docs 7.0.0
+
+- Type: decision
+- Source: user and migration spec
+- Confidence: high
+- Review: after shared-test integration
+- Supersedes: 2026-09-29 - Adopt the Workspace Docs 6.0.0 candidate
+
+Content:
+
+The repository pins released `workspace-docs@7.0.0` and both contained standard
+aliases select 7.0.0. Retain the Rust CLI layout, manual policy, historical done
+specs, and older standard packages. The shared test target is `development`;
+v7 done requires verified main merge with reconciled acceptance and records,
+while publication remains separate. Blocked specs retain their previous stage,
+kind, reason, and resume condition. Governed instruction changes always require
+independent exact-candidate review before frozen-candidate full verification.
+Use affected Taskfile modules during iteration and no final evidence reuse.
+Reuse the already-applied shared SKM 0.9.0 candidate without another bump.
+SKM toolkit/bundle runtime support for Workspace Docs 7.x is a separate change.
+Explicit older migration specs retain their recorded completion contract.
+
+## 2026-10-05 - Delegate Workspace governance compatibility to skills
+
+- Type: decision
+- Source: user and installation-contract spec
+- Confidence: high
+- Review: after shared-test integration
+- Supersedes: the runtime allowlist boundary recorded with Workspace Docs 7.0.0 adoption
+
+Content:
+
+SKM validates toolkit and published bundle installation contracts, while Workspace
+skills determine governance compatibility. The legacy
+`workspace_docs_compatibility` manifest field is optional ignored YAML metadata;
+future major versions do not require changes to SKM. Installation schemas,
+minimum SKM versions, adapters, dependencies, provenance, source integrity,
+ownership, path safety, and transactional writes remain enforced. Workspace
+standard pins remain opaque lockfile identifiers. Reuse the applied shared
+0.9.0 candidate without another bump. Local implementation does not prove
+shared-test integration, main merge, or publication.
+
+## 2026-10-06 - SKM owns publisher-independent installation formats
+
+- Type: decision
+- Source: user and registry-format-ownership spec
+- Confidence: high
+- Review: after shared-test integration
+- Supersedes: 2026-10-05 - Delegate Workspace governance compatibility to skills
+
+Content:
+
+SKM works with registries and owns the skill, manifest, bundle, adapter, and
+installation-lock formats. Workspace is an ordinary publisher; runtime rules
+must not depend on its namespace, repository, bundle names, governance metadata,
+or standard sources. Optional installation metadata is checked uniformly for
+all publishers. Unknown root publisher metadata is ignored; existing config and
+lock metadata survive without interpretation or source trust. The user explicitly
+selected removal of Workspace-only init options and pin/hash handling while
+preserving existing YAML data. Generic toolkit/profile installation and actual
+package integrity, ownership, path, dependency, and transaction checks remain.
+Repository development governance is separate. Reuse the applied shared 0.9.0
+candidate; local completion does not prove integration or publication.

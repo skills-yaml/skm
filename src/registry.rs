@@ -1,5 +1,7 @@
+use crate::config::SkillsConfig;
 use crate::config_manager::BaseConfig;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -223,32 +225,35 @@ pub fn list(json_output: bool, verbose: bool) -> Result<(), Box<dyn std::error::
     Ok(())
 }
 
-/// Update a specific registry
-pub fn update(name: String, force: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let config = BaseConfig::load()?;
-
-    if !config.registries.contains_key(&name) {
-        return Err(format!("Registry '{}' not found", name).into());
+/// Refresh a configured registry, allowing project registries to override the global URL.
+pub fn refresh_from_url(name: &str, url: &str) -> Result<(), Box<dyn std::error::Error>> {
+    if !is_valid_registry_name(name) {
+        return Err(format!("Invalid registry name: '{name}'").into());
     }
-
-    let url = &config.registries[&name];
-    let cache_path = crate::linker::resolve_registry_path(&name)
+    let cache_path = crate::linker::resolve_registry_path(name)
         .ok_or_else(|| format!("Could not resolve cache path for registry: {}", name))?;
 
     if !cache_path.exists() {
         println!("Cloning registry '{}' from '{}'...", name, url);
         clone_registry(url, &cache_path)?;
-    } else if force {
+    } else {
+        let output = std::process::Command::new("git")
+            .args([
+                "-C",
+                cache_path.to_str().ok_or("non-UTF-8 cache path")?,
+                "remote",
+                "get-url",
+                "origin",
+            ])
+            .output()?;
+        if !output.status.success() || String::from_utf8_lossy(&output.stdout).trim() != url {
+            return Err(format!(
+                "Cached registry '{name}' has a different or missing origin; run `skm cache clear {name}` before refreshing"
+            )
+            .into());
+        }
         println!("Updating registry '{}'...", name);
         update_registry(&cache_path)?;
-    } else {
-        match is_registry_up_to_date(&cache_path) {
-            Ok(true) => println!("Registry '{}' is already up-to-date", name),
-            _ => {
-                println!("Updating registry '{}'...", name);
-                update_registry(&cache_path)?;
-            }
-        }
     }
 
     println!("Registry '{}' updated successfully", name);
@@ -256,17 +261,28 @@ pub fn update(name: String, force: bool) -> Result<(), Box<dyn std::error::Error
     Ok(())
 }
 
-/// Update all registries
-pub fn update_all(force: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let config = BaseConfig::load()?;
+/// Refresh the effective project and inherited global registry set.
+pub fn refresh_effective(
+    project: Option<&SkillsConfig>,
+    selected: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = BaseConfig::load()?;
+    let mut registries: BTreeMap<String, String> = base.registries.into_iter().collect();
+    if let Some(project_registries) = project.and_then(|config| config.registries.as_ref()) {
+        registries.extend(project_registries.clone());
+    }
+    if let Some(name) = selected {
+        let url = registries
+            .get(name)
+            .ok_or_else(|| format!("Registry '{name}' not found in effective configuration"))?;
+        return refresh_from_url(name, url);
+    }
     let mut updated = 0;
-    let mut skipped = 0;
     let mut failed = 0;
 
-    for name in config.registries.keys() {
-        match update(name.clone(), force) {
+    for (name, url) in &registries {
+        match refresh_from_url(name, url) {
             Ok(_) => updated += 1,
-            Err(e) if e.to_string().contains("already up-to-date") => skipped += 1,
             Err(e) => {
                 eprintln!("Failed to update registry '{}': {}", name, e);
                 failed += 1;
@@ -276,7 +292,6 @@ pub fn update_all(force: bool) -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\nSummary:");
     println!("  Updated: {}", updated);
-    println!("  Skipped: {}", skipped);
     println!("  Failed: {}", failed);
 
     if failed > 0 {
@@ -403,7 +418,7 @@ fn clone_registry(url: &str, path: &Path) -> Result<(), Box<dyn std::error::Erro
 
 fn update_registry(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let output = std::process::Command::new("git")
-        .args(["-C", path.to_str().unwrap(), "pull"])
+        .args(["-C", path.to_str().unwrap(), "pull", "--ff-only"])
         .output()?;
 
     if !output.status.success() {

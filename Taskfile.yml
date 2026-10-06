@@ -9,6 +9,8 @@ tasks:
       - cargo clippy --all-targets --all-features -- -D warnings
       - cargo check
       - task: workspace:check
+      - task: versions:check
+      - task: coordination:check
 
   installers:check:
     desc: Validate installer, release, and qualification scripts
@@ -26,6 +28,21 @@ tasks:
     cmds:
       - python3 -B scripts/validate_workspace.py
 
+  versions:check:
+    desc: Validate spec version impact and shared release reservations
+    cmds:
+      - python3 -B scripts/validate_versions.py
+
+  coordination:check:
+    desc: Validate tracked multi-agent work records
+    cmds:
+      - python3 -B scripts/validate_coordination.py
+
+  peers:
+    desc: Run the portable peer coordination runtime
+    cmds:
+      - python3 -B workspace/instructions/skills/coordinate-multi-agent-development/scripts/peer_runtime.py {{.CLI_ARGS}}
+
   fix:
     desc: Auto-format code and apply clippy fixes
     cmds:
@@ -36,7 +53,24 @@ tasks:
     desc: Run unit and integration tests
     cmds:
       - cargo test -- --test-threads=1
+      - task: workspace:test
+      - task: versions:test
+      - task: coordination:test
+
+  workspace:test:
+    desc: Test Workspace structure, catalog, blocked metadata, memory, and privacy gates
+    cmds:
       - python3 -B scripts/test_validate_workspace.py
+
+  versions:test:
+    desc: Test version reservations and separate completion/publication semantics
+    cmds:
+      - python3 -B scripts/test_validate_versions.py
+
+  coordination:test:
+    desc: Test tracked peer records and task authority
+    cmds:
+      - python3 -B scripts/test_validate_coordination.py
 
   build:
     desc: Build optimized release binary
@@ -48,6 +82,25 @@ tasks:
     cmds:
       - cargo test --bin skm updater::tests -- --test-threads=1
       - cargo test --test updater -- --test-threads=1
+
+  test:toolkit:
+    desc: Test toolkit installation, lockfile ownership, and adapter contracts
+    cmds:
+      - cargo test --bin skm toolkit::tests -- --test-threads=1
+
+  test:bundle:
+    desc: Test bundle manifest, dependency, and transactional installation contracts
+    cmds:
+      - cargo test --bin skm bundle::tests -- --test-threads=1
+
+  test:registry-format:
+    desc: Test registry discovery and publisher-neutral configuration interfaces
+    cmds:
+      - cargo test --bin skm search::tests -- --test-threads=1
+      - cargo test --bin skm config::tests -- --test-threads=1
+      - cargo test --bin skm installer::tests -- --test-threads=1
+      - cargo test --bin skm init_tests -- --test-threads=1
+      - 'cargo test --bin skm wizard:: -- --test-threads=1'
 
   test:release-contract:
     desc: Validate release workflow, manifest publisher, and qualification contracts

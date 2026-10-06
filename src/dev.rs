@@ -20,7 +20,6 @@ pub struct DevSkill {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DevConfig {
     pub skills: HashMap<String, DevSkill>, // Keyed by skill name
-    pub mode: bool,                        // Development mode enabled/disabled
 }
 
 impl DevConfig {
@@ -30,7 +29,6 @@ impl DevConfig {
         if !path.exists() {
             return Ok(Self {
                 skills: HashMap::new(),
-                mode: false,
             });
         }
 
@@ -446,39 +444,6 @@ pub fn show_local_skill(
     Ok(())
 }
 
-/// Toggle development mode
-pub fn toggle_dev_mode(action: &str, global: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let mut dev_config = DevConfig::load(global)?;
-
-    match action {
-        "on" | "enable" | "true" => {
-            dev_config.mode = true;
-            dev_config.save(global)?;
-            println!("Development mode enabled");
-        }
-        "off" | "disable" | "false" => {
-            dev_config.mode = false;
-            dev_config.save(global)?;
-            println!("Development mode disabled");
-        }
-        "status" | "show" | "get" => {
-            println!(
-                "Development mode: {}",
-                if dev_config.mode {
-                    "enabled"
-                } else {
-                    "disabled"
-                }
-            );
-        }
-        _ => {
-            return Err(format!("Unknown action: '{}'. Use on, off, or status.", action).into());
-        }
-    }
-
-    Ok(())
-}
-
 /// Check if a skill exists in any registry
 fn skill_exists_in_registries(skill_name: &str) -> bool {
     find_skill_registry(skill_name).is_some()
@@ -510,21 +475,6 @@ fn find_skill_registry(skill_name: &str) -> Option<String> {
     None
 }
 
-/// Auto-discover and link local skills (when dev mode is enabled)
-#[allow(dead_code)]
-pub fn auto_discover_local_skills(global: bool) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    let dev_config = DevConfig::load(global)?;
-
-    if !dev_config.mode {
-        return Ok(Vec::new());
-    }
-
-    // Look for .skm-local directory or other indicators
-    // This is a placeholder for auto-discovery logic
-
-    Ok(Vec::new())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -551,7 +501,7 @@ mod tests {
     }
 
     #[test]
-    fn test_dev_mode_toggle() {
+    fn old_dev_mode_state_does_not_block_local_skill_config() {
         let name = unique_name();
         let temp_dir = std::env::temp_dir().join(&name);
         fs::create_dir_all(&temp_dir).unwrap();
@@ -560,13 +510,9 @@ mod tests {
         let original_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(&temp_dir).unwrap();
 
-        toggle_dev_mode("on", false).unwrap();
+        fs::write(temp_dir.join(".skm-dev.yaml"), "skills: {}\nmode: true\n").unwrap();
         let config = DevConfig::load(false).unwrap();
-        assert!(config.mode);
-
-        toggle_dev_mode("off", false).unwrap();
-        let config = DevConfig::load(false).unwrap();
-        assert!(!config.mode);
+        assert!(config.skills.is_empty());
 
         std::env::set_current_dir(original_dir).unwrap();
         fs::remove_dir_all(&temp_dir).unwrap();
@@ -590,8 +536,7 @@ mod tests {
             toolkit: None,
             bundles: Vec::new(),
             profiles: Vec::new(),
-            workspace: None,
-            trusted_sources: Vec::new(),
+            metadata: Default::default(),
         };
         mock_config
             .save_to_file(project_dir.join("skills.yaml"))

@@ -1,5 +1,221 @@
 # Memory Changelog
 
+## 2026-09-30 - Record bare invocation update notice contract
+
+- Type: decision
+- Source: user and regression test
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded bare root help's shared startup notice behavior and preservation of
+Clap output and exit behavior in `workspace/agents/memory/decisions.md`.
+
+## 2026-09-30 - Record Workspace Docs 6 test integration
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #72's confirmed `development` integration in
+`workspace/agents/memory/facts.md` and moved the migration specification to
+`test` with matching catalog and release-reservation paths.
+
+## 2026-09-29 - Record Workspace Docs 6 adoption and candidate version
+
+- Type: decision and fact
+- Source: user and repository
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+Recorded the 6.0.0 candidate adoption, preserved Rust CLI layout, and
+concurrent-agent and version-reservation contracts in
+`workspace/agents/memory/decisions.md`. Recorded the applied SKM 0.9.0 shared
+candidate in `workspace/agents/memory/facts.md`. The migration specification
+remains in `development` until confirmed test-channel integration.
+
+## 2026-09-29 - Record Registry release notification test integration
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #67's confirmed `development` merge in
+`workspace/agents/memory/facts.md` and moved the notify-registry-docs
+specification to `test` with a matching catalog rationale.
+
+## 2026-09-26 - Record Registry release notification decision
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded in `workspace/agents/memory/decisions.md` that production releases
+notify the Registry to review its documentation.
+
+
+
+## 2026-09-28 - Record command contract test integration
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #69's confirmed `development` merge and passing Validate run in
+`workspace/agents/memory/facts.md`. Moved the command contract specification
+to `test` with the merge evidence in the catalog.
+
+## 2026-09-28 - Record SKM command consolidation
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+Recorded the approved command retirement, ordinary install plan and lock,
+bulk skill upgrade, and effective registry selection in
+`workspace/agents/memory/decisions.md`. The local implementation remains in
+the `development` spec pending confirmed test-channel integration.
+
+## 2026-09-26 - Record legacy updater handshake test integration
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: after development release qualification
+- Supersedes: none
+
+Content:
+
+Recorded PR #66's confirmed `development` merge, passing Validate run,
+successful nine-asset development publication, and older Linux binary update
+in `workspace/agents/memory/facts.md`. Moved the identity handshake spec to
+`test` with a matching catalog rationale.
+
+## 2026-09-26 - Record legacy updater compatibility decision and defect
+
+- Type: decision and fact
+- Source: user, reproduction, and updater source
+- Confidence: high
+- Review: after cross-platform release qualification
+- Supersedes: 2026-09-26 - Breaking CLI requires a bridge updater release
+
+Content:
+
+Recorded the approved environment-gated identity probe in
+`workspace/agents/memory/decisions.md` and the reproduced old-to-new update
+failure in `workspace/agents/memory/facts.md`. The defect finding supersedes
+the former bridge-release prerequisite; release qualification remains pending.
+
+## 2026-09-26 - Record Workspace documentation separation test integration
+
+- Type: fact
+- Source: command
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #60's confirmed `development` merge in
+`workspace/agents/memory/facts.md` and moved the separate-workspace-docs
+specification to `test` with a matching catalog rationale.
+
+## 2026-09-26 - Record command reorganization test integration
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+Recorded PR #63's confirmed `development` merge and passing Validate run in
+`workspace/agents/memory/facts.md`, and moved the command reorganization
+specification to `test` with a matching catalog rationale.
+
+## 2026-09-26 - Record bridge release prerequisite
+
+- Type: fact
+- Source: code and release qualification contract
+- Confidence: high
+- Review: after bridge release
+- Supersedes: none
+
+Content:
+
+Recorded in `workspace/agents/memory/facts.md` that the older self-updater
+cannot verify a binary without top-level `version`, so the breaking command
+change requires a bridge release before production promotion.
+
+## 2026-09-26 - Record implemented CLI command grouping
+
+- Type: decision
+- Source: user and implementation
+- Confidence: high
+- Review: after development integration
+- Supersedes: 2026-09-26 - Record CLI command compatibility decision
+
+Content:
+
+Recorded the final cache, skill version, self-update, and installation-check
+command grouping in `workspace/agents/memory/decisions.md`, including removed
+old names and the explicit cache refresh boundary.
+
+## 2026-09-26 - Record CLI command compatibility decision
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: when command redesign is specified
+- Supersedes: none
+
+Content:
+
+Recorded in `workspace/agents/memory/decisions.md` that the proposed CLI
+command reorganization may break old command names without compatibility
+aliases. The new command contract is not yet approved.
+
+## 2026-09-25 - Record Workspace documentation separation decision
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Recorded in `workspace/agents/memory/decisions.md` that SKM documentation stays
+independent of Workspace, with Workspace toolkit material in
+`workspace/docs/workspace-toolkit.md`.
+
+
 ## 2026-09-25 - Record SKM 0.8.0 production release
 
 - Type: fact
@@ -635,3 +851,65 @@ bundle installation, skm check, and no-op repetition. PR #75 released the
 focused 0.8.1 maintenance fix through main at 49468aa; production CI and all
 four platforms passed, and the published Linux artifact repeated that live
 qualification. Future compatibility majors remain explicitly rejected.
+
+## 2026-10-05 - Record Workspace Docs 7.0.0 adoption
+
+- Type: decision
+- Source: user and repository
+- Confidence: high
+- Review: after shared-test integration
+- Supersedes: none
+
+Content:
+
+Appended the 7.0.0 adoption decision to `workspace/agents/memory/decisions.md`,
+superseding the prior candidate adoption decision while preserving its history.
+Recorded main-based completion, separate publication, blocked resume metadata,
+review and verification obligations, shared version reuse, and the separate
+SKM runtime compatibility gap. Local migration does not prove shared-test
+integration, main merge, or publication.
+
+## 2026-10-05 - Record installation and governance responsibilities
+
+- Type: decision
+- Source: user and repository
+- Confidence: high
+- Review: after shared-test integration
+- Supersedes: none
+
+Content:
+
+Appended the governance delegation decision to
+`workspace/agents/memory/decisions.md`. SKM no longer interprets the optional
+legacy governance metadata or maintains a Workspace Docs major allowlist;
+installation contract validation remains enforced. This supersedes the separate
+runtime gap recorded at 7.0.0 adoption without rewriting historical decisions.
+
+## 2026-10-06 - Record SKM registry format ownership
+
+- Type: decision
+- Source: user and repository
+- Confidence: high
+- Review: after shared-test integration
+- Supersedes: none
+
+Content:
+
+Appended the clarified publisher-independent runtime decision to
+`workspace/agents/memory/decisions.md`, superseding the narrower allowlist-removal
+boundary. Recorded SKM format ownership, generic namespace/member checks, removal
+of Workspace-only CLI/config/lock/source behavior, preservation of opaque YAML
+data, and retained actual installation safety. Repository governance remains a
+separate contributor contract.
+
+## 2026-10-06 - Record confirmed development integration
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: after main merge
+- Supersedes: none
+
+Content:
+
+Appended the verified PR #79 development merge and checks to facts.md; advanced the three linked specifications to test and reconciled catalog/release membership. Main completion and production publication remain pending.

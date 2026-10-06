@@ -30,6 +30,8 @@ fn release_workflows_gate_and_qualify_publication() {
     assert!(release.contains("scripts/publish-release.sh"));
     assert!(release.contains("SKM_BUILD_COMMIT"));
     assert!(release.contains("SKM_BUILD_CHANNEL"));
+    assert!(release.contains("event_type=skm-released"));
+    assert!(release.contains("needs.prepare.outputs.channel == 'prod'"));
 
     let qualification = repository_text(".github/workflows/release-update-qualification.yml");
     assert!(qualification.contains("release-prod"));
@@ -44,12 +46,15 @@ fn windows_update_worker_dispatch_precedes_cli_parsing() {
     let worker_dispatch = main
         .find("updater::run_windows_update_worker_if_requested()")
         .expect("main must dispatch the private Windows updater worker");
+    let legacy_probe = main
+        .find("is_legacy_updater_version_probe(&args")
+        .expect("main must handle the legacy updater identity probe");
     let cli_parsing = main
-        .find("parse_cli_with_help_notice(env::args_os()")
+        .find("parse_cli_with_help_notice(args")
         .expect("main must parse the public CLI");
 
     assert!(
-        worker_dispatch < cli_parsing,
-        "the argument-free Windows updater helper must run before Clap parsing"
+        worker_dispatch < legacy_probe && legacy_probe < cli_parsing,
+        "the Windows updater worker and legacy probe must run before Clap parsing"
     );
 }

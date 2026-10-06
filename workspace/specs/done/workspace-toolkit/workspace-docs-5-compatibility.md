@@ -81,6 +81,12 @@ Docs 5.x so it cannot be installed even when its package is otherwise valid.
   `main` as `e12ba7d`; main CI and Release Artifacts run `33967911337` passed
   and published the `prod-latest` assets.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released workspace docs 5 compatibility work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `updated`

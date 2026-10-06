@@ -60,6 +60,12 @@ Scripts invoking `skm workspace` must move to an agent with `workspace/wk-adopt`
 - CLI help/parse assertions and focused local source-integrity fixture tests.
 - Local skill-install smoke using a temporary project and cached registry where available.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released remove workspace cli work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `updated`

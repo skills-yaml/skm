@@ -433,6 +433,12 @@ Use --force to override this safety check.
 - `skm list` - List skills (should show removed skills are gone)
 - `skm check` - Verify skills (should not check removed skills)
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released skill removal work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `updated`

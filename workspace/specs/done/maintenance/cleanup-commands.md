@@ -1182,6 +1182,12 @@ Total: 2 registries, 169.12 MB, 57 skills, 110 versions
 - `skm cache-update` - Updates caches
 - BaseConfig/SkillsConfig - Configuration structures
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released cleanup commands work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `updated`

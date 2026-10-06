@@ -1,8 +1,12 @@
 use crate::config::SkillsConfig;
+use crate::config_manager::BaseConfig;
+use crate::installer;
 use crate::linker;
+use crate::registry;
 use std::cmp::Ordering;
+use std::collections::HashSet;
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::Path;
 
 /// Compare two version strings semantically
@@ -118,6 +122,78 @@ pub fn list_skill_versions(
     Ok(versions)
 }
 
+fn newest_published_version(versions: &[String], include_pre: bool) -> Option<&str> {
+    versions
+        .iter()
+        .filter(|version| version.as_str() != "latest")
+        .filter(|version| include_pre || !is_prerelease(version))
+        .map(String::as_str)
+        .next()
+}
+
+/// Report newer versions for pinned registry skills without changing the manifest.
+pub fn show_outdated(
+    config_path: &Path,
+    skill_name: Option<&str>,
+    refresh: bool,
+    include_pre: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let config = SkillsConfig::load_from_file(config_path)?;
+    if let Some(name) = skill_name {
+        linker::validate_skill_name(name)?;
+        if !config.skills.iter().any(|skill| skill.name == name) {
+            return Err(format!("Skill '{name}' not found in configuration").into());
+        }
+    }
+
+    let base = if refresh {
+        Some(BaseConfig::load()?)
+    } else {
+        None
+    };
+    let mut refreshed = HashSet::new();
+    let mut outdated = 0;
+    for skill in config
+        .skills
+        .iter()
+        .filter(|skill| skill_name.is_none_or(|name| skill.name == name))
+    {
+        if skill.path.is_some() {
+            println!("{}: local skill (no registry version)", skill.name);
+            continue;
+        }
+        let current = skill.version.as_deref().unwrap_or("latest");
+        if current == "latest" {
+            println!("{}: follows latest", skill.name);
+            continue;
+        }
+        let source = skill.source.as_deref().unwrap_or("default");
+        if refreshed.insert(source.to_string()) && refresh {
+            let url = config
+                .registries
+                .as_ref()
+                .and_then(|registries| registries.get(source))
+                .or_else(|| base.as_ref().and_then(|base| base.registries.get(source)))
+                .ok_or_else(|| format!("Registry '{source}' not found in configuration"))?;
+            registry::refresh_from_url(source, url)?;
+        }
+        let versions = list_skill_versions(&skill.name, source)?;
+        match newest_published_version(&versions, include_pre) {
+            Some(latest) if compare_versions(latest, current) == Ordering::Greater => {
+                println!("{}: {} -> {} ({})", skill.name, current, latest, source);
+                outdated += 1;
+            }
+            Some(latest) => println!(
+                "{}: current at {} (newest: {})",
+                skill.name, current, latest
+            ),
+            None => println!("{}: no published versions found ({})", skill.name, source),
+        }
+    }
+    println!("{outdated} skill(s) have newer versions");
+    Ok(())
+}
+
 /// List all versions available for a skill and print them
 pub fn list_versions_cmd(
     skill_name: &str,
@@ -127,7 +203,13 @@ pub fn list_versions_cmd(
     limit: usize,
     json_output: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let registry = registry_name.unwrap_or("default");
+    let default_registry;
+    let registry = if let Some(name) = registry_name {
+        name
+    } else {
+        default_registry = BaseConfig::load()?.default_registry;
+        &default_registry
+    };
     let mut versions = list_skill_versions(skill_name, registry)?;
 
     if stable_only {
@@ -165,7 +247,7 @@ pub fn list_versions_cmd(
             }
             if let Some(latest) = versions.first() {
                 println!(
-                    "\n{} versions found. Use `skm use {}@{}` to switch.",
+                    "\n{} versions found. Use `skm skill use {}@{}` to switch.",
                     versions.len(),
                     skill_name,
                     latest
@@ -300,29 +382,88 @@ pub fn update_to_latest(
     let registry = skill.source.as_deref().unwrap_or("default");
 
     // List versions and find latest
-    let mut versions = list_skill_versions(skill_name, registry)?;
-    if !pre {
-        versions.retain(|v| !is_prerelease(v));
-    }
-
-    let latest = versions
-        .iter()
-        .find(|v| *v != "latest")
-        .or_else(|| versions.first())
+    let versions = list_skill_versions(skill_name, registry)?;
+    let latest = newest_published_version(&versions, pre)
         .ok_or_else(|| format!("No versions found for skill '{}'", skill_name))?;
 
     // Check if we are already at the latest version
     let current_version = skill.version.as_deref().unwrap_or("latest");
-    if current_version == latest {
+    if current_version == "latest" {
+        println!("Skill '{}' already follows latest.", skill_name);
+        return Ok(());
+    }
+    if compare_versions(latest, current_version) != Ordering::Greater {
         println!(
-            "Skill '{}' is already up to date (version: {}).",
-            skill_name, current_version
+            "Skill '{}' is already at or beyond the newest cached version (current: {}, newest: {}).",
+            skill_name, current_version, latest
         );
         return Ok(());
     }
 
     // Use the latest version
     use_version(skill_name, latest, config_path, global, yes, dry_run)
+}
+
+/// Upgrade all exact registry pins from the local cache as one transaction.
+pub fn upgrade_all(
+    config_path: &Path,
+    global: bool,
+    pre: bool,
+    yes: bool,
+    dry_run: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let metadata = fs::symlink_metadata(config_path)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err("skills.yaml must be a regular file".into());
+    }
+    let original = fs::read(config_path)?;
+    let mut config: SkillsConfig = serde_yaml::from_slice(&original)?;
+    let mut changes = Vec::new();
+    for skill in &mut config.skills {
+        if skill.path.is_some() {
+            continue;
+        }
+        let current = skill.version.as_deref().unwrap_or("latest");
+        if current == "latest" {
+            continue;
+        }
+        let source = skill.source.as_deref().unwrap_or("default");
+        let versions = list_skill_versions(&skill.name, source)?;
+        if let Some(newest) = newest_published_version(&versions, pre) {
+            if compare_versions(newest, current) == Ordering::Greater {
+                changes.push((skill.name.clone(), current.to_string(), newest.to_string()));
+                skill.version = Some(newest.to_string());
+            }
+        }
+    }
+    if changes.is_empty() {
+        println!("All pinned registry skills are current in the local cache.");
+        return Ok(());
+    }
+    let project = config_path.parent().unwrap_or_else(|| Path::new("."));
+    let updated = serde_yaml::to_string(&config)?.into_bytes();
+    let plan = installer::prepare(&config, project, global, Some((original, updated)))?;
+    println!("Skill upgrades:");
+    for (name, old, new) in &changes {
+        println!("  {name}: {old} -> {new}");
+    }
+    plan.print(false)?;
+    if dry_run {
+        return Ok(());
+    }
+    if !yes {
+        print!("Upgrade {} skill(s)? [y/N] ", changes.len());
+        io::stdout().flush()?;
+        let mut response = String::new();
+        io::stdin().read_line(&mut response)?;
+        if !matches!(response.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
+            println!("Cancelled.");
+            return Ok(());
+        }
+    }
+    plan.apply()?;
+    println!("Upgraded {} skill(s).", changes.len());
+    Ok(())
 }
 
 #[cfg(test)]
@@ -424,8 +565,7 @@ mod tests {
             toolkit: None,
             bundles: Vec::new(),
             profiles: Vec::new(),
-            workspace: None,
-            trusted_sources: Vec::new(),
+            metadata: Default::default(),
         };
         mock_config.save_to_file(&config_path).unwrap();
 
@@ -452,6 +592,18 @@ mod tests {
         update_to_latest("test-skill", &config_path, false, false, true, false).unwrap();
         let latest_config = SkillsConfig::load_from_file(&config_path).unwrap();
         assert_eq!(latest_config.skills[0].version.as_deref(), Some("v1.1.0"));
+
+        // A stale cache must not downgrade a newer configured pin.
+        let mut newer_config = latest_config;
+        newer_config.skills[0].version = Some("v1.2.0".to_string());
+        newer_config.save_to_file(&config_path).unwrap();
+        update_to_latest("test-skill", &config_path, false, false, true, false).unwrap();
+        assert_eq!(
+            SkillsConfig::load_from_file(&config_path).unwrap().skills[0]
+                .version
+                .as_deref(),
+            Some("v1.2.0")
+        );
 
         // Restore env vars
         if let Some(home) = original_home {

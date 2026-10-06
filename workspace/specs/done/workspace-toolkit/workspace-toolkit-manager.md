@@ -154,6 +154,12 @@ and pinned Git retrieval into a verified project-local cache. The Workspace
 package was also installed for Codex and Cursor and checked through a no-diff
 second apply.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released workspace toolkit manager work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `none`

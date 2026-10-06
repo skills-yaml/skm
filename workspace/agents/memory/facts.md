@@ -1,5 +1,150 @@
 # Facts
 
+## 2026-09-30 - Workspace Docs 6.0.0 integrated into development
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+PR #72 merged the Workspace Docs 6.0.0 candidate adoption into `development`
+at `c49f1cc47a477d92c2923677d49108ff222e9b01` on 2026-09-30 after
+Validate run `36682939489` passed. The migration spec is in `test`; the draft
+standard is not yet a production release.
+
+## 2026-09-29 - SKM 0.9.0 candidate reserved for active work
+
+- Type: fact
+- Source: repository and user-directed migration
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+The `prod-latest` manifest reported SKM 0.8.0 at `07b4bba` on 2026-09-29;
+`development-latest` still reported 0.8.0 at `72eaf7d`. The repository
+reserves one applied 0.9.0 candidate for its active test-channel CLI and
+documentation specifications and the Workspace Docs 6.0.0 adoption. The bump
+is recorded once in `Cargo.toml` and `Cargo.lock`; it is not evidence of a
+production release.
+
+## 2026-09-29 - Registry release notification integrated into development
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+PR #67 merged the production-only `notify-registry` release job into
+`development` at `a8ad8d795ccaeadf64291a693de785c2ec520d2b` on 2026-09-29 after Validate run `36548080616` passed. The
+job is skipped until the `REGISTRY_APP_CLIENT_ID` variable and
+`REGISTRY_APP_PRIVATE_KEY` secret are configured; the Registry's hourly poll
+covers releases meanwhile.
+
+## 2026-09-28 - Command contracts integrated into development
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+PR #69 merged the command contract reconciliation into `development` at
+`46d70fadc5a3c92bd4013e89e578ce03bb587733` on 2026-09-28 after
+Validate run `36476786848` passed. The specification is in `test`;
+production release remains pending.
+
+## 2026-09-26 - Legacy updater identity handshake integrated into development
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: after development release qualification
+- Supersedes: none
+
+Content:
+
+PR #66 merged the environment-gated legacy updater identity probe into
+`development` at `ed5b0a0987964b2c4aa0f7e92c948f937d56a9ee` on
+2026-09-26 after Validate run `36270555944` passed. Development Release
+Artifacts run `36271054364` published the nine-asset release. A preserved
+older 0.8.0 Linux binary at `07b4bba` self-updated to `ed5b0a0`; the updated
+binary reported its expected identity and a repeat upgrade made no change.
+The specification is in `test`; cross-platform qualification and production
+promotion remain pending.
+
+## 2026-09-26 - Legacy updater probes caused the development update failure
+
+- Type: fact
+- Source: reproduced older binary and updater source
+- Confidence: high
+- Review: after cross-platform release qualification
+- Supersedes: 2026-09-26 - Breaking CLI requires a bridge updater release
+
+Content:
+
+The 0.8.0 production updater invokes `version` with `SKM_NO_UPDATE_CHECK=1`
+to verify a staged release and invokes the same probe after replacement on
+Windows. The reorganized development binary removed that command, causing
+`skm update` to fail identity verification. A new candidate that answers only
+this internal probe lets older managed binaries self-update directly; a bridge
+updater release is not a prerequisite. Cross-platform release qualification is
+still required before production promotion.
+
+## 2026-09-26 - Workspace documentation separation integrated into development
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+PR #60 merged the separation of Workspace toolkit documentation from the
+README into `development` at `506d47a358d406e2759c8ef3dd47eb0863bf52ae` on 2026-09-26 after Validate run `36213304307`
+passed. The specification is in `test`; production release is pending.
+
+## 2026-09-26 - CLI command reorganization integrated into development
+
+- Type: fact
+- Source: pull request and CI
+- Confidence: high
+- Review: before production release
+- Supersedes: none
+
+Content:
+
+PR #63 merged the cache, skill version, and self-update command reorganization
+into `development` at `2c852c248b54e6982a92584c956dd2bc036ab8fc` on
+2026-09-26 after Validate run `36212734539` passed. The specification is in
+`test`; production promotion still requires a bridge updater release.
+
+## 2026-09-26 - Breaking CLI requires a bridge updater release
+
+- Type: fact
+- Source: code and release qualification contract
+- Confidence: high
+- Review: after bridge release
+- Supersedes: none
+
+Content:
+
+Older SKM updaters verify a staged binary by invoking its top-level `version`
+command. The reorganized CLI removes that command, so old binaries cannot
+self-update directly to it. A separately qualified bridge release with an
+updater that verifies `skm self version` is required before production promotion;
+the official installer can install the new binary directly.
+
 ## 2026-09-25 - SKM 0.8.0 search and add workflow released to production
 
 - Type: fact
@@ -473,3 +618,15 @@ bundle installation, skm check, and no-op repetition. PR #75 released the
 focused 0.8.1 maintenance fix through main at 49468aa; production CI and all
 four platforms passed, and the published Linux artifact repeated that live
 qualification. Future compatibility majors remain explicitly rejected.
+
+## 2026-10-06 - Integrate publisher-independent formats and Workspace Docs 7
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: after main merge
+- Supersedes: none
+
+Content:
+
+PR #79 merged into development at 6e572b29ca35b4ecafd841d870d5cbc8e08b4a32 on 2026-10-06 after CI run 37450733442 passed. The reviewed combined candidate passed task check, all 202 tests, and task build. Main promotion and publication remain pending. The repository governance standard is 7.0.0; SKM runtime owns its registry format without publisher-specific policy. This supersedes the older supported-major runtime rule.

@@ -56,6 +56,12 @@ Unconfirmed single-skill adds become interactive, so scripts must pass `--yes`. 
 - `task check`, `task test`, and `git diff --check` pass.
 - Preserve the user's existing `skills.yaml` and `.nib/` work outside the change.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | patch | historical | Previously released add confirmation work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `updated`

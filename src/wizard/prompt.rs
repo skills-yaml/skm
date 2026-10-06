@@ -39,7 +39,7 @@ fn run_prompts<R: BufRead, W: Write>(
             || !edit_agents(document, input, output)?
             || !edit_registries(document, input, output)?
             || !edit_skills(document, input, output)?
-            || !edit_workspace(document, input, output)?
+            || !edit_toolkit(document, input, output)?
         {
             return Ok(false);
         }
@@ -569,14 +569,13 @@ fn edit_skill<R: BufRead, W: Write>(
     )
 }
 
-fn edit_workspace<R: BufRead, W: Write>(
+fn edit_toolkit<R: BufRead, W: Write>(
     document: &mut Document,
     input: &mut R,
     output: &mut W,
 ) -> Result<bool> {
-    section(output, "Optional toolkit and workspace settings")?;
+    section(output, "Optional toolkit settings")?;
     let configured = !document.value["toolkit"].is_null()
-        || !document.value["workspace"].is_null()
         || document.value["bundles"]
             .as_sequence()
             .is_some_and(|v| !v.is_empty())
@@ -625,36 +624,6 @@ fn edit_workspace<R: BufRead, W: Write>(
     ] {
         if !edit_target(document, input, output, target, label, true, |_| Ok(()))? {
             return Ok(false);
-        }
-    }
-    if !edit_target(
-        document,
-        input,
-        output,
-        Target::Nested("workspace", "standard"),
-        "Workspace standard",
-        true,
-        |_| Ok(()),
-    )? {
-        return Ok(false);
-    }
-    if !document.value["workspace"].is_null() {
-        for (key, label) in [
-            ("source", "Workspace source"),
-            ("revision", "Workspace revision"),
-            ("integrity", "Workspace integrity"),
-        ] {
-            if !edit_target(
-                document,
-                input,
-                output,
-                Target::Nested("workspace", key),
-                label,
-                true,
-                |_| Ok(()),
-            )? {
-                return Ok(false);
-            }
         }
     }
     Ok(true)
@@ -918,7 +887,7 @@ mod tests {
             "\n\n\n",                               // project, version, agents
             "a\ncompany\n/registry\n\n",            // add registry, continue
             "a\nteam/spec\n\ncompany\n./local\n\n", // add skill, continue
-            "\n",                                   // keep optional workspace settings
+            "\n",                                   // keep optional toolkit settings
             "\n"                                    // save
         );
         let (saved, output) = run(&mut document, answers);

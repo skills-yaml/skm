@@ -5,17 +5,22 @@ the workspace documentation structure in a repository. It covers process and
 safety; use the target version's migration notes for version-specific path
 changes.
 
-The current recommended target is `workspace-docs@5.0.0`:
+The current recommended target is `workspace-docs@7.0.0`, resolved from the
+contained `default` pointer. Resolve that pointer to a complete version package
+and pin its concrete version before changing files. An explicit older pin uses
+its own manifest, migration notes, and lifecycle; never silently downgrade.
 
-- [Version-specific migration notes](./v5.0.0/migration.md)
-- [Required structure manifest](./v5.0.0/manifest.yaml)
-- [Generated `AGENTS.md` context template](./v5.0.0/agents-template.md)
-- [Specs README template](./v5.0.0/specs-readme-template.md)
-- [Adoption audit checklist](./v5.0.0/audit-checklist.md)
+- [Version-specific migration notes](./v7.0.0/migration.md)
+- [Required structure manifest](./v7.0.0/manifest.yaml)
+- [Generated `AGENTS.md` context template](./v7.0.0/agents-template.md)
+- [Specs README template](./v7.0.0/specs-readme-template.md)
+- [Adoption audit checklist](./v7.0.0/audit-checklist.md)
 
 ## Choose the Migration Mode
 
-Classify the current repository before changing files.
+Classify the current repository before changing files. The table below records
+the historical structural migration through v5. For the current default, also
+apply the v6 and v7 migration notes in order; the target manifest is authoritative.
 
 | Current state | Mode | Required action |
 | --- | --- | --- |
@@ -62,7 +67,8 @@ Agents must follow these rules throughout the migration:
 3. Search the current repository for `workspace-docs@` declarations and legacy
    relative paths. Do not search outside the repository.
 4. Compare existing files and directories with the target
-   [`manifest.yaml`](./v5.0.0/manifest.yaml).
+   manifest (for the current default,
+   [`v7.0.0/manifest.yaml`](./v7.0.0/manifest.yaml)).
 5. Identify which current-project documents are authoritative, duplicated,
    obsolete, or unclassified.
 6. Confirm the target version. Resolve `default` or `latest` for discovery, but
@@ -77,7 +83,9 @@ Agents must follow these rules throughout the migration:
 ## Phase 2: Build an Explicit Migration Map
 
 Record every intended source, destination, merge decision, and validation in
-the development spec. Use this 5.0 mapping as the baseline:
+the development spec. This historical 5.0 mapping remains the structural
+baseline; v7 additionally requires `workspace/specs/blocked/` and the release
+ledger. Use the selected target manifest for the complete required structure:
 
 | Existing purpose or legacy location | 5.0 destination |
 | --- | --- |
@@ -144,8 +152,10 @@ other.
    version.
 9. Categorize current specs, update the root catalog, and add or update the
    deterministic spec-catalog gate required by the target version.
-10. Preserve production-released specs in done. Keep active implementation in
-    development and move integrated but unreleased work to test with evidence.
+10. Preserve historical done specs. Under v7, keep active implementation in
+    development and move to test only after confirmed shared-test integration.
+    Done requires verified main merge and reconciled acceptance/records;
+    publication is separate. Explicit older pins retain their own lifecycle.
 11. Remove empty legacy directories only after confirming no current-project
    material was lost.
 
@@ -155,6 +165,8 @@ For a 1.x or 2.0 migration, apply the structural mapping in
 [`v4.0.0/migration.md`](./v4.0.0/migration.md), and the 5.0 test-stage contract
 in [`v5.0.0/migration.md`](./v5.0.0/migration.md). Start at the first version
 newer than the repository's current pin and do not skip intermediate notes.
+Continue through [v6](./v6.0.0/migration.md) and
+[v7](./v7.0.0/migration.md) when targeting the released default.
 
 ## Phase 4: Validate the Result
 
@@ -170,16 +182,19 @@ all of the following:
 5. Search the current repository for obsolete version markers and legacy path
    references. Keep historical references only when they are clearly labeled
    and still safe.
-6. Run the repository's Taskfile gates, normally `task check` and `task test`,
-   plus stack-specific gates required by the affected project.
+6. During coherent changes and review fixes, run affected Taskfile modules.
+   After independent review, findings, documentation, and artifacts stabilize,
+   freeze the candidate and run `task check`, `task test`, and applicable project
+   gates. Reuse only proven-fresh evidence; unknown scope uses aggregate gates.
 7. Run the local-information/privacy gate when the repository provides one.
 8. Confirm every development, test, and done spec required by the target
    contract has a valid memory-impact classification, and confirm the Taskfile
    gate rejects missing or unresolved classifications.
 9. Confirm every non-legacy spec has one valid primary-feature path and one
    matching root catalog row with its current state and rationale.
-10. Confirm test rationales identify shared integration and done rationales
-    identify production release using the configured project topology.
+10. Confirm test rationales identify shared integration. Under v7, done
+    rationales identify verified main merge and reconciled acceptance/records;
+    publication is separate. Use the completion event of an explicit older pin.
 11. Review the full diff for unintended product, authentication, data-flow,
    infrastructure, CI/CD, or secret changes.
 12. Record exact validation results and any justified deviations in the
@@ -196,9 +211,10 @@ content collision remains unresolved.
 2. Keep the migration spec in development until its implementation is merged
    or deployed to the configured test target. Then move it to
    `workspace/specs/test/<primary-feature>/` with integration evidence.
-3. Move the test spec to `workspace/specs/done/<primary-feature>/` only after
-   production release, all acceptance criteria and validation gates pass,
-   memory impact is resolved, and the root catalog has the release rationale.
+3. Under v7, move the test spec to `workspace/specs/done/<primary-feature>/`
+   only after verified main merge, passing acceptance/validation, and reconciled
+   documentation, catalog, versions, and memory. Record publication separately.
+   Explicit older pins retain their own completion event.
 4. Record the adopted version and any durable project-specific decision in
    `workspace/agents/memory/`.
 5. Confirm the worktree contains only intended changes.
@@ -216,10 +232,23 @@ Target version: workspace-docs@X.Y.Z
 Content moved or merged: <repository-relative paths>
 Manual AGENTS.md policy preserved: yes | no, with reason
 Validation: <commands and results>
-Integration/release status: development | test | production
+Lifecycle status: development | test | blocked | done
+Publication status: pending | published, with evidence
 Memory impact: updated | none, with rationale
 Deviations or follow-up: none | <project-local details>
 ```
 
 The handoff must not contain machine-local paths, identities, sibling-project
 details, credentials, or environment-specific values.
+
+## Workspace Docs 7 Released Default
+
+The contained default selects released v7. Read its [SDLC](./v7.0.0/sdlc.md),
+[process](./v7.0.0/process.md), [migration](./v7.0.0/migration.md), and
+[audit checklist](./v7.0.0/audit-checklist.md). They govern the v7 target;
+historical mappings above are not older lifecycle instructions for v7.
+Add blocked resume metadata; define done as verified main merge with reconciled
+acceptance and records; track publication separately. Run affected modular gates
+during changes, complete independent review and resolve findings, then run full
+verification after the candidate stabilizes. Preserve released packages,
+historical evidence, and manual policy outside the approved repair scope.

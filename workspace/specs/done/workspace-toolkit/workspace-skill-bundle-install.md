@@ -356,6 +356,12 @@ ordinary explicit skill entries.
 
 No unresolved SKM interface decision or delivery dependency.
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released workspace skill bundle install work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: `updated`

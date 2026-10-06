@@ -9,13 +9,20 @@ This document defines CI/CD pipeline rules for the `skm` project. These rules ap
 CI workflows must align with our local task automation setup:
 
 1. **Invoke Taskfiles**: The CI pipeline must call tasks defined in `Taskfile.yml` rather than invoking tools (like rustfmt, clippy, cargo) directly.
-2. **Authoritative Check**: `task check` must be the entrypoint for formatting and static analysis checks. Any failure must block the build.
+2. **Authoritative Check**: `task check` must be the entrypoint for formatting,
+   static analysis, Workspace Docs structure, `versions:check`, and
+   `coordination:check`. Any failure must block the build.
 3. **Deterministic Verification**: `task test` must run to execute unit and integration tests.
 4. **Release Build**: `task build` should run before publishing release artifacts.
 
 ## Release Artifacts
 
-The release workflow builds installable binaries from branch pushes:
+The release workflow builds installable binaries from branch pushes. Publication
+is separate from Workspace Docs 7 main completion; verify the actual combined
+integration revision and respect all host/environment protections. Required
+independent review finishes before frozen-candidate final checks.
+
+Release channels:
 
 * `main` publishes production assets to the `prod-latest` GitHub Release.
 * `development` publishes prerelease assets to the `development-latest` GitHub Release.
@@ -29,9 +36,9 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, development ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, development ]
 
 jobs:
   validate:

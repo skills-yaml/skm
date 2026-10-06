@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline workspace-docs@5.0.0 gates for this repository."""
+"""Offline workspace-docs@7.0.0 structure, catalog, memory, and privacy gates."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ class WorkspaceValidator:
         "workspace/agents/memory/open-questions.md",
     )
     MEMORY_CHANGELOG = "workspace/agents/memory/changelog.md"
-    SPEC_STATES = ("backlog", "development", "test", "done")
+    SPEC_STATES = ("backlog", "development", "test", "done", "blocked")
     FEATURE_PATTERN = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
     SKIP_PARTS = {".git", "target", "scratch"}
 
@@ -37,15 +37,21 @@ class WorkspaceValidator:
     def validate_structure(self) -> None:
         manifest_path = (
             self.root
-            / "workspace/instructions/standards/workspace-docs/v5.0.0/manifest.yaml"
+            / "workspace/instructions/standards/workspace-docs/v7.0.0/manifest.yaml"
         )
         if not manifest_path.is_file():
             self.add_error(
-                "workspace/instructions/standards/workspace-docs/v5.0.0/manifest.yaml",
+                "workspace/instructions/standards/workspace-docs/v7.0.0/manifest.yaml",
                 1,
                 "required file is missing",
             )
             return
+        for name in ("manifest.yaml", "sdlc.md", "process.md", "agents-template.md",
+                     "audit-checklist.md", "specs-readme-template.md", "migration.md",
+                     "memory.md", "versioning.md", "docs-tech-template.md"):
+            package_file = manifest_path.parent / name
+            if not package_file.is_file() or package_file.is_symlink():
+                self.add_error(package_file.relative_to(self.root), 1, "complete pinned standard package is required")
         manifest = self.parse_manifest(manifest_path)
         for relative in manifest.get("required_root_files", []):
             if not (self.root / relative).is_file():
@@ -67,29 +73,46 @@ class WorkspaceValidator:
         agents = self.root / "AGENTS.md"
         if agents.is_file():
             content = agents.read_text(encoding="utf-8")
-            start = "<!-- AGENT-CONTEXT:START workspace-docs@5.0.0 -->"
+            start = "<!-- AGENT-CONTEXT:START workspace-docs@7.0.0 -->"
             end = "<!-- AGENT-CONTEXT:END -->"
             if content.count(start) != 1 or content.count(end) != 1:
                 self.add_error(
                     "AGENTS.md",
                     1,
-                    "generated context must be one balanced block pinned to workspace-docs@5.0.0",
+                    "generated context must be one balanced block pinned to workspace-docs@7.0.0",
                 )
             elif content.index(end) < content.index(start):
                 self.add_error("AGENTS.md", 1, "generated context markers are out of order")
+            else:
+                template_path = self.root / "workspace/instructions/standards/workspace-docs/v7.0.0/agents-template.md"
+                if not template_path.is_file():
+                    self.add_error(template_path.relative_to(self.root), 1, "generated context template is missing")
+                else:
+                    template = template_path.read_text(encoding="utf-8")
+                    if start not in template or end not in template:
+                        self.add_error(template_path.relative_to(self.root), 1, "generated context template is invalid")
+                    elif content[content.index(start):content.index(end) + len(end)] != template[template.index(start):template.index(end) + len(end)]:
+                        self.add_error("AGENTS.md", 1, "generated context differs from the pinned 7.0.0 template")
+
+        project_manifest = self.root / "skills.yaml"
+        if not project_manifest.is_file() or not re.search(
+            r"(?m)^workspace:\s*\n(?:  [^\n]*\n)*?  standard: workspace-docs@7\.0\.0\s*$",
+            project_manifest.read_text(encoding="utf-8") if project_manifest.is_file() else "",
+        ):
+            self.add_error("skills.yaml", 1, "project manifest must pin workspace-docs@7.0.0")
 
         standard_root = self.root / "workspace/instructions/standards/workspace-docs"
         for name in ("default", "latest"):
             link = standard_root / name
             try:
-                valid = link.is_symlink() and link.resolve(strict=True).name == "v5.0.0"
+                valid = link.is_symlink() and link.readlink() == Path("v7.0.0") and link.resolve(strict=True) == (standard_root / "v7.0.0").resolve(strict=True)
             except (OSError, RuntimeError):
                 valid = False
             if not valid:
                 self.add_error(
                     link.relative_to(self.root),
                     1,
-                    "must resolve to v5.0.0",
+                    "stable alias must be a contained relative link to released v7.0.0",
                 )
 
     def validate_specs(self) -> None:
@@ -208,7 +231,7 @@ class WorkspaceValidator:
 
                 spec_content = path.read_text(encoding="utf-8")
                 declared_state = re.search(
-                    r"^State:\s*`?(backlog|development|test|done)`?\s*$",
+                    r"^State:\s*`?(backlog|development|test|done|blocked)`?\s*$",
                     spec_content,
                     re.MULTILINE,
                 )
@@ -216,7 +239,7 @@ class WorkspaceValidator:
                     self.add_error(
                         path.relative_to(self.root),
                         1,
-                        "spec must declare State as backlog, development, test, or done",
+                        "spec must declare State as backlog, development, test, blocked, or done",
                     )
                 elif declared_state.group(1) != state:
                     self.add_error(
@@ -224,6 +247,8 @@ class WorkspaceValidator:
                         self.line_number(spec_content, declared_state.start()),
                         f"declared spec state must match path state {state}",
                     )
+                if state == "blocked":
+                    self.validate_blocked(path, spec_content)
                 actual[relative] = (feature, state, path)
 
         for relative, (feature, state, path) in actual.items():
@@ -256,10 +281,24 @@ class WorkspaceValidator:
                     f"stale spec catalog entry: {relative}",
                 )
 
+    def validate_blocked(self, path: Path, content: str) -> None:
+        relative = path.relative_to(self.root)
+        fields = {
+            "Previous State": {"backlog", "development", "test"},
+            "Block Kind": {"impediment", "deferred"},
+            "Block Reason": None,
+            "Resume Condition": None,
+        }
+        for field, allowed in fields.items():
+            values = re.findall(rf"^{field}:[ \t]*(.*)$", content, re.MULTILINE)
+            value = values[0].strip().strip("`") if len(values) == 1 else ""
+            if not value or (allowed is not None and value not in allowed):
+                self.add_error(relative, 1, f"blocked spec needs one valid {field}")
+
     def validate_memory(self) -> None:
         manifest_path = (
             self.root
-            / "workspace/instructions/standards/workspace-docs/v5.0.0/manifest.yaml"
+            / "workspace/instructions/standards/workspace-docs/v7.0.0/manifest.yaml"
         )
         if manifest_path.is_file():
             manifest = self.parse_manifest(manifest_path)
@@ -268,12 +307,14 @@ class WorkspaceValidator:
                     self.add_error(relative, 1, "required memory file is missing")
 
         spec_root = self.root / "workspace/specs"
-        for state in ("development", "test", "done"):
+        for state in ("development", "test", "done", "blocked"):
             state_root = spec_root / state
             if not state_root.is_dir():
                 continue
             for path in sorted(state_root.rglob("*.md")):
                 if path.name == "README.md":
+                    continue
+                if state == "blocked" and re.search(r"^Previous State:[ \t]*`?backlog`?[ \t]*$", path.read_text(encoding="utf-8"), re.MULTILINE):
                     continue
                 self.validate_spec_memory_impact(path, state)
 

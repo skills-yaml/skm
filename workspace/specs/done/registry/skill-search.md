@@ -46,6 +46,12 @@ result.
 - `task build`
 - `git diff --check`
 
+## Version Impact
+
+| Component | Impact | Release | Rationale |
+| --- | --- | --- | --- |
+| skm | minor | historical | Previously released skill search work; classified retrospectively without assigning an invented release number. |
+
 ## Memory Impact
 
 Status: updated

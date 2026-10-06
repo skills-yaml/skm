@@ -33,6 +33,12 @@ only when pinned; report unresolved conflicts between current instruction files.
 6. Identify the current pinned `workspace-docs@X.Y.Z` version, if any, and the
    target version requested by the user.
 
+If two or more agents may mutate the repository concurrently, invoke
+`coordinate-multi-agent-development` before delegated edits. Each mutating
+agent needs a dedicated detached linked worktree and its own WIP record. Keep
+the primary checkout coordination-only. Ordinary task branches follow the pinned SDLC task authority; explicit older
+pins retain their direct-request contract. Read-only reviewers do not mutate.
+
 If no target is specified, use the concrete version referenced by the selected
 standard package's `default` pointer. Never silently select a downgrade.
 
@@ -42,7 +48,11 @@ Use a standard package from this order:
 
 1. The current repository's `workspace/instructions/standards/workspace-docs/`.
 2. A source explicitly provided by the user.
-3. The documented canonical `skills-yaml/workspace` repository when network
+3. The complete standard bundled with the installed focused adoption skill,
+   when the requested target is missing from the repository. Portable default
+   and latest files are text pointers: resolve them and install contained relative
+   symlinks, never copy the text as alias files. Preserve existing version packages.
+4. The documented canonical `skills-yaml/workspace` repository when network
    access and the requested operation authorize retrieval.
 
 Pin a concrete version before copying or editing. Never discover a standard by
@@ -53,6 +63,8 @@ Read these resources completely from the selected package:
 
 - `AGENT_MIGRATION.md`
 - `<target-version>/manifest.yaml`
+- `<target-version>/sdlc.md`
+- `<target-version>/process.md`
 - `<target-version>/agents-template.md`
 - `<target-version>/audit-checklist.md`
 - `<target-version>/specs-readme-template.md` when the target contract provides
@@ -76,6 +88,20 @@ Choose one mode and record it:
 
 Treat mixed layouts as an update. Do not scaffold a second copy alongside
 existing content.
+
+## Confirm Project Choices
+
+Before changing project-specific guides, inspect this repository's actual
+application layout, build manifests, CI, existing technical documentation,
+and durable decisions. Distinguish observed facts from unknowns. Propose the
+exact guides to retain, adapt, add, or omit with repository-relative evidence,
+and ask the user to approve or correct the proposal before editing those
+guides. Do not infer a backend, database, frontend, or infrastructure component
+from a language choice or from examples in the standard package.
+
+Record the confirmed choices and source/destination decisions in the migration
+spec. A clear choice already supplied by the user is sufficient; do not ask
+twice. Preserve existing authoritative project guidance.
 
 ## Create the Migration Contract
 
@@ -137,6 +163,12 @@ spec system, follow it and document the target workspace spec transition.
    the deterministic spec-catalog gate required by the target version.
 10. Remove empty legacy paths only after verifying that no current-project
    content was lost.
+11. For 6.0, add the multi-agent record home, portable peer runtime, and
+    `coordination:check` gate. Preserve existing worktrees and do not invent
+    active assignments or initialize a board from an unreviewed base.
+12. For 6.0, add per-spec Version Impact tables, freeze historical done paths
+    in `workspace/releases.json`, reserve a shared candidate from real release
+    state, and add `versions:check` to the aggregate Taskfile gate.
 
 ### Repair
 
@@ -165,46 +197,38 @@ map. Do not create a spec or change files unless the user also requested fixes.
 - Do not delete ambiguous content. Stop and request direction when ownership or
   merge precedence cannot be established safely.
 - A requested migration implementation has standing workflow authority for
-  commits, non-protected branch pushes, pull-request updates, bounded CI work,
-  and non-destructive delivery. Do not request repeated approval for those
-  steps or bypass repository protection. Pause for prospective human approval
-  when a governed instruction is outside the directly approved migration scope,
-  and for scoped approval before a destructive production action.
+  commits, pull-request updates, bounded CI work, and non-destructive delivery.
+  Ordinary task branches and safe delivery follow the pinned SDLC authority;
+  explicit older pins retain their direct-request requirement. Do not request repeated approval for the remaining steps or
+  bypass repository protection. Pause for prospective human approval when a
+  governed instruction is outside the directly approved migration scope, and
+  for scoped approval before a destructive production action.
 
 ## Validate and Complete
 
-1. Compare the final structure with the target manifest and audit checklist.
-2. Confirm instructions, specs, docs, and memory each have one active canonical
-   location.
-3. Confirm one balanced generated context block pins the concrete target
-   version and all manual policy remains intact.
-4. Search the current repository for obsolete version markers, legacy paths,
-   machine-local information, and unrelated-project context.
-5. Validate current-document relative links.
-6. Run Taskfile gates, normally `task check` and `task test`, plus every
-   project-specific gate required by affected areas. Do not bypass Taskfile.
-7. Review the full diff for unintended changes and verify the worktree contains
-   only the migration scope.
-8. Confirm every in-scope spec has a valid memory-impact section and the
-   Taskfile gate rejects missing, unresolved, or incomplete classifications.
-9. Confirm every non-legacy spec has one valid primary-feature path and one
-   matching root catalog row with its current state and rationale.
-10. Classify the migration itself as `updated` or `none`. An adoption or version
-   change normally requires the durable decision and changelog to be updated.
-11. Record exact results, the resolved memory impact, and justified deviations
-   in the development spec.
-12. Keep the spec in development after local migration work. Move it to
-   `workspace/specs/test/<primary-feature>/` only after confirmed integration
-   into the configured test target, conventionally `develop`, and update the
-   root catalog with that evidence.
-13. Move the spec from test to `workspace/specs/done/<primary-feature>/` only
-   after confirmed production release, conventionally through `main`, and
-   update the catalog with the release evidence. Do not infer either event from
-   the checked-out branch name alone.
-14. Record the adopted version and durable project decisions in agent memory.
-
-Do not declare completion while required checks fail, collisions remain, or the
-spec state disagrees with the implementation.
+1. Compare the complete target structure and template with its manifest and audit.
+   Preserve manual policy, prior version packages, personal changes, and historical specs.
+2. Validate current relative links, privacy, canonical locations, spec catalog,
+   blocked metadata, versions, and memory. Run affected Taskfile modules during
+   coherent edits and review fixes; unknown scope uses aggregate fallback.
+3. Reconcile knowable acceptance evidence and the durable adoption decision in
+   memory plus changelog before review. Resolve pending memory when knowable.
+4. Obtain independent review of the exact candidate for governed instructions
+   and other pinned risk rules. Resolve every finding by implementation or
+   reviewer-agreed documented rejection; relevant edits require renewed review.
+5. After review, fixes, artifacts, documentation, and records stabilize, freeze
+   the candidate and run `task check`, `task test`, and applicable project gates.
+   Reuse only proven-fresh evidence; later tracked result edits renew affected
+   review/verification. Missing or stale evidence cannot pass.
+6. Keep local implementation in development. Test requires actual combined
+   shared-test integration. Under v7, done requires verified main merge and
+   reconciled acceptance/records; publication is separate. Older explicit pins
+   retain their original completion contract. Do not infer events from branches.
+7. Preserve historical done work; create linked follow-ups. Blocked records
+   previous stage, kind, reason, and resume condition; resume there with renewed
+   evidence. Test/done require applied versions; publication marks released.
+8. Report actual results, lifecycle/publication status, resolved memory impact,
+   compatibility gaps, and deviations. Never claim completion with failed gates.
 
 ## Hand Off
 

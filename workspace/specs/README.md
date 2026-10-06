@@ -2,25 +2,31 @@
 
 Every non-legacy spec uses
 `workspace/specs/<state>/<primary-feature>/<spec>.md`, where state is `backlog`,
-`development`, `test`, or `done` and primary feature is lowercase hyphen-case.
+`development`, `test`, `blocked`, or `done` and primary feature is lowercase hyphen-case.
 
 The normal flow is `backlog -> development -> test -> done`. Test means
 confirmed integration into the configured test branch or environment. Done
-means confirmed production release. This repository's configured targets are:
+means verified main merge with reconciled acceptance, verification, documentation,
+catalog, versions, and memory. Publication is tracked separately. Explicit older
+migration specs retain their original completion contract; preserve historical
+done specs and assess existing test work individually before advancing it. This repository's configured targets are:
 
 - test: `development` (prerelease channel; equivalent to the conventional
   `develop` default)
 - production: `main`
 
 A branch name alone is not lifecycle evidence. Record the confirmed
-integration or release event in the spec and in this catalog.
+integration or main-merge event in the spec and in this catalog. Blocked specs
+record Previous State, Block Kind (impediment or deferred), Block Reason, and
+Resume Condition. Resume at their prior stage and renew stale evidence.
+Synchronize release member paths with every state change.
 
 ## Feature Categories
 
 | Primary feature | Purpose |
 | --- | --- |
 | `workspace-governance` | Workspace adoption, documentation policy, lifecycle governance, and validation. |
-| `workspace-toolkit` | SKM toolkit install, lockfile ownership, and Workspace Docs toolkit compatibility. |
+| `workspace-toolkit` | SKM toolkit and bundle installation contracts, lockfile ownership, and compatibility. |
 | `configuration` | Interactive, programmatic, and global configuration management. |
 | `skill-lifecycle` | Skill removal and version selection. |
 | `local-dev` | Local development skill linking and dev mode. |
@@ -37,6 +43,16 @@ reopened, is superseded, or materially changes why it is in its state.
 <!-- SPEC-CATALOG:START -->
 | Spec | Primary feature | State | Status rationale |
 | --- | --- | --- | --- |
+| [registry-format-ownership.md](test/registry/registry-format-ownership.md) | `registry` | `test` | PR #79 merged into development at 6e572b29ca35b4ecafd841d870d5cbc8e08b4a32 on 2026-10-06 after CI run 37450733442 passed. The reviewed combined candidate passed task check, all 202 tests, and task build. Main promotion and publication remain pending. |
+| [installation-contract-validation.md](test/workspace-toolkit/installation-contract-validation.md) | `workspace-toolkit` | `test` | PR #79 merged into development at 6e572b29ca35b4ecafd841d870d5cbc8e08b4a32 on 2026-10-06 after CI run 37450733442 passed. The reviewed combined candidate passed task check, all 202 tests, and task build. Main promotion and publication remain pending. |
+| [adopt-workspace-docs-7.md](test/workspace-governance/adopt-workspace-docs-7.md) | `workspace-governance` | `test` | PR #79 merged into development at 6e572b29ca35b4ecafd841d870d5cbc8e08b4a32 on 2026-10-06 after CI run 37450733442 passed. The reviewed combined candidate passed task check, all 202 tests, and task build. Main promotion and publication remain pending. |
+| [bare-help-update-notice.md](test/updates/bare-help-update-notice.md) | `updates` | `test` | PR #74 integrated into development at e652af1 on 2026-09-30; the current test branch contains the fix. Production completion remains pending. |
+| [adopt-workspace-docs-6.md](test/workspace-governance/adopt-workspace-docs-6.md) | `workspace-governance` | `test` | PR #72 merged the 6.0.0 candidate migration into `development` at `c49f1cc` on 2026-09-30 after Validate run `36682939489` passed; production release remains pending. |
+| [notify-registry-docs.md](test/updates/notify-registry-docs.md) | `updates` | `test` | PR #67 merged into the configured `development` test channel at `a8ad8d7` on 2026-09-29 after Validate passed; the first production release that sends the dispatch is pending. |
+| [command-contract-reconciliation.md](test/skill-lifecycle/command-contract-reconciliation.md) | `skill-lifecycle` | `test` | PR #69 merged into `development` at `46d70fa` on 2026-09-28 after Validate run `36476786848` passed; production release is pending. |
+| [legacy-updater-identity-handshake.md](test/updates/legacy-updater-identity-handshake.md) | `updates` | `test` | PR #66 merged into `development` at `ed5b0a0` after Validate run `36270555944` passed; release run `36271054364` published nine assets and an older Linux binary self-updated successfully. Cross-platform qualification remains pending. |
+| [separate-workspace-docs.md](test/workspace-toolkit/separate-workspace-docs.md) | `workspace-toolkit` | `test` | PR #60 merged into the configured `development` test channel at `506d47a` on 2026-09-26 after Validate passed; production release is pending. |
+| [command-reorganization.md](test/skill-lifecycle/command-reorganization.md) | `skill-lifecycle` | `test` | PR #63 merged into `development` at `2c852c2` on 2026-09-26 after Validate run `36212734539` passed; production promotion awaits the separately specified legacy updater handshake and release qualification. |
 | [add-confirmation.md](done/registry/add-confirmation.md) | `registry` | `done` | PR #58 promoted add confirmation to `main`; SKM 0.8.0 at `07b4bba` passed production CI and four-platform qualification, then published through reviewed `release-prod` with verified assets on 2026-09-25. |
 | [search-two-column-output.md](done/registry/search-two-column-output.md) | `registry` | `done` | PR #58 promoted two-column search to `main`; SKM 0.8.0 at `07b4bba` passed production CI and four-platform qualification, then published through reviewed `release-prod` with verified assets on 2026-09-25. |
 | [unified-skill-bundle-discovery.md](done/registry/unified-skill-bundle-discovery.md) | `registry` | `done` | PR #51 promoted SKM 0.7.0; commit `44a502a` passed production CI, four-platform qualification, and verified nine-asset publication. |
