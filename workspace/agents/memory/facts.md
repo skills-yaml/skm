@@ -685,3 +685,24 @@ and `task test` passed on the actual merged revision (202 tests). The primary
 checkout is on `development`; original staged/working personal configuration
 and lockfile bytes are preserved, with the full earlier state retained locally
 for recovery. The follow-up is in test; main completion remains separate.
+
+## 2026-10-06 - Integrate independent Workspace governance declarations
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: after main promotion
+- Supersedes: development-only status for the manifest-decoupling follow-up
+
+Content:
+
+PR #87 merged the independently reviewed fix into `development` at
+`1c533ad28bb6a6c0f4914ac8f171c148b42e3625` after PR CI `37527554735` passed.
+Review approved candidate `c943e6fadb6ffc19895f7ef955af6ee56327ecfc` with no
+findings; fresh combined `task check` and `task test` passed (203 tests).
+The primary checkout remains on development. Both local manifest layers omit
+only obsolete Workspace/trust metadata, preserve distinct skill versions and
+other values, and retain exact ignore/lockfile bytes plus local recovery.
+Installed skills pass `skm check`. Governance remains declared by AGENTS and
+contained standard aliases; SKM runtime formats are unchanged. The follow-up
+is in test; main completion and production promotion remain separate.

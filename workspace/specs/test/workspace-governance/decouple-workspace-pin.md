@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: The user accepted removing the remaining Workspace governance coupling from skills.yaml. Implement and review the repository gate/configuration cleanup before claiming any integration.
+Rationale: PR #87 merged the independently reviewed fix into development at 1c533ad28bb6a6c0f4914ac8f171c148b42e3625 on 2026-10-06 after PR CI 37527554735 passed. Fresh combined task check/test passed (203 tests), and local cleanup preserved other staged/working data. Main completion remains pending.
 
 ## Problem and Scope
 
@@ -102,15 +102,21 @@ Rationale: The removed coupling and canonical governance declarations are record
 - AC-2: Tests still reject stale AGENTS context and stale/absolute aliases for
   both default and latest; complete standard-package checks remain unchanged.
 - AC-3: The committed example omits both obsolete metadata blocks. Cleaned local
-  staged/working replacements are prepared from captured originals and verified
-  to preserve every other SKM value; apply and byte-verify during delivery.
+  staged/working replacements were applied after confirmed integration and
+  byte-verified against the captured originals with only these named blocks
+  removed. Distinct skill versions, ignore layers, and lockfile bytes are
+  preserved; installed links pass `skm check`. Recovery remains local.
 - AC-4: Scoped inspection confirms only the manifest pin requirement was removed;
   generic privacy checks, runtime parsing, optional local toolkits, standard
   packages, and generated/manual AGENTS policy are retained. Current docs agree.
 - AC-6: Catalog and durable decision/changelog are reconciled before review.
-  Independent exact-candidate review and final aggregate results are reported at
-  handoff after execution; relevant edits renew evidence.
+  Independent review approved implementation candidate
+  `c943e6fadb6ffc19895f7ef955af6ee56327ecfc` with no findings. Frozen candidate
+  `task check` and `task test` passed (203 tests); PR CI also passed checks,
+  tests, and build. Fresh checks/tests passed on actual integration
+  `1c533ad28bb6a6c0f4914ac8f171c148b42e3625`; these lifecycle records receive
+  renewed independent review and frozen gates before delivery.
 
-Shared-test integration and main completion are unconfirmed for this follow-up.
-Personal metadata cleanup is finalized at delivery without publishing personal
-configuration. There is no SKM runtime version bump or requested production change.
+Shared-test integration and personal metadata cleanup are confirmed. Main
+completion remains pending. Personal configuration was not published. There
+is no SKM runtime version bump or requested production change.
