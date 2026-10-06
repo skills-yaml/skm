@@ -173,8 +173,7 @@ mod tests {
             toolkit: None,
             bundles: Vec::new(),
             profiles: Vec::new(),
-            workspace: None,
-            trusted_sources: Vec::new(),
+            metadata: Default::default(),
         };
         config.save_to_file(project.join("skills.yaml")).unwrap();
         linker::link_skill(&config.skills[0], &project, &config.agents, false).unwrap();

@@ -1052,8 +1052,7 @@ mod tests {
             toolkit: None,
             bundles: Vec::new(),
             profiles: Vec::new(),
-            workspace: None,
-            trusted_sources: Vec::new(),
+            metadata: Default::default(),
         };
         config.save_to_file(temp.join("skills.yaml")).unwrap();
 
@@ -1146,8 +1145,7 @@ mod tests {
             toolkit: None,
             bundles: Vec::new(),
             profiles: Vec::new(),
-            workspace: None,
-            trusted_sources: Vec::new(),
+            metadata: Default::default(),
         };
         config.save_to_file(temp.join("skills.yaml")).unwrap();
         BaseConfig::new().save().unwrap();
@@ -1193,8 +1191,7 @@ mod tests {
             toolkit: None,
             bundles: Vec::new(),
             profiles: Vec::new(),
-            workspace: None,
-            trusted_sources: Vec::new(),
+            metadata: Default::default(),
         };
         config.save_to_file(temp.join("skills.yaml")).unwrap();
         BaseConfig::new().save().unwrap();
@@ -1237,8 +1234,7 @@ mod tests {
             toolkit: None,
             bundles: Vec::new(),
             profiles: Vec::new(),
-            workspace: None,
-            trusted_sources: Vec::new(),
+            metadata: Default::default(),
         };
         config.save_to_file(temp.join("skills.yaml")).unwrap();
         let external = temp.join("external-skills");
@@ -1369,8 +1365,7 @@ mod tests {
             toolkit: None,
             bundles: Vec::new(),
             profiles: Vec::new(),
-            workspace: None,
-            trusted_sources: Vec::new(),
+            metadata: Default::default(),
         };
         config.save_to_file(temp.join("skills.yaml")).unwrap();
 
@@ -1427,8 +1422,7 @@ mod tests {
             toolkit: None,
             bundles: Vec::new(),
             profiles: Vec::new(),
-            workspace: None,
-            trusted_sources: Vec::new(),
+            metadata: Default::default(),
         };
         let project_config_path = temp.join("skills.yaml");
         config.save_to_file(&project_config_path).unwrap();

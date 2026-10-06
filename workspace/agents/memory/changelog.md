@@ -851,3 +851,53 @@ bundle installation, skm check, and no-op repetition. PR #75 released the
 focused 0.8.1 maintenance fix through main at 49468aa; production CI and all
 four platforms passed, and the published Linux artifact repeated that live
 qualification. Future compatibility majors remain explicitly rejected.
+
+## 2026-10-05 - Record Workspace Docs 7.0.0 adoption
+
+- Type: decision
+- Source: user and repository
+- Confidence: high
+- Review: after shared-test integration
+- Supersedes: none
+
+Content:
+
+Appended the 7.0.0 adoption decision to `workspace/agents/memory/decisions.md`,
+superseding the prior candidate adoption decision while preserving its history.
+Recorded main-based completion, separate publication, blocked resume metadata,
+review and verification obligations, shared version reuse, and the separate
+SKM runtime compatibility gap. Local migration does not prove shared-test
+integration, main merge, or publication.
+
+## 2026-10-05 - Record installation and governance responsibilities
+
+- Type: decision
+- Source: user and repository
+- Confidence: high
+- Review: after shared-test integration
+- Supersedes: none
+
+Content:
+
+Appended the governance delegation decision to
+`workspace/agents/memory/decisions.md`. SKM no longer interprets the optional
+legacy governance metadata or maintains a Workspace Docs major allowlist;
+installation contract validation remains enforced. This supersedes the separate
+runtime gap recorded at 7.0.0 adoption without rewriting historical decisions.
+
+## 2026-10-06 - Record SKM registry format ownership
+
+- Type: decision
+- Source: user and repository
+- Confidence: high
+- Review: after shared-test integration
+- Supersedes: none
+
+Content:
+
+Appended the clarified publisher-independent runtime decision to
+`workspace/agents/memory/decisions.md`, superseding the narrower allowlist-removal
+boundary. Recorded SKM format ownership, generic namespace/member checks, removal
+of Workspace-only CLI/config/lock/source behavior, preservation of opaque YAML
+data, and retained actual installation safety. Repository governance remains a
+separate contributor contract.

@@ -44,14 +44,17 @@
       "owner": "skm-development-release",
       "version_source": "Cargo.toml",
       "specs": [
-        "workspace/specs/development/updates/bare-help-update-notice.md",
+        "workspace/specs/test/updates/bare-help-update-notice.md",
         "workspace/specs/test/workspace-governance/adopt-workspace-docs-6.md",
         "workspace/specs/test/skill-lifecycle/command-contract-reconciliation.md",
         "workspace/specs/test/skill-lifecycle/command-reorganization.md",
         "workspace/specs/test/updates/legacy-updater-identity-handshake.md",
-        "workspace/specs/test/workspace-toolkit/separate-workspace-docs.md"
+        "workspace/specs/test/workspace-toolkit/separate-workspace-docs.md",
+        "workspace/specs/development/workspace-governance/adopt-workspace-docs-7.md",
+        "workspace/specs/development/workspace-toolkit/installation-contract-validation.md",
+        "workspace/specs/development/registry/registry-format-ownership.md"
       ],
-      "evidence": "On 2026-09-29, the prod-latest manifest reported SKM 0.8.0 at 07b4bba, and development-latest reported 0.8.0 at 72eaf7d; the remote had no v0.9.0 tag. The shared 0.9.0 candidate is applied once in Cargo.toml and Cargo.lock for active specifications. PR #72 integrated the Workspace Docs 6.0.0 member into development at c49f1cc on 2026-09-30 after Validate run 36682939489 passed. The user-approved v7 compatibility repair joins this already-applied shared development candidate without a second bump; focused production maintenance remains 0.8.1. V7 compatibility was independently published as production maintenance 0.8.1 through PR #75, with its member now reconciled to released skm-v7-maintenance; remaining shared 0.9.0 work stays applied and open. Reconciled the open release baseline to newly published production 0.8.1; its minor target remains 0.9.0 and the existing applied version is reused without a second bump."
+      "evidence": "On 2026-09-29, the prod-latest manifest reported SKM 0.8.0 at 07b4bba, and development-latest reported 0.8.0 at 72eaf7d; the remote had no v0.9.0 tag. The shared 0.9.0 candidate is applied once in Cargo.toml and Cargo.lock for active specifications. PR #72 integrated the Workspace Docs 6.0.0 member into development at c49f1cc on 2026-09-30 after Validate run 36682939489 passed. The user-approved v7 compatibility repair joins this already-applied shared development candidate without a second bump; focused production maintenance remains 0.8.1. V7 compatibility was independently published as production maintenance 0.8.1 through PR #75, with its member now reconciled to released skm-v7-maintenance; remaining shared 0.9.0 work stays applied and open. Reconciled the open release baseline to newly published production 0.8.1; its minor target remains 0.9.0 and the existing applied version is reused without a second bump. On 2026-10-06, repository v7 adoption and publisher-independent format validation join the applied shared 0.9.0 candidate, preserving the published 0.8.1 maintenance history and baseline."
     },
     {
       "id": "skm-v7-maintenance",

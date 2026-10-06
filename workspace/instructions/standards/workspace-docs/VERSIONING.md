@@ -26,21 +26,25 @@ workspace-docs/
   v3.0.0/
   v4.0.0/
   v5.0.0/
-  v6.0.0/        # unreleased candidate
-  latest -> v5.0.0
-  default -> v5.0.0
+  v6.0.0/        # preserved source release
+  v7.0.0/        # SDLC release
+  latest -> v7.0.0
+  default -> v7.0.0
 ```
 
-The `latest` symlink points to the highest released version. The `default`
-symlink points to the recommended stable version for project adoption.
-Unreleased candidate directories do not move either pointer.
+The `latest` pointer identifies the highest available version, including an
+unreleased candidate. The `default` pointer identifies the recommended stable
+version for adoption. Advancing latest does not publish a candidate or advance
+default; inspect the selected manifest and release evidence for its status.
+The stable default selects the highest version marked default with a valid
+release date. Explicit older project pins remain supported.
 
 ## Project Pinning
 
 Projects should record their adopted version in `AGENTS.md` or a generated agent context block:
 
 ```md
-Workspace docs standard: workspace-docs@5.0.0
+Workspace docs standard: workspace-docs@7.0.0
 ```
 
 If a project cannot fully adopt the version, it should document deviations in
@@ -75,8 +79,10 @@ Requires a new version:
 
 ## Per-Spec Release Planning
 
-The unreleased 6.0.0 candidate adds required
-[spec impact and release reservations](./v6.0.0/versioning.md). Each spec
+Version 6 introduced required spec impact and release reservations. The
+current [v7 versioning contract](./v7.0.0/versioning.md) retains those obligations
+and separates applied versions for main completion from publication. Each spec
 classifies its SemVer effect, and one owner applies each reserved bump at
 development start or integration. Shared specs reuse the same unreleased
-candidate; a candidate is not a released baseline.
+candidate; a candidate is not a released baseline. Released packages and stable
+aliases retain their existing immutability rules.

@@ -12,7 +12,7 @@ repository is pinned to that version.
 - [`tech/`](./tech/): Task, SDLC, CI, and project-structure rules for this
   Rust CLI.
 - [`standards/`](./standards/): Versioned workspace documentation standard
-  (`workspace-docs@6.0.0` candidate).
+  (`workspace-docs@7.0.0`).
 - [`agents/`](./agents/): Reserved for agent role instructions. Empty until
   project-specific roles exist.
 - [`skills/`](./skills/): Repository skill instructions, including

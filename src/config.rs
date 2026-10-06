@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -19,17 +19,6 @@ pub struct SkillSpec {
 pub struct ToolkitSelection {
     pub manifest: String,
     pub version: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct WorkspaceSelection {
-    pub standard: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub revision: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub integrity: Option<String>,
 }
 
 impl SkillSpec {
@@ -64,10 +53,9 @@ pub struct SkillsConfig {
     pub bundles: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub profiles: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workspace: Option<WorkspaceSelection>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub trusted_sources: Vec<String>,
+    /// Publisher-owned configuration is retained without interpretation.
+    #[serde(flatten)]
+    pub metadata: BTreeMap<String, serde_yaml::Value>,
 }
 
 impl SkillsConfig {
@@ -112,8 +100,7 @@ impl SkillsConfig {
             toolkit: None,
             bundles: Vec::new(),
             profiles: Vec::new(),
-            workspace: None,
-            trusted_sources: Vec::new(),
+            metadata: Default::default(),
         }
     }
 
@@ -121,5 +108,22 @@ impl SkillsConfig {
     pub fn remove_skill(&mut self, skill_name: &str) -> Option<SkillSpec> {
         let index = self.skills.iter().position(|s| s.name == skill_name)?;
         Some(self.skills.remove(index))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn publisher_configuration_round_trips_without_domain_validation() {
+        let raw = "name: example\nagents: [codex]\nskills: []\nworkspace: [opaque, metadata]\ntrusted_sources: {publisher: ignored}\ncompany_policy: {edition: future, active: true}\n";
+        let config: SkillsConfig = serde_yaml::from_str(raw).unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let path = project.path().join("skills.yaml");
+        config.save_to_file(&path).unwrap();
+        let reloaded = SkillsConfig::load_from_file(path).unwrap();
+        assert_eq!(reloaded.metadata, config.metadata);
+        assert_eq!(reloaded.name, "example");
     }
 }

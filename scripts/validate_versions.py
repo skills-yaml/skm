@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate Workspace Docs 6 spec impact and SKM release reservations."""
+"""Validate Workspace Docs 7 spec impact and SKM release reservations."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 SEMVER = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 IMPACT = {"none": 0, "patch": 1, "minor": 2, "major": 3}
-STATES = ("backlog", "development", "test", "done")
+STATES = ("backlog", "development", "test", "done", "blocked")
 
 
 class VersionValidator:
@@ -134,12 +134,21 @@ class VersionValidator:
         historical_set = set(item for item in historical if isinstance(item, str))
         spec_rows: dict[str, list[tuple[str, str, str]]] = {}
         states: dict[str, str] = {}
+        effective_states: dict[str, str] = {}
         for state in STATES:
             for path in sorted((self.root / "workspace/specs" / state).rglob("*.md")):
                 if path.name == "README.md":
                     continue
                 relative = path.relative_to(self.root).as_posix()
                 states[relative] = state
+                effective_states[relative] = state
+                if state == "blocked":
+                    values = re.findall(r"^Previous State:[ \t]*(.*)$", path.read_text(encoding="utf-8"), re.MULTILINE)
+                    previous = values[0].strip().strip("`") if len(values) == 1 else ""
+                    if previous not in ("backlog", "development", "test"):
+                        self.error(relative, "blocked spec needs one valid Previous State")
+                    else:
+                        effective_states[relative] = previous
                 spec_rows[relative] = self.spec_rows(relative)
                 if state == "done":
                     if relative not in historical_set and any(release == "historical" for _, _, release in spec_rows[relative]):
@@ -225,12 +234,10 @@ class VersionValidator:
                 if component in open_components:
                     self.error("workspace/releases.json", f"{release}: multiple open releases for {component}")
                 open_components.add(component)
-            if any(states.get(member) == "test" for member in member_set) and row.get("status") == "planned":
-                self.error("workspace/releases.json", f"{release}: test specs need an applied version")
-            if row.get("timing") == "development-start" and any(states.get(member) == "development" for member in member_set) and row.get("status") == "planned":
+            if any(effective_states.get(member) in ("test", "done") for member in member_set) and row.get("status") == "planned":
+                self.error("workspace/releases.json", f"{release}: test/done specs need an applied version")
+            if row.get("timing") == "development-start" and any(effective_states.get(member) == "development" for member in member_set) and row.get("status") == "planned":
                 self.error("workspace/releases.json", f"{release}: development-start bump is not applied")
-            if row.get("status") == "released" and any(states.get(member) != "done" for member in member_set):
-                self.error("workspace/releases.json", f"{release}: released reservation has active specs")
             source = row.get("version_source")
             if not isinstance(source, str):
                 self.error("workspace/releases.json", f"{release}: version_source is required")

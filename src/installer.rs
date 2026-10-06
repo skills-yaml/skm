@@ -157,15 +157,26 @@ pub fn prepare(
                 return Err("skills.lock.yaml is not a skills-only lockfile".into());
             }
         }
-        let desired = serde_yaml::to_string(&SkillsLock {
+        let mut desired = serde_yaml::to_value(SkillsLock {
             schema_version: 1,
             kind: "skills",
             project: config.name.clone(),
             agents: config.agents.clone(),
             skills: locked_skills,
             outputs,
-        })?
-        .into_bytes();
+        })?;
+        if let Some(bytes) = &existing {
+            let previous: serde_yaml::Value = serde_yaml::from_slice(bytes)?;
+            if let Some(metadata) = previous.as_mapping() {
+                let fields = desired.as_mapping_mut().unwrap();
+                for (key, value) in metadata {
+                    if !fields.contains_key(key) {
+                        fields.insert(key.clone(), value.clone());
+                    }
+                }
+            }
+        }
+        let desired = serde_yaml::to_string(&desired)?.into_bytes();
         if existing.as_deref() != Some(desired.as_slice()) {
             public.actions.push(PlanAction {
                 action: if existing.is_some() {
@@ -492,8 +503,7 @@ mod tests {
             toolkit: None,
             bundles: Vec::new(),
             profiles: Vec::new(),
-            workspace: None,
-            trusted_sources: Vec::new(),
+            metadata: Default::default(),
         };
         (root, config)
     }
@@ -515,6 +525,38 @@ mod tests {
         assert!(repeat.public.actions.is_empty());
         repeat.apply().unwrap();
         assert_eq!(fs::read(project.join("skills.lock.yaml")).unwrap(), lock);
+    }
+
+    #[test]
+    fn reinstall_preserves_opaque_lock_metadata_and_regenerates_installation_fields() {
+        let (root, config) = fixture();
+        let project = root.path();
+        prepare(&config, project, false, None)
+            .unwrap()
+            .apply()
+            .unwrap();
+        let lock_path = project.join("skills.lock.yaml");
+        let mut lock: serde_yaml::Value =
+            serde_yaml::from_slice(&fs::read(&lock_path).unwrap()).unwrap();
+        lock["workspace"] = serde_yaml::from_str("[opaque, domain]").unwrap();
+        lock["publisher_policy"] = serde_yaml::from_str("active: true").unwrap();
+        lock["project"] = "stale-project".into();
+        fs::write(&lock_path, serde_yaml::to_string(&lock).unwrap()).unwrap();
+
+        prepare(&config, project, false, None)
+            .unwrap()
+            .apply()
+            .unwrap();
+        let after = fs::read(&lock_path).unwrap();
+        let actual: serde_yaml::Value = serde_yaml::from_slice(&after).unwrap();
+        assert_eq!(actual["workspace"], lock["workspace"]);
+        assert_eq!(actual["publisher_policy"], lock["publisher_policy"]);
+        assert_eq!(actual["project"], "fixture");
+        verify_lock(&config, project).unwrap();
+        let repeat = prepare(&config, project, false, None).unwrap();
+        assert!(repeat.public.actions.is_empty());
+        repeat.apply().unwrap();
+        assert_eq!(fs::read(lock_path).unwrap(), after);
     }
 
     #[test]

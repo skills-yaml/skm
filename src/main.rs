@@ -15,7 +15,6 @@ mod updater;
 mod version;
 mod version_manager;
 mod wizard;
-mod workspace_source;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use config::{SkillSpec, SkillsConfig};
@@ -52,7 +51,7 @@ enum Commands {
         /// Use non-interactive mode with default values
         #[arg(long)]
         non_interactive: bool,
-        /// Select a repository-local Workspace toolkit manifest
+        /// Select a repository-local toolkit manifest
         #[arg(long)]
         toolkit_manifest: Option<String>,
         /// Pin the selected toolkit version
@@ -64,18 +63,6 @@ enum Commands {
         /// Select an additional role profile; repeat for multiple profiles
         #[arg(long)]
         profile: Vec<String>,
-        /// Pin a workspace standard, for example workspace-docs@5.0.0
-        #[arg(long)]
-        workspace_standard: Option<String>,
-        /// Select a repository-local workspace standard source
-        #[arg(long)]
-        workspace_source: Option<String>,
-        /// Pin an immutable Git revision for a remote workspace source
-        #[arg(long)]
-        workspace_revision: Option<String>,
-        /// Pin the expected SHA-256 package integrity for a remote workspace source
-        #[arg(long)]
-        workspace_integrity: Option<String>,
     },
     /// Install and symlink all skills specified in skills.yaml
     Install {
@@ -719,10 +706,6 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             toolkit_version,
             bundle,
             profile,
-            workspace_standard,
-            workspace_source,
-            workspace_revision,
-            workspace_integrity,
             ..
         } => {
             let mut document =
@@ -746,19 +729,6 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 }
             } else if !bundle.is_empty() || !profile.is_empty() {
                 return Err("--bundle and --profile require --toolkit-manifest".into());
-            }
-            if let Some(standard) = workspace_standard {
-                document.value["workspace"] = serde_yaml::to_value(config::WorkspaceSelection {
-                    standard,
-                    source: workspace_source,
-                    revision: workspace_revision,
-                    integrity: workspace_integrity,
-                })?;
-            } else if workspace_source.is_some()
-                || workspace_revision.is_some()
-                || workspace_integrity.is_some()
-            {
-                return Err("workspace source options require --workspace-standard".into());
             }
             if non_interactive {
                 document.save(global)?;
@@ -1774,21 +1744,13 @@ mod init_tests {
             "core",
             "--profile",
             "reviewer",
-            "--workspace-standard",
-            "workspace-docs@5.0.0",
-            "--workspace-source",
-            "workspace/standards",
         ])
         .unwrap();
         let config = SkillsConfig::load_from_file(project.path()).unwrap();
         assert_eq!(config.toolkit.unwrap().version, "0.2.0");
         assert_eq!(config.bundles, ["core"]);
         assert_eq!(config.profiles, ["reviewer"]);
-        assert_eq!(
-            config.workspace.unwrap().source.as_deref(),
-            Some("workspace/standards")
-        );
-        assert!(config.trusted_sources.is_empty());
+        assert!(config.metadata.is_empty());
     }
 
     #[test]
@@ -1834,6 +1796,29 @@ mod init_tests {
         assert!(help.contains("sequential prompts"));
         assert!(!help.contains("--interactive"));
         assert!(!help.contains("--advanced"));
+    }
+
+    #[test]
+    fn init_exposes_generic_toolkits_and_rejects_retired_domain_options() {
+        use clap::CommandFactory;
+        let mut command = Cli::command();
+        let help = command
+            .find_subcommand_mut("init")
+            .unwrap()
+            .render_long_help()
+            .to_string();
+        assert!(help.contains("--toolkit-manifest"));
+        assert!(!help.to_lowercase().contains("workspace"));
+        for option in [
+            "--workspace-standard",
+            "--workspace-source",
+            "--workspace-revision",
+            "--workspace-integrity",
+        ] {
+            assert!(
+                Cli::try_parse_from(["skm", "init", "--non-interactive", option, "value"]).is_err()
+            );
+        }
     }
 }
 
@@ -2004,8 +1989,7 @@ mod search_cli_tests {
             toolkit: None,
             bundles: Vec::new(),
             profiles: Vec::new(),
-            workspace: None,
-            trusted_sources: Vec::new(),
+            metadata: Default::default(),
         }
         .save_to_file(&manifest)
         .unwrap();
@@ -2076,8 +2060,7 @@ mod search_cli_tests {
             toolkit: None,
             bundles: Vec::new(),
             profiles: Vec::new(),
-            workspace: None,
-            trusted_sources: Vec::new(),
+            metadata: Default::default(),
         }
         .save_to_file(&config_path)
         .unwrap();
@@ -2148,8 +2131,7 @@ mod search_cli_tests {
             toolkit: None,
             bundles: Vec::new(),
             profiles: Vec::new(),
-            workspace: None,
-            trusted_sources: Vec::new(),
+            metadata: Default::default(),
         }
         .save_to_file(&config_path)
         .unwrap();
@@ -2262,8 +2244,7 @@ mod search_cli_tests {
             toolkit: None,
             bundles: Vec::new(),
             profiles: Vec::new(),
-            workspace: None,
-            trusted_sources: Vec::new(),
+            metadata: Default::default(),
         }
         .save_to_file(&config_path)
         .unwrap();
@@ -2346,8 +2327,7 @@ mod search_cli_tests {
             toolkit: None,
             bundles: Vec::new(),
             profiles: Vec::new(),
-            workspace: None,
-            trusted_sources: Vec::new(),
+            metadata: Default::default(),
         };
         config.save_to_file(&config_path).unwrap();
         let install = || Commands::Install {

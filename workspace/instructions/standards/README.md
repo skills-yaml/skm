@@ -1,9 +1,8 @@
 # Versioned Standards
 
-This directory holds the pinned `workspace-docs` package.
+Current project pin: `workspace-docs@7.0.0`. The contained `default` and
+`latest` aliases select released 7.0.0. Earlier version directories are
+preserved unchanged; explicit older contracts retain their own lifecycle.
 
-Current project pin: `workspace-docs@6.0.0` (unreleased candidate). The
-standard's `default` and `latest` aliases remain on released 5.0.0.
-
-See [`workspace-docs/AGENT_MIGRATION.md`](./workspace-docs/AGENT_MIGRATION.md)
-before adopting, upgrading, or repairing workspace structure.
+Read the [migration guide](./workspace-docs/AGENT_MIGRATION.md) and the concrete
+target package before adoption, upgrade, or structural repair.

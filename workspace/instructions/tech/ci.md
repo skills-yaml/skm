@@ -17,7 +17,12 @@ CI workflows must align with our local task automation setup:
 
 ## Release Artifacts
 
-The release workflow builds installable binaries from branch pushes:
+The release workflow builds installable binaries from branch pushes. Publication
+is separate from Workspace Docs 7 main completion; verify the actual combined
+integration revision and respect all host/environment protections. Required
+independent review finishes before frozen-candidate final checks.
+
+Release channels:
 
 * `main` publishes production assets to the `prod-latest` GitHub Release.
 * `development` publishes prerelease assets to the `development-latest` GitHub Release.
@@ -31,9 +36,9 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, development ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, development ]
 
 jobs:
   validate:

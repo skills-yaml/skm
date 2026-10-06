@@ -1,76 +1,98 @@
 # Software Development Lifecycle
 
-## Development Workflow
+This repository follows `workspace-docs@7.0.0`. Read the complete
+[pinned SDLC](../standards/workspace-docs/v7.0.0/sdlc.md),
+[process](../standards/workspace-docs/v7.0.0/process.md), and
+[versioning contract](../standards/workspace-docs/v7.0.0/versioning.md).
 
-The project follows a structured development workflow:
+## Project Workflow and Authority
 
-1. **Feature Specification**: Large feature additions must have specifications under `workspace/specs/<state>/<primary-feature>/` and a matching row in `workspace/specs/README.md`.
-2. **Branch Strategy**:
-   - `main`: Stable, production-ready code. Confirmed production release target for `done` specs.
-   - `development`: Shared prerelease/test channel. Confirmed integration target for `test` specs.
-   - Feature branches, when directly requested for the named task: `feat/<name>` or `feature/<name>`.
-   - Bugfix branches, when directly requested for the named task: `fix/<name>` or `bugfix/<name>`.
-3. **Pull Request Process**:
-   - All changes must go through PR review.
-   - CI checks must pass before merging.
+Non-trivial changes require a development spec with scope, acceptance criteria,
+affected areas, implementation plan, risks, validation gates, Version Impact,
+and Memory Impact initialized to pending, plus a matching root catalog row.
 
-## Workspace Docs 6 Coordination
+- `development` is the configured shared test/prerelease target.
+- `main` is the verified completion target and production publication source.
+- The default route is backlog -> development -> test -> done. No direct-to-main
+  exception is configured. A branch name alone never proves integration.
+- Done requires verified main merge and reconciled acceptance, verification,
+  documentation, catalog, version records, and memory. Deployment/publication
+  are separate events; an applied version suffices for completion.
+- Block from backlog, development, or test using Previous State, Block Kind,
+  Block Reason, and Resume Condition. Resume there and renew stale evidence.
+- Preserve historical done specs; create linked follow-up specs for new work.
+  Explicit older migration specs retain their original completion contracts.
+  Existing test specs require individual acceptance assessment before transition.
 
-When two or more agents may mutate this repository, each peer uses the
-repository's `coordinate-multi-agent-development` skill and its portable
-runtime to claim a task and create a dedicated detached linked worktree from
-one reviewed base. The primary checkout remains coordination-only. Each peer
-maintains a task index and its own WIP record under
-`workspace/docs/work/multi-agent/<task-id>/`; shared file scopes are allowed
-and conflicts are resolved during reviewed integration. A task or delivery
-branch requires a direct user request for that named task. Existing linked
-worktrees are preserved during adoption and are not automatically claimed.
+A clear task request authorizes ordinary task branches (`feat/<name>` or
+`fix/<name>`), commits, pushes, PR updates, safe CI repair, shared-test integration,
+main merge, and non-destructive release, subject to repository protections.
+Governed instructions require prospective approval naming their scope; a named
+Workspace migration supplies that approval for its necessary instruction edits.
+Destructive production actions require separate scoped approval. Never bypass
+host, branch, environment, or credential protections.
 
-The peer board, lock, managed worktrees, and recovery archives are local to the
-Git common directory. They are not committed, copied into work records, or
-treated as evidence of `development` integration or production release.
+## Review and Verification
 
-## Version Planning
+All changes receive self-review. Non-trivial changes require independent agent
+or human review of the exact candidate, except small low-risk changes with
+focused tests. Security, data integrity, public interfaces, governed instructions,
+and release controls always require independent review. Resolve every finding
+through implementation or reviewer-agreed documented rejection; relevant edits
+renew affected review. Repository protections may additionally require humans.
 
-Every non-legacy spec declares its per-component Version Impact before
-implementation. `workspace/releases.json` records one logical owner and one
-open target per component. SKM is pre-1.0: incompatible changes and compatible
-additions use a minor bump; compatible fixes use a patch bump. An explicit
-stable-contract decision would use a major bump to 1.0.0. Peers check the
-shared reservation and published state before choosing a target, reuse an
-already-applied shared release, and run `task versions:check` at handoff. The
-project's native gate reads SKM's version from `[package].version` in
-`Cargo.toml` and checks its `Cargo.lock` mirror.
+Run affected Taskfile modules during implementation and review fixes, including
+transitive consumers. The [module contracts](../../validation/README.md) define
+commands, inputs, isolation, pass conditions, and freshness. Unknown scope uses
+aggregate fallback; final evidence reuse is disabled in this repository.
+After records, documentation, artifacts, review, and fixes stabilize, freeze the
+candidate and run `task check` and `task test`. Later relevant edits renew review
+and verification; tracked result records are not automatically exempt.
 
-Local implementation stays in `development` until confirmed integration into
-the shared `development` test target. A version reservation or peer handoff is
-not lifecycle evidence.
+Every acceptance criterion needs recorded test, inspection, demonstration, or
+user-decision evidence. Verify the actual combined shared-test revision and the
+resulting main revision; contributor results do not prove another revision.
+Repair failed gates. Record concise candidate-bound results without raw logs.
 
-## CI/CD Pipeline
+## Multi-Agent Coordination
 
-The CI/CD pipeline triggers on pull requests and merges to `main`. It follows the standard Rust validation flow:
+When two or more agents may mutate, use the repository coordination skill and
+portable runtime for atomic claims, dedicated detached linked worktrees, and
+bounded, possibly overlapping scopes. Keep the primary checkout coordination-only.
+Maintain task indexes and individual WIP records under
+`workspace/docs/work/multi-agent/`. Read-only reviewers need no worktree.
+Ordinary task branches follow task authority; preserve older direct-request
+records and existing worktrees. The runtime still creates detached worktrees.
 
-1. **Check Phase**:
-   - Run `task check` to verify formatting, Clippy, compilation, workspace
-     structure, release reservations, and peer records.
+The peer board, lock, worktrees, and recovery archives stay local to the Git
+common directory. Internal integration is not shared-test integration, main
+completion, or publication. Preserve dirty work and unique commits on interruption.
 
-2. **Test & Build Phase**:
-   - Run `task test` to execute all cargo tests.
-   - Run `task build` to build optimized release binaries.
+## Version Planning and Memory
 
-## Code Quality Standards
+Every non-legacy spec declares per-component Version Impact before implementation.
+`workspace/releases.json` records one logical owner and one open target per
+component. Pre-1.0 SKM uses minor for incompatible changes/additions and patch
+for compatible fixes; an explicit stable-contract decision advances to 1.0.0.
+Check shared reservations before selecting targets and at handoff; reuse an
+already-applied shared candidate without another bump. Apply once at the declared
+development-start or merge boundary before integration artifacts. Test/done need
+applied versions; publication separately marks reservations released with evidence.
+The native version gate checks `[package].version` and its Cargo.lock mirror.
 
-- **Formatting**: Consistent formatting enforced by `cargo fmt`.
-- **Linting**: No warnings or errors allowed by `cargo clippy` (enforced via `-D warnings` in checking).
-- **Testing**: Unit and integration tests required under `tests/` or inline modules for logic changes.
-- **Filesystem safety**: Path validation and non-destructive symlink behavior must be covered by tests when changed.
+Classify completed tasks as updated or none with rationale. Updated durable
+context goes to its memory category plus changelog; pending remains only while
+unresolved. Reconcile memory before done and state classification at handoff.
 
-## Commits
+## CI, Quality, and Commits
 
-- All commits must pass `task check` and `task test` before being pushed.
-- All commit messages must follow the conventional commit format: `type(scope): description`
+CI validates PRs and pushes to both `development` and `main` through `task check`,
+`task test`, and `task build`. The separate publication workflow does not replace
+PR validation. See [CI guidance](./ci.md) for release channels and protections.
 
-Examples:
-- `feat(cli): add list command`
-- `fix(linker): handle broken symlinks correctly`
-- `chore(deps): bump clap to 4.4`
+Formatting, warnings-free Clippy, deterministic Rust unit/integration tests,
+and filesystem safety remain mandatory. Use Taskfile entrypoints only.
+Iterative checkpoint commits may rely on affected modules; complete final evidence
+is required before a push or PR handoff presented for acceptance.
+Conventional commits use `type(scope): description`, for example
+`chore(workspace): adopt Workspace Docs 7.0.0`.
