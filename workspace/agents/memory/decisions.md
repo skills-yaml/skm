@@ -500,3 +500,24 @@ and justify safe fallback for unknown impact. Preserve full final Taskfile
 checks after independent review and native protections. SKM runtime format
 ownership, Rust layout, historical standard packages, and personal staging
 are unchanged; this local follow-up does not prove integration or publication.
+
+## 2026-10-06 - Keep governance pins outside SKM installation manifests
+
+- Type: decision
+- Source: user and decouple-workspace-pin spec
+- Confidence: high
+- Review: after main promotion
+- Supersedes: requiring the Workspace Docs project pin in skills.yaml
+
+Content:
+
+Workspace governance is declared by the generated AGENTS context and the
+contained standard aliases under workspace/instructions/standards/workspace-docs.
+The repository structure gate validates those declarations without requiring
+Workspace metadata in the SKM installation manifest. Remove the obsolete root
+workspace/trusted_sources blocks from this project's committed example and
+local staged/working configuration; preserve all other installation selections.
+Generic repository privacy checks remain enforced. SKM retains optional generic
+toolkit/bundle/profile formats and preserves arbitrary publisher metadata at
+runtime without interpreting it. No new governance configuration format or
+SKM runtime version bump is required.

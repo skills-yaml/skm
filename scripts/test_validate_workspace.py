@@ -35,10 +35,6 @@ class WorkspaceValidationTests(unittest.TestCase):
         (self.root / "DESIGN.md").write_text("# Design\n", encoding="utf-8")
         (self.root / "README.md").write_text("# Readme\n", encoding="utf-8")
         (self.root / "Taskfile.yml").write_text("version: '3'\n", encoding="utf-8")
-        (self.root / "skills.yaml").write_text(
-            "workspace:\n  standard: workspace-docs@7.0.0\n",
-            encoding="utf-8",
-        )
         scripts = self.root / "scripts"
         scripts.mkdir()
         (scripts / "validate_workspace.py").write_text("# validator\n", encoding="utf-8")
@@ -213,12 +209,29 @@ class WorkspaceValidationTests(unittest.TestCase):
         errors = WorkspaceValidator(self.root).validate(["privacy"])
         self.assertTrue(any("machine-local absolute path is forbidden" in error for error in errors))
 
-    def test_old_project_pin_fails(self) -> None:
+    def test_skill_manifest_does_not_select_governance(self) -> None:
+        for manifest in (
+            "name: example\nagents: [codex]\nskills: []\n",
+            "workspace:\n  standard: workspace-docs@5.0.0\n"
+            "trusted_sources: [publisher-owned]\n",
+            "workspace: [opaque, metadata]\ntrusted_sources: {publisher: ignored}\n",
+        ):
+            with self.subTest(manifest=manifest):
+                path = self.root / "skills.yaml"
+                path.write_text(manifest, encoding="utf-8")
+                self.assertEqual(WorkspaceValidator(self.root).validate(["structure"]), [])
+                self.assertEqual(path.read_text(encoding="utf-8"), manifest)
+
+    def test_skill_manifest_cannot_override_stale_agent_context(self) -> None:
         (self.root / "skills.yaml").write_text(
-            "workspace:\n  standard: workspace-docs@5.0.0\n", encoding="utf-8"
+            "workspace:\n  standard: workspace-docs@7.0.0\n", encoding="utf-8"
         )
+        agents = self.root / "AGENTS.md"
+        agents.write_text(agents.read_text().replace(
+            "workspace-docs@7.0.0", "workspace-docs@5.0.0"
+        ), encoding="utf-8")
         errors = WorkspaceValidator(self.root).validate(["structure"])
-        self.assertTrue(any("must pin workspace-docs@7.0.0" in error for error in errors))
+        self.assertTrue(any("AGENTS.md" in error and "pinned to" in error for error in errors))
 
     def block_example(self, previous: str = "development") -> Path:
         original = self.root / "workspace/specs/development/sample-feature/example.md"
@@ -282,11 +295,14 @@ class WorkspaceValidationTests(unittest.TestCase):
 
     def test_stale_and_absolute_aliases_fail(self) -> None:
         standard = self.root / "workspace/instructions/standards/workspace-docs"
-        for target in ("v5.0.0", str(standard / "v7.0.0")):
-            with self.subTest(target=target):
-                (standard / "default").unlink()
-                (standard / "default").symlink_to(target)
-                self.assertTrue(any("contained relative link" in error for error in WorkspaceValidator(self.root).validate(["structure"])))
+        for alias in ("default", "latest"):
+            for target in ("v5.0.0", str(standard / "v7.0.0")):
+                with self.subTest(alias=alias, target=target):
+                    (standard / alias).unlink()
+                    (standard / alias).symlink_to(target)
+                    self.assertTrue(any(f"/{alias}:" in error and "contained relative link" in error for error in WorkspaceValidator(self.root).validate(["structure"])))
+            (standard / alias).unlink()
+            (standard / alias).symlink_to("v7.0.0")
 
 
 

@@ -94,13 +94,6 @@ class WorkspaceValidator:
                     elif content[content.index(start):content.index(end) + len(end)] != template[template.index(start):template.index(end) + len(end)]:
                         self.add_error("AGENTS.md", 1, "generated context differs from the pinned 7.0.0 template")
 
-        project_manifest = self.root / "skills.yaml"
-        if not project_manifest.is_file() or not re.search(
-            r"(?m)^workspace:\s*\n(?:  [^\n]*\n)*?  standard: workspace-docs@7\.0\.0\s*$",
-            project_manifest.read_text(encoding="utf-8") if project_manifest.is_file() else "",
-        ):
-            self.add_error("skills.yaml", 1, "project manifest must pin workspace-docs@7.0.0")
-
         standard_root = self.root / "workspace/instructions/standards/workspace-docs"
         for name in ("default", "latest"):
             link = standard_root / name

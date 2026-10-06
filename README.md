@@ -457,6 +457,8 @@ task build
 and the Workspace Docs structure, spec catalog, memory impact, privacy,
 version reservation, and peer record gates. The project currently pins the
 `workspace-docs@7.0.0` standard; both standard aliases select released 7.0.0.
+The governance pin lives in `AGENTS.md` and the Workspace standard aliases.
+Workspace validation does not require governance metadata in `skills.yaml`.
 Workspace Docs 7 separates verified main completion from publication and adds
 blocked-spec resume metadata. See [validation modules](workspace/validation/README.md).
 
