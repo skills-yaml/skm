@@ -913,3 +913,15 @@ separate contributor contract.
 Content:
 
 Appended the verified PR #79 development merge and checks to facts.md; advanced the three linked specifications to test and reconciled catalog/release membership. Main completion and production publication remain pending.
+
+## 2026-10-06 - Record verified main completion
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: after production publication
+- Supersedes: none
+
+Content:
+
+Appended verified PR #80 main merge and actual main CI evidence to facts.md. Reconciled the three new specifications to done and updated catalog/release member paths. The existing applied 0.9.0 target is retained; older release-bound specs and production publication remain pending.

@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `test`
+State: `done`
 
-Rationale: PR #79 merged into development at 6e572b29ca35b4ecafd841d870d5cbc8e08b4a32 on 2026-10-06 after CI run 37450733442 passed. The reviewed combined candidate passed task check, all 202 tests, and task build. Main promotion and publication remain pending.
+Rationale: PR #80 merged the confirmed development implementation into main at 79658625c5bb30cd84b0ad5185237e28e20038eb on 2026-10-06; actual main CI run 37451646628 passed task check, all 202 tests, and task build. Acceptance, documentation, catalog, applied SKM 0.9.0, and memory are reconciled. Production publication remains separately subject to qualification and human release-prod approval.
 
 ## Problem and Contract
 
@@ -130,3 +130,17 @@ Earlier local evidence records describe their historical snapshots. The current
 combined delivery supersedes their unconfirmed-integration statements. The main
 promotion preserves the production 0.8.1 history and reuses applied SKM 0.9.0;
 production publication retains its required human approval.
+
+## Verified Main Completion
+
+PR #80 merged the confirmed development implementation into main at 79658625c5bb30cd84b0ad5185237e28e20038eb on 2026-10-06; actual main CI run 37451646628 passed task check, all 202 tests, and task build. Acceptance, documentation, catalog, applied SKM 0.9.0, and memory are reconciled. Production publication remains separately subject to qualification and human release-prod approval.
+
+PR #79 previously confirmed test integration at
+`6e572b29ca35b4ecafd841d870d5cbc8e08b4a32`. Independent review approved the
+combined promotion at `a50a37ae214aefaf5317cf45701e6797cb4028d1`; its full
+local check, 202-test aggregate, and build passed before PR #80 CI and merge.
+The actual main tree matches that reviewed promotion. These completion records
+receive independent review and full frozen-candidate checks/tests before
+integration; earlier pending/local statements describe historical snapshots.
+No production artifact or external registry notification is claimed. Older
+release-bound specifications retain their individual completion obligations.
