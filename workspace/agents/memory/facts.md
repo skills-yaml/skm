@@ -642,3 +642,15 @@ PR #79 merged into development at 6e572b29ca35b4ecafd841d870d5cbc8e08b4a32 on 20
 Content:
 
 PR #80 merged the confirmed development implementation into main at 79658625c5bb30cd84b0ad5185237e28e20038eb on 2026-10-06; actual main CI run 37451646628 passed task check, all 202 tests, and task build. Acceptance, documentation, catalog, applied SKM 0.9.0, and memory are reconciled. Production publication remains separately subject to qualification and human release-prod approval. The earlier supported-major allowlist and Workspace-specific runtime contract are superseded; Workspace skills own governance compatibility while SKM validates its installation format.
+
+## 2026-10-06 - Integrate supplemental legacy updater qualification
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: after production qualification
+- Supersedes: none
+
+Content:
+
+PR #82 merged into development at 1b6a6e0c501a05861e697399c6752343cd66c3a0 on 2026-10-06 after CI 37453601758 passed. Independent review and full local check, 202 tests, and build passed; main integration and native four-platform qualification remain pending before publication.
