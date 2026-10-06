@@ -1,6 +1,8 @@
 # Bare invocation update notice
 
-State: test
+State: `done`
+
+Rationale: Verified main 7a289ab, branch CI 37454486476/37454491771, four-platform current/legacy qualification 37455327437, and protected production 0.9.0 publication 37454486538. Acceptance and records are reconciled.
 Primary feature: `updates`
 
 ## Problem
@@ -66,3 +68,15 @@ PR #74 merged the implementation into `development` at
 `e652af1122f54570c7dd189697730d6ac901cdaf` on 2026-09-30. Current development
 contains that integration. This record corrects the stale local-only lifecycle;
 main integration and production publication are not inferred.
+
+## Verified Production Completion
+
+PR #83 merged into main at 7a289ab9edcb8799c295041b2fab63a79ba233fa; actual main CI 37454486476 and development CI 37454491771 passed. Qualification 37455327437 passed current-pair updates, actual legacy 0.8.0 updates, and modern-bootstrap rejection on Linux, macOS Intel/ARM, and Windows while production remained held. Release Artifacts 37454486538 then published verified SKM 0.9.0 through the normal eligible-reviewer approval path on 2026-10-06; all nine assets, manifest/source identity, checksums, Linux binary identity, and repeat-update stability were verified.
+
+The bare_invocation_notifies_without_changing_clap_help_behavior, help-request, and invalid-argument parsing regressions pass in the 202-test aggregate. Released help and managed updater behavior match the documented contract.
+
+Memory is updated in `workspace/agents/memory/facts.md` and
+`workspace/agents/memory/changelog.md`. Applied version 0.9.0 is now released;
+no duplicate bump is introduced. Earlier local/pending statements describe
+historical snapshots. These completion records receive fresh independent review
+and frozen aggregate verification before their record-only main closeout.

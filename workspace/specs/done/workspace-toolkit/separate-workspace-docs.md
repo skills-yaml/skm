@@ -2,11 +2,9 @@
 
 ## Status
 
-State: `test`
+State: `done`
 
-Rationale: PR #60 merged the documentation into the configured `development`
-test channel at `506d47a` on 2026-09-26 after Validate run `36213304307` passed.
-Production release through `main` is not yet confirmed.
+Rationale: PR #83 merged into main at 7a289ab9edcb8799c295041b2fab63a79ba233fa; actual main CI 37454486476 and development CI 37454491771 passed. Qualification 37455327437 passed current-pair updates, actual legacy 0.8.0 updates, and modern-bootstrap rejection on Linux, macOS Intel/ARM, and Windows while production remained held. Release Artifacts 37454486538 then published verified SKM 0.9.0 through the normal eligible-reviewer approval path on 2026-10-06; all nine assets, manifest/source identity, checksums, Linux binary identity, and repeat-update stability were verified.
 
 ## Problem and Users
 
@@ -92,3 +90,15 @@ Status: `updated`
 Rationale: The user's decision that SKM documentation stays independent of
 Workspace is recorded in `workspace/agents/memory/decisions.md` with a matching
 `workspace/agents/memory/changelog.md` entry.
+
+## Verified Production Completion
+
+PR #83 merged into main at 7a289ab9edcb8799c295041b2fab63a79ba233fa; actual main CI 37454486476 and development CI 37454491771 passed. Qualification 37455327437 passed current-pair updates, actual legacy 0.8.0 updates, and modern-bootstrap rejection on Linux, macOS Intel/ARM, and Windows while production remained held. Release Artifacts 37454486538 then published verified SKM 0.9.0 through the normal eligible-reviewer approval path on 2026-10-06; all nine assets, manifest/source identity, checksums, Linux binary identity, and repeat-update stability were verified.
+
+Historical reconciliation: PR #60 integrated the documentation separation. The later user-authorized [registry format ownership](../../done/registry/registry-format-ownership.md) superseded Workspace runtime flags/pins and the old README pointer. Current README links generic toolkit/registry documentation, and the former Workspace document remains an ordinary-publisher reference. Original scope/evidence are preserved; retired runtime policy is not claimed as current behavior.
+
+Memory is updated in `workspace/agents/memory/facts.md` and
+`workspace/agents/memory/changelog.md`. Applied version 0.9.0 is now released;
+no duplicate bump is introduced. Earlier local/pending statements describe
+historical snapshots. These completion records receive fresh independent review
+and frozen aggregate verification before their record-only main closeout.

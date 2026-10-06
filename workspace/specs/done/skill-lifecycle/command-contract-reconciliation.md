@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `test`
+State: `done`
 
-Rationale: PR #69 merged the implementation into the configured `development` test channel at `46d70fadc5a3c92bd4013e89e578ce03bb587733` on 2026-09-28 after Validate run `36476786848` passed. Production release remains pending.
+Rationale: PR #83 merged into main at 7a289ab9edcb8799c295041b2fab63a79ba233fa; actual main CI 37454486476 and development CI 37454491771 passed. Qualification 37455327437 passed current-pair updates, actual legacy 0.8.0 updates, and modern-bootstrap rejection on Linux, macOS Intel/ARM, and Windows while production remained held. Release Artifacts 37454486538 then published verified SKM 0.9.0 through the normal eligible-reviewer approval path on 2026-10-06; all nine assets, manifest/source identity, checksums, Linux binary identity, and repeat-update stability were verified.
 
 ## Problem and Users
 
@@ -77,3 +77,15 @@ Install and bulk upgrade can replace symlinks and write configuration. Preflight
 Status: `updated`
 
 Rationale: The accepted command retirement and install/update contract are recorded in `workspace/agents/memory/decisions.md`. Confirmed test-channel integration is recorded in `workspace/agents/memory/facts.md`, with corresponding entries in `workspace/agents/memory/changelog.md`. Production release remains pending.
+
+## Verified Production Completion
+
+PR #83 merged into main at 7a289ab9edcb8799c295041b2fab63a79ba233fa; actual main CI 37454486476 and development CI 37454491771 passed. Qualification 37455327437 passed current-pair updates, actual legacy 0.8.0 updates, and modern-bootstrap rejection on Linux, macOS Intel/ARM, and Windows while production remained held. Release Artifacts 37454486538 then published verified SKM 0.9.0 through the normal eligible-reviewer approval path on 2026-10-06; all nine assets, manifest/source identity, checksums, Linux binary identity, and repeat-update stability were verified.
+
+The command-contract integration suite covers read-only/idempotent ordinary install, default/override registries, and transactional bulk upgrade. Installer unit tests cover collision rejection, injected rollback, safe parents, changed inputs, and opaque lock metadata. Current help/docs match the released generic commands.
+
+Memory is updated in `workspace/agents/memory/facts.md` and
+`workspace/agents/memory/changelog.md`. Applied version 0.9.0 is now released;
+no duplicate bump is introduced. Earlier local/pending statements describe
+historical snapshots. These completion records receive fresh independent review
+and frozen aggregate verification before their record-only main closeout.

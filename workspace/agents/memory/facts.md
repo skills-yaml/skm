@@ -654,3 +654,15 @@ PR #80 merged the confirmed development implementation into main at 79658625c5bb
 Content:
 
 PR #82 merged into development at 1b6a6e0c501a05861e697399c6752343cd66c3a0 on 2026-10-06 after CI 37453601758 passed. Independent review and full local check, 202 tests, and build passed; main integration and native four-platform qualification remain pending before publication.
+
+## 2026-10-06 - Publish protected SKM 0.9.0
+
+- Type: fact
+- Source: repo and release verification
+- Confidence: high
+- Review: none
+- Supersedes: production publication pending for shared SKM 0.9.0
+
+Content:
+
+PR #83 merged into main at 7a289ab9edcb8799c295041b2fab63a79ba233fa; actual main CI 37454486476 and development CI 37454491771 passed. Qualification 37455327437 passed current-pair updates, actual legacy 0.8.0 updates, and modern-bootstrap rejection on Linux, macOS Intel/ARM, and Windows while production remained held. Release Artifacts 37454486538 then published verified SKM 0.9.0 through the normal eligible-reviewer approval path on 2026-10-06; all nine assets, manifest/source identity, checksums, Linux binary identity, and repeat-update stability were verified. Main/runtime uses publisher-independent SKM formats and repository governance 7.0.0. Registry dispatch remains pending because its optional credential variable is absent.
