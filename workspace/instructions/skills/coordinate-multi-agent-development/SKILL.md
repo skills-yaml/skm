@@ -213,3 +213,15 @@ always need independent exact-candidate review. Reconcile knowable records befor
 review, resolve every finding, then freeze and run full Taskfile checks/tests.
 Later relevant tracked edits renew review and verification. No final evidence reuse
 is configured. Preserve historical review and assignment records.
+
+During development and review fixes, map changed behavior and direct/transitive
+consumers, including interfaces, errors, security, timing, side effects,
+configuration, dependencies, and generated outputs. Run the smallest meaningful
+changed-component tests/checks first; after they pass, run affected consumer
+checks in dependency order through the transitive chain. Failures block dependent
+stages; missing coverage/tools is a gap. Deduplicate overlapping checks, group
+cycles, and assess old/new relationships for deletions/renames. Unknown impact
+requires justified safe aggregate fallback; avoid unrelated aggregate iteration
+runs. Preserve required contract/integration/end-to-end coverage and native CI
+protections. A flat gate selection is not execution order. Read-only skills assess
+evidence without mutating; planning skills specify stages without implementing.

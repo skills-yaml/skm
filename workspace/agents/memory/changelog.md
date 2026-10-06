@@ -961,3 +961,19 @@ Appended the verified PR #82 integration to facts.md and reconciled the suppleme
 Content:
 
 Appended verified branch CI, ordinary/legacy four-platform qualification, normal protected publication, and artifact/binary verification to facts.md. Closed seven fulfilled test specs with historical supersession notes and synchronized catalog/release paths; marked shared 0.9.0 released. Kept notify-registry-docs in test with the skipped-dispatch reason. Personal/staged data and earlier done history remain preserved.
+
+## 2026-10-06 - Record Workspace toolkit 0.7.2 validation ordering
+
+- Type: decision
+- Source: user and repository
+- Confidence: high
+- Review: after shared-test integration
+- Supersedes: none
+
+Content:
+
+Appended the toolkit 0.7.2 ordered validation decision to
+`workspace/agents/memory/decisions.md`. Workspace Docs stays at 7.0.0; current
+adoption, coordination, SDLC, and module guidance now require changed-component
+checks followed by dependency-ordered consumer checks without weakening
+final verification, independent review, or SKM's publisher-neutral runtime.

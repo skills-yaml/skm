@@ -42,9 +42,20 @@ through implementation or reviewer-agreed documented rejection; relevant edits
 renew affected review. Repository protections may additionally require humans.
 
 Run affected Taskfile modules during implementation and review fixes, including
-transitive consumers. The [module contracts](../../validation/README.md) define
+transitive consumers. Map changed behavior and its direct/transitive consumers,
+including interfaces, errors, security, timing, side effects, configuration,
+dependencies, and generated outputs. Run the smallest meaningful changed-component
+tests/checks first. Only after they pass, run affected consumer checks in
+dependency order through the transitive chain. Failures block dependent stages;
+missing coverage or tools is a gap, never a pass. Deduplicate overlapping checks,
+assess both old and new relationships for deletions/renames, and group cycles.
+A flat list of selected gates does not establish execution order.
+
+The [module contracts](../../validation/README.md) define
 commands, inputs, isolation, pass conditions, and freshness. Unknown scope uses
-aggregate fallback; final evidence reuse is disabled in this repository.
+justified safe aggregate fallback; avoid unrelated aggregate runs during iteration.
+Preserve required contract/integration/end-to-end coverage and native CI protections.
+Final evidence reuse is disabled in this repository.
 After records, documentation, artifacts, review, and fixes stabilize, freeze the
 candidate and run `task check` and `task test`. Later relevant edits renew review
 and verification; tracked result records are not automatically exempt.

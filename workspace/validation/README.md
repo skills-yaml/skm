@@ -24,9 +24,24 @@ Validator fixtures include representative failures for blocked fields, state/
 catalog mismatch, aliases/pins, memory obligations, version application, and branch
 records. Running a focused module does not establish full final coverage.
 
-Workspace, version, and coordination focused checks are read-only and may run in
-parallel after edits stabilize. Their fixture suites use independent temporary
-directories and may run concurrently. No editing occurs during candidate checks;
+For each coherent change or review fix, map changed behavior and direct/transitive
+consumers, including interfaces, errors, security, timing, side effects,
+configuration, dependencies, and generated outputs. First run the smallest
+meaningful checks/tests for the changed component. After they pass, run affected
+consumer checks in dependency order, continuing through the transitive chain.
+Failure blocks dependent stages; missing coverage or tools is an explicit gap.
+Deduplicate overlapping checks, group dependency cycles as one stage, and assess
+both old and new consumers for deleted/renamed behavior. Unknown impact requires
+a documented safe aggregate fallback. Preserve required contract/integration/
+end-to-end coverage; a flat selector list is not execution order.
+
+For changes limited to governance guidance and records, inspect the changed
+guidance and run
+`task workspace:check` and `task workspace:test` first. After both pass,
+run affected version and coordination checks/tests as consumer modules.
+Those independent consumer modules are read-only, and their fixture suites use
+isolated temporary directories, so they may run concurrently within that stage.
+No editing occurs during candidate checks;
 full Cargo aggregates run sequentially. `peer-commands.json` conservatively
 requires both complete aggregates for serialized integration; the detached peer
 runtime remains unchanged and its Windows locking support remains unqualified.

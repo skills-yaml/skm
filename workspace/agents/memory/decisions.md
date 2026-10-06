@@ -479,3 +479,24 @@ candidate; local completion does not prove integration or publication.
 Content:
 
 Before publishing the command-reorganized SKM 0.9.0 release, qualify both the consecutive recent development pair and an immutable older development binary using version/update on Linux, macOS Intel/ARM, and Windows. A recent self-command binary cannot count as legacy evidence. Preserve all current-pair, exact-revision, artifact integrity, and protected-production gates. Use the normal configured-reviewer approval path under the user's explicit production-release instruction without altering protections.
+
+## 2026-10-06 - Adopt Workspace toolkit 0.7.2 validation ordering
+
+- Type: decision
+- Source: user and workspace-toolkit-0-7-2 spec
+- Confidence: high
+- Review: after shared-test integration
+- Supersedes: none
+
+Content:
+
+Workspace toolkit 0.7.2 supplies ordered validation guidance while Workspace
+Docs remains 7.0.0. Repository-owned adoption/coordination instructions and
+SDLC/module guidance now map changed behavior to direct/transitive consumers,
+run changed-component checks before consumer checks in dependency order,
+block dependent stages on failure, and treat missing coverage as a gap.
+Deduplicate overlaps, group cycles, assess old/new rename/deletion relationships,
+and justify safe fallback for unknown impact. Preserve full final Taskfile
+checks after independent review and native protections. SKM runtime format
+ownership, Rust layout, historical standard packages, and personal staging
+are unchanged; this local follow-up does not prove integration or publication.
