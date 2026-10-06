@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: The user requested the latest Workspace upgrade. Toolkit 0.7.2 is installed and repository-owned guidance now expresses its ordered validation contract. Independent review and frozen-candidate aggregate verification precede handoff; this follow-up has no confirmed shared-test integration or main merge.
+Rationale: PR #85 merged the reviewed Workspace toolkit 0.7.2 guidance into development at c145429164e0e2dc2c798eaf5a5a40d98d1fa157 on 2026-10-06 after PR CI run 37515809249 passed. Fresh task check and task test passed on the actual combined revision (202 tests). Main completion is not claimed for this follow-up.
 
 ## Problem and Scope
 
@@ -56,6 +56,7 @@ frontend, backend, database, or infrastructure guides. Evidence: `Cargo.toml`,
 | Same contract and current Taskfile module dependencies | `workspace/validation/README.md` | Document behavioral impact mapping and staged execution; retain module commands and final aggregate requirements. |
 | New follow-up spec | This development spec and `workspace/specs/README.md` | Register one workspace-governance row; preserve every unrelated row and state. |
 | Durable validation decision | `workspace/agents/memory/decisions.md` and `changelog.md` | Append concise records without rewriting history. |
+| Confirmed shared-test integration | `workspace/agents/memory/facts.md`, changelog, this spec, and catalog | Append actual merge/validation evidence and move this follow-up to test; preserve main-completion history. |
 | Canonical standard and toolkit manifest | Existing standard packages, aliases, working skill pins, installed links | Verify in place; no replacement or downgrade. |
 
 ## Implementation Plan
@@ -109,15 +110,25 @@ Rationale: The ordered validation contract is established in current guidance an
   rename/deletion handling, justified fallback, and retained full/native gates.
   `task workspace:check` and `task workspace:test` passed first; then version
   and coordination checks/tests passed as independent consumer modules.
-- AC-4: Compare saved local fingerprints at frozen-candidate handoff; preserve
-  the initial index and personal manifest/lockfile without restaging them.
-- AC-5: This development catalog row and durable decision/changelog are updated.
-  Independent exact-candidate review and final aggregate results are recorded
-  in the handoff after execution; relevant changes renew their evidence.
+- AC-4: The primary checkout was switched to `development` after its full
+  original state was captured in a local recovery stash/archive. Both original
+  staged file contents, both corresponding working files, and the personal
+  installation lockfile were restored and byte-compared successfully. Prior
+  copied implementation and stale lifecycle records are preserved in recovery;
+  the checkout now uses verified shared integration records.
+- AC-5: The spec/catalog are in test with confirmed PR #85 integration evidence;
+  the durable validation decision and integration fact have changelog records.
+  Independent review approved exact implementation candidate
+  `6fc37901d26ceb20cb739b9f7f708d99f9ddd9fa` with no findings. Frozen checks/tests
+  passed on that candidate and again on actual integration `c145429`.
+  Record-only delivery receives renewed review and complete final verification;
+  its results are reported at handoff. Relevant edits renew their evidence.
 
 Registry refresh refused the existing cached-origin mismatch. No cache or
 configuration was rewritten; live canonical source and installed metadata
 establish the requested versions without treating failed refresh as a pass.
 
-Shared-test integration and main merge are not established for this follow-up.
-External Workspace toolkit publication does not prove SKM delivery.
+Shared-test integration is established by PR #85 and fresh combined-revision
+verification. Main merge and production publication are not claimed for this
+follow-up. SKM has no version bump because this change affects only governance
+guidance and records. Workspace toolkit publication remains external.
