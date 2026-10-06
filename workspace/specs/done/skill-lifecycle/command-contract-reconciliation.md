@@ -76,7 +76,7 @@ Install and bulk upgrade can replace symlinks and write configuration. Preflight
 
 Status: `updated`
 
-Rationale: The accepted command retirement and install/update contract are recorded in `workspace/agents/memory/decisions.md`. Confirmed test-channel integration is recorded in `workspace/agents/memory/facts.md`, with corresponding entries in `workspace/agents/memory/changelog.md`. Production release remains pending.
+Rationale: The accepted command retirement and install/update contract are recorded in `workspace/agents/memory/decisions.md`. Confirmed test-channel integration is recorded in `workspace/agents/memory/facts.md`, with corresponding entries in `workspace/agents/memory/changelog.md`. Production release is verified in those facts and changelog records.
 
 ## Verified Production Completion
 
