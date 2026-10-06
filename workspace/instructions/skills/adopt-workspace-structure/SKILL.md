@@ -210,7 +210,17 @@ map. Do not create a spec or change files unless the user also requested fixes.
    Preserve manual policy, prior version packages, personal changes, and historical specs.
 2. Validate current relative links, privacy, canonical locations, spec catalog,
    blocked metadata, versions, and memory. Run affected Taskfile modules during
-   coherent edits and review fixes; unknown scope uses aggregate fallback.
+   coherent edits and review fixes. Map changed behavior and direct/transitive
+   consumers, including interfaces, errors, security, timing, side effects,
+   configuration, dependencies, and generated outputs. Run the smallest meaningful
+   changed-component tests/checks first; after they pass, run affected consumer
+   checks in dependency order through the transitive chain. Failures block dependent
+   stages; missing coverage/tools is a gap. Deduplicate overlaps, group cycles,
+   and assess old/new relationships for deletions/renames. Unknown impact requires
+   justified safe aggregate fallback; avoid unrelated aggregate iteration runs.
+   Preserve required contract/integration/end-to-end coverage and native protections.
+   A flat gate selection is not execution order. Read-only skills assess evidence
+   without mutating; planning skills specify stages without implementing.
 3. Reconcile knowable acceptance evidence and the durable adoption decision in
    memory plus changelog before review. Resolve pending memory when knowable.
 4. Obtain independent review of the exact candidate for governed instructions
