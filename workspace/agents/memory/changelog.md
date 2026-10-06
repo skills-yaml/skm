@@ -937,3 +937,15 @@ Appended verified PR #80 main merge and actual main CI evidence to facts.md. Rec
 Content:
 
 Appended the release-readiness decision to decisions.md and added the active validation-only follow-up spec. Recorded modern-bootstrap rejection, supplemental old-to-new qualification, unchanged current-pair gates, and normal protected publication authorization.
+
+## 2026-10-06 - Record supplemental qualification test integration
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: after production qualification
+- Supersedes: none
+
+Content:
+
+Appended the verified PR #82 integration to facts.md and reconciled the supplemental qualification spec/catalog to test. Actual four-platform evidence and production publication remain pending.

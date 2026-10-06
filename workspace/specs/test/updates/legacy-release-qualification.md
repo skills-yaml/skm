@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: On 2026-10-06 the user requested publication of the latest merged SKM. Independent release readiness review found that consecutive recent development bootstraps use the new self commands and cannot prove the existing old-to-new updater contract on all platforms.
+Rationale: PR #82 merged into development at 1b6a6e0c501a05861e697399c6752343cd66c3a0 on 2026-10-06 after CI 37453601758 passed. Independent review and full local check, 202 tests, and build passed; main integration and native four-platform qualification remain pending before publication.
 
 ## Scope and Implementation Plan
 
@@ -49,3 +49,11 @@ bootstrap error after checksum verification. Workflow negative cases repeat this
 assertion on all four platforms; positive old-bootstrap checks remain mandatory
 for this production release. Supplemental artifact run 36197445530 is successful
 and all four artifacts are unexpired. Script and release-contract gates pass.
+
+## Confirmed Test Integration
+
+PR #82 merged into development at 1b6a6e0c501a05861e697399c6752343cd66c3a0 on 2026-10-06 after CI 37453601758 passed. Independent review and full local check, 202 tests, and build passed; main integration and native four-platform qualification remain pending before publication.
+
+The Linux legacy smoke upgraded actual development 0.8.0 `07b4bba` to
+0.9.0 `cdfa842` and verified a byte-stable no-op. Final qualification must use
+the subsequent exact main/development candidate and include all four platforms.
