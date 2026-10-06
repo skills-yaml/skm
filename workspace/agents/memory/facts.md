@@ -666,3 +666,22 @@ PR #82 merged into development at 1b6a6e0c501a05861e697399c6752343cd66c3a0 on 20
 Content:
 
 PR #83 merged into main at 7a289ab9edcb8799c295041b2fab63a79ba233fa; actual main CI 37454486476 and development CI 37454491771 passed. Qualification 37455327437 passed current-pair updates, actual legacy 0.8.0 updates, and modern-bootstrap rejection on Linux, macOS Intel/ARM, and Windows while production remained held. Release Artifacts 37454486538 then published verified SKM 0.9.0 through the normal eligible-reviewer approval path on 2026-10-06; all nine assets, manifest/source identity, checksums, Linux binary identity, and repeat-update stability were verified. Main/runtime uses publisher-independent SKM formats and repository governance 7.0.0. Registry dispatch remains pending because its optional credential variable is absent.
+
+## 2026-10-06 - Workspace toolkit 0.7.2 guidance integrated into development
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: after main promotion
+- Supersedes: local-only status for the Workspace toolkit 0.7.2 follow-up
+
+Content:
+
+PR #85 merged the independently reviewed eight-file governance update into
+`development` at `c145429164e0e2dc2c798eaf5a5a40d98d1fa157` after PR CI run
+`37515809249` passed. Review approved implementation candidate
+`6fc37901d26ceb20cb739b9f7f708d99f9ddd9fa` with no findings. Fresh `task check`
+and `task test` passed on the actual merged revision (202 tests). The primary
+checkout is on `development`; original staged/working personal configuration
+and lockfile bytes are preserved, with the full earlier state retained locally
+for recovery. The follow-up is in test; main completion remains separate.

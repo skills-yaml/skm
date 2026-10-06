@@ -977,3 +977,19 @@ Appended the toolkit 0.7.2 ordered validation decision to
 adoption, coordination, SDLC, and module guidance now require changed-component
 checks followed by dependency-ordered consumer checks without weakening
 final verification, independent review, or SKM's publisher-neutral runtime.
+
+## 2026-10-06 - Record Workspace toolkit 0.7.2 development integration
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: after main promotion
+- Supersedes: none
+
+Content:
+
+Appended PR #85 integration and exact-candidate review/combined validation
+facts to `workspace/agents/memory/facts.md`. Moved the follow-up spec/catalog
+to test using the confirmed shared-test event. Recorded the requested primary
+checkout switch to development and lossless preservation of personal files;
+main completion and production publication remain separate.
