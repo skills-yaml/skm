@@ -949,3 +949,15 @@ Appended the release-readiness decision to decisions.md and added the active val
 Content:
 
 Appended the verified PR #82 integration to facts.md and reconciled the supplemental qualification spec/catalog to test. Actual four-platform evidence and production publication remain pending.
+
+## 2026-10-06 - Reconcile verified 0.9.0 production publication
+
+- Type: fact
+- Source: repo and release verification
+- Confidence: high
+- Review: none
+- Supersedes: production publication pending for shared SKM 0.9.0
+
+Content:
+
+Appended verified branch CI, ordinary/legacy four-platform qualification, normal protected publication, and artifact/binary verification to facts.md. Closed seven fulfilled test specs with historical supersession notes and synchronized catalog/release paths; marked shared 0.9.0 released. Kept notify-registry-docs in test with the skipped-dispatch reason. Personal/staged data and earlier done history remain preserved.

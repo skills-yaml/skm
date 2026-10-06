@@ -40,21 +40,21 @@
       "target": "0.9.0",
       "impact": "minor",
       "timing": "development-start",
-      "status": "applied",
+      "status": "released",
       "owner": "skm-development-release",
       "version_source": "Cargo.toml",
       "specs": [
-        "workspace/specs/test/updates/bare-help-update-notice.md",
-        "workspace/specs/test/workspace-governance/adopt-workspace-docs-6.md",
-        "workspace/specs/test/skill-lifecycle/command-contract-reconciliation.md",
-        "workspace/specs/test/skill-lifecycle/command-reorganization.md",
-        "workspace/specs/test/updates/legacy-updater-identity-handshake.md",
-        "workspace/specs/test/workspace-toolkit/separate-workspace-docs.md",
+        "workspace/specs/done/updates/bare-help-update-notice.md",
+        "workspace/specs/done/workspace-governance/adopt-workspace-docs-6.md",
+        "workspace/specs/done/skill-lifecycle/command-contract-reconciliation.md",
+        "workspace/specs/done/skill-lifecycle/command-reorganization.md",
+        "workspace/specs/done/updates/legacy-updater-identity-handshake.md",
+        "workspace/specs/done/workspace-toolkit/separate-workspace-docs.md",
         "workspace/specs/done/workspace-governance/adopt-workspace-docs-7.md",
         "workspace/specs/done/workspace-toolkit/installation-contract-validation.md",
         "workspace/specs/done/registry/registry-format-ownership.md"
       ],
-      "evidence": "On 2026-09-29, the prod-latest manifest reported SKM 0.8.0 at 07b4bba, and development-latest reported 0.8.0 at 72eaf7d; the remote had no v0.9.0 tag. The shared 0.9.0 candidate is applied once in Cargo.toml and Cargo.lock for active specifications. PR #72 integrated the Workspace Docs 6.0.0 member into development at c49f1cc on 2026-09-30 after Validate run 36682939489 passed. The user-approved v7 compatibility repair joins this already-applied shared development candidate without a second bump; focused production maintenance remains 0.8.1. V7 compatibility was independently published as production maintenance 0.8.1 through PR #75, with its member now reconciled to released skm-v7-maintenance; remaining shared 0.9.0 work stays applied and open. Reconciled the open release baseline to newly published production 0.8.1; its minor target remains 0.9.0 and the existing applied version is reused without a second bump. On 2026-10-06, repository v7 adoption and publisher-independent format validation join the applied shared 0.9.0 candidate, preserving the published 0.8.1 maintenance history and baseline. PR #79 merged into development at 6e572b29ca35b4ecafd841d870d5cbc8e08b4a32 on 2026-10-06 after CI run 37450733442 passed. The reviewed combined candidate passed task check, all 202 tests, and task build. Main promotion and publication remain pending. PR #80 merged the confirmed development implementation into main at 79658625c5bb30cd84b0ad5185237e28e20038eb on 2026-10-06; actual main CI run 37451646628 passed task check, all 202 tests, and task build. Acceptance, documentation, catalog, applied SKM 0.9.0, and memory are reconciled. Production publication remains separately subject to qualification and human release-prod approval."
+      "evidence": "On 2026-09-29, the prod-latest manifest reported SKM 0.8.0 at 07b4bba, and development-latest reported 0.8.0 at 72eaf7d; the remote had no v0.9.0 tag. The shared 0.9.0 candidate is applied once in Cargo.toml and Cargo.lock for active specifications. PR #72 integrated the Workspace Docs 6.0.0 member into development at c49f1cc on 2026-09-30 after Validate run 36682939489 passed. The user-approved v7 compatibility repair joins this already-applied shared development candidate without a second bump; focused production maintenance remains 0.8.1. V7 compatibility was independently published as production maintenance 0.8.1 through PR #75, with its member now reconciled to released skm-v7-maintenance; remaining shared 0.9.0 work stays applied and open. Reconciled the open release baseline to newly published production 0.8.1; its minor target remains 0.9.0 and the existing applied version is reused without a second bump. On 2026-10-06, repository v7 adoption and publisher-independent format validation join the applied shared 0.9.0 candidate, preserving the published 0.8.1 maintenance history and baseline. PR #79 merged into development at 6e572b29ca35b4ecafd841d870d5cbc8e08b4a32 on 2026-10-06 after CI run 37450733442 passed. The reviewed combined candidate passed task check, all 202 tests, and task build. Main promotion and publication remain pending. PR #80 merged the confirmed development implementation into main at 79658625c5bb30cd84b0ad5185237e28e20038eb on 2026-10-06; actual main CI run 37451646628 passed task check, all 202 tests, and task build. Acceptance, documentation, catalog, applied SKM 0.9.0, and memory are reconciled. Production publication remains separately subject to qualification and human release-prod approval. PR #83 merged into main at 7a289ab9edcb8799c295041b2fab63a79ba233fa; actual main CI 37454486476 and development CI 37454491771 passed. Qualification 37455327437 passed current-pair updates, actual legacy 0.8.0 updates, and modern-bootstrap rejection on Linux, macOS Intel/ARM, and Windows while production remained held. Release Artifacts 37454486538 then published verified SKM 0.9.0 through the normal eligible-reviewer approval path on 2026-10-06; all nine assets, manifest/source identity, checksums, Linux binary identity, and repeat-update stability were verified."
     },
     {
       "id": "skm-v7-maintenance",

@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `test`
+State: `done`
 
-Rationale: PR #72 merged the Workspace Docs 6.0.0 migration into the configured `development` test channel at `c49f1cc` on 2026-09-30 after Validate run `36682939489` passed. Production release through `main` is pending.
+Rationale: PR #83 merged into main at 7a289ab9edcb8799c295041b2fab63a79ba233fa; actual main CI 37454486476 and development CI 37454491771 passed. Qualification 37455327437 passed current-pair updates, actual legacy 0.8.0 updates, and modern-bootstrap rejection on Linux, macOS Intel/ARM, and Windows while production remained held. Release Artifacts 37454486538 then published verified SKM 0.9.0 through the normal eligible-reviewer approval path on 2026-10-06; all nine assets, manifest/source identity, checksums, Linux binary identity, and repeat-update stability were verified.
 
 ## Problem and Scope
 
@@ -90,3 +90,15 @@ Rationale: The adoption decision is recorded in `workspace/agents/memory/decisio
 The peer runtime's bundled file-locking implementation uses Unix `fcntl`; Windows peer coordination has not been qualified. SKM's Windows CLI behavior is outside this migration and remains covered by its existing tests.
 
 The spec is in `test` after confirmed integration into the configured `development` test target. A production release and `done` transition remain pending.
+
+## Verified Production Completion
+
+PR #83 merged into main at 7a289ab9edcb8799c295041b2fab63a79ba233fa; actual main CI 37454486476 and development CI 37454491771 passed. Qualification 37455327437 passed current-pair updates, actual legacy 0.8.0 updates, and modern-bootstrap rejection on Linux, macOS Intel/ARM, and Windows while production remained held. Release Artifacts 37454486538 then published verified SKM 0.9.0 through the normal eligible-reviewer approval path on 2026-10-06; all nine assets, manifest/source identity, checksums, Linux binary identity, and repeat-update stability were verified.
+
+Historical reconciliation: this v6 candidate integrated through PR #72. The subsequent explicitly authorized [Workspace Docs 7 adoption](adopt-workspace-docs-7.md) superseded its active pin/generated context/alias choices before the shared 0.9.0 publication. The complete v6 package, original adoption evidence, version/coordination validators, Rust layout, and personal/history preservation remain; no separate v6-only production adoption is claimed. Current governance is 7.0.0.
+
+Memory is updated in `workspace/agents/memory/facts.md` and
+`workspace/agents/memory/changelog.md`. Applied version 0.9.0 is now released;
+no duplicate bump is introduced. Earlier local/pending statements describe
+historical snapshots. These completion records receive fresh independent review
+and frozen aggregate verification before their record-only main closeout.

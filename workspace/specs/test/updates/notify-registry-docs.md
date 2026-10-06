@@ -4,12 +4,7 @@
 
 State: `test`
 
-Rationale: PR #67 merged the job into the configured `development` test
-channel at `a8ad8d7` on 2026-09-29 after Validate run `36548080616` passed. The
-job only runs on production releases, so it is exercised by the next release
-through `main`, which is not yet confirmed. The Registry side is live:
-skills-yaml/registry#31 released the Upstream Release workflow, and its first
-run opened skills-yaml/registry#32 for SKM 0.8.0.
+Rationale: Production SKM 0.9.0 is published, but notification was skipped because REGISTRY_APP_CLIENT_ID is unset. Development skips correctly; the first authenticated dispatch and Registry receipt/docs-review issue remain unverified.
 
 ## Problem and Users
 
@@ -92,3 +87,12 @@ Status: `updated`
 Rationale: The user's decision that production releases notify the Registry is
 recorded in `workspace/agents/memory/decisions.md` with a matching
 `workspace/agents/memory/changelog.md` entry.
+
+## Verified Release With Pending Notification
+
+Production SKM 0.9.0 is published, but notification was skipped because REGISTRY_APP_CLIENT_ID is unset. Development skips correctly; the first authenticated dispatch and Registry receipt/docs-review issue remain unverified.
+
+Release Artifacts run 37454486538 skipped its optional notification job;
+no credential configuration or manual dispatch was performed. Existing
+development integration and implementation remain valid, but receipt acceptance
+stays pending.

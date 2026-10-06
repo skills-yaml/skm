@@ -2,15 +2,15 @@
 
 ## Status
 
-State: `test`
+State: `done`
 
-Rationale: PR #82 merged into development at 1b6a6e0c501a05861e697399c6752343cd66c3a0 on 2026-10-06 after CI 37453601758 passed. Independent review and full local check, 202 tests, and build passed; main integration and native four-platform qualification remain pending before publication.
+Rationale: PR #83 merged into main at 7a289ab9edcb8799c295041b2fab63a79ba233fa; actual main CI 37454486476 and development CI 37454491771 passed. Qualification 37455327437 passed current-pair updates, actual legacy 0.8.0 updates, and modern-bootstrap rejection on Linux, macOS Intel/ARM, and Windows while production remained held. Release Artifacts 37454486538 then published verified SKM 0.9.0 through the normal eligible-reviewer approval path on 2026-10-06; all nine assets, manifest/source identity, checksums, Linux binary identity, and repeat-update stability were verified.
 
 ## Scope and Implementation Plan
 
 Extend the existing qualification workflow with an optional immutable older development bootstrap. Preserve the mandatory consecutive current release pair, exact main/development/tag checks, production hold, and all checksum/source checks. Verify the supplemental run is a successful earlier development Release Artifacts run for the exact ancestor commit. Download its artifacts on all four native platforms and run the existing Task qualification entrypoints in a mode that requires legacy command detection. Add native negative checks using the current candidate artifact so a modern bootstrap cannot pass as legacy.
 
-Affected areas: `.github/workflows/release-update-qualification.yml`, Unix/Windows qualification scripts, human validation module contracts, this spec/catalog, and memory. Exclude product runtime, dependencies, governed instructions, protection settings, and personal data. Linked contracts: [legacy updater identity handshake](../../test/updates/legacy-updater-identity-handshake.md) and [command reorganization](../../test/skill-lifecycle/command-reorganization.md).
+Affected areas: `.github/workflows/release-update-qualification.yml`, Unix/Windows qualification scripts, human validation module contracts, this spec/catalog, and memory. Exclude product runtime, dependencies, governed instructions, protection settings, and personal data. Linked contracts: [legacy updater identity handshake](../../done/updates/legacy-updater-identity-handshake.md) and [command reorganization](../../done/skill-lifecycle/command-reorganization.md).
 
 ## Acceptance Criteria
 
@@ -38,7 +38,7 @@ Optional inputs retain ordinary qualification compatibility. Historical artifact
 
 Status: `updated`
 
-Rationale: Recorded the supplemental legacy-path requirement and preserved current-pair/protection gates in `workspace/agents/memory/decisions.md` and `workspace/agents/memory/changelog.md`; actual qualification/publication remain unconfirmed.
+Rationale: Recorded the supplemental legacy-path requirement and preserved current-pair/protection gates in `workspace/agents/memory/decisions.md` and `workspace/agents/memory/changelog.md`; actual qualification and publication are verified in `workspace/agents/memory/facts.md`, with corresponding changelog records.
 
 ## Local Regression Evidence
 
@@ -57,3 +57,15 @@ PR #82 merged into development at 1b6a6e0c501a05861e697399c6752343cd66c3a0 on 20
 The Linux legacy smoke upgraded actual development 0.8.0 `07b4bba` to
 0.9.0 `cdfa842` and verified a byte-stable no-op. Final qualification must use
 the subsequent exact main/development candidate and include all four platforms.
+
+## Verified Production Completion
+
+PR #83 merged into main at 7a289ab9edcb8799c295041b2fab63a79ba233fa; actual main CI 37454486476 and development CI 37454491771 passed. Qualification 37455327437 passed current-pair updates, actual legacy 0.8.0 updates, and modern-bootstrap rejection on Linux, macOS Intel/ARM, and Windows while production remained held. Release Artifacts 37454486538 then published verified SKM 0.9.0 through the normal eligible-reviewer approval path on 2026-10-06; all nine assets, manifest/source identity, checksums, Linux binary identity, and repeat-update stability were verified.
+
+Both ordinary and supplemental legacy paths passed on all four native runners. Every modern candidate artifact was rejected by the specific legacy-mode guard before update. The qualification workflow revalidated exact branch/tag identity and pending production before normal approval.
+
+Memory is updated in `workspace/agents/memory/facts.md` and
+`workspace/agents/memory/changelog.md`. Applied version 0.9.0 is now released;
+no duplicate bump is introduced. Earlier local/pending statements describe
+historical snapshots. These completion records receive fresh independent review
+and frozen aggregate verification before their record-only main closeout.

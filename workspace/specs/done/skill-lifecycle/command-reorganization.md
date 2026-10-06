@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `test`
+State: `done`
 
-Rationale: PR #63 merged this implementation into the configured `development` test channel on 2026-09-26 at `2c852c248b54e6982a92584c956dd2bc036ab8fc` after Validate run `36212734539` passed. Production promotion remains pending the separately specified legacy updater identity handshake and release qualification.
+Rationale: PR #83 merged into main at 7a289ab9edcb8799c295041b2fab63a79ba233fa; actual main CI 37454486476 and development CI 37454491771 passed. Qualification 37455327437 passed current-pair updates, actual legacy 0.8.0 updates, and modern-bootstrap rejection on Linux, macOS Intel/ARM, and Windows while production remained held. Release Artifacts 37454486538 then published verified SKM 0.9.0 through the normal eligible-reviewer approval path on 2026-10-06; all nine assets, manifest/source identity, checksums, Linux binary identity, and repeat-update stability were verified.
 
 ## Problem and Users
 
@@ -72,3 +72,15 @@ Old names deliberately fail for ordinary CLI use. The older released updater inv
 Status: `updated`
 
 Rationale: The accepted command grouping and cache refresh behavior are recorded in `workspace/agents/memory/decisions.md`. The prior bridge prerequisite in `workspace/agents/memory/facts.md` is superseded by the separate legacy updater identity handshake. Both have entries in `workspace/agents/memory/changelog.md`.
+
+## Verified Production Completion
+
+PR #83 merged into main at 7a289ab9edcb8799c295041b2fab63a79ba233fa; actual main CI 37454486476 and development CI 37454491771 passed. Qualification 37455327437 passed current-pair updates, actual legacy 0.8.0 updates, and modern-bootstrap rejection on Linux, macOS Intel/ARM, and Windows while production remained held. Release Artifacts 37454486538 then published verified SKM 0.9.0 through the normal eligible-reviewer approval path on 2026-10-06; all nine assets, manifest/source identity, checksums, Linux binary identity, and repeat-update stability were verified.
+
+Command-layout tests cover the cache/skill/self hierarchy, retired names, read-only outdated checks, and cache refresh. Updater identity and all four actual old-to-new native tests satisfy the prior production prerequisite.
+
+Memory is updated in `workspace/agents/memory/facts.md` and
+`workspace/agents/memory/changelog.md`. Applied version 0.9.0 is now released;
+no duplicate bump is introduced. Earlier local/pending statements describe
+historical snapshots. These completion records receive fresh independent review
+and frozen aggregate verification before their record-only main closeout.

@@ -2,9 +2,9 @@
 
 ## Status
 
-State: `test`
+State: `done`
 
-Rationale: PR #66 merged the internal compatibility handshake into the configured `development` test channel on 2026-09-26 at `ed5b0a0987964b2c4aa0f7e92c948f937d56a9ee` after CI Validate run `36270555944` passed. Development Release Artifacts run `36271054364` published all nine assets, and an older Linux binary self-updated to that release. Cross-platform qualification and production promotion remain pending.
+Rationale: PR #83 merged into main at 7a289ab9edcb8799c295041b2fab63a79ba233fa; actual main CI 37454486476 and development CI 37454491771 passed. Qualification 37455327437 passed current-pair updates, actual legacy 0.8.0 updates, and modern-bootstrap rejection on Linux, macOS Intel/ARM, and Windows while production remained held. Release Artifacts 37454486538 then published verified SKM 0.9.0 through the normal eligible-reviewer approval path on 2026-10-06; all nine assets, manifest/source identity, checksums, Linux binary identity, and repeat-update stability were verified.
 
 ## Problem and Users
 
@@ -66,3 +66,15 @@ The compatibility response is gated by the exact environment value and argument 
 Status: `updated`
 
 Rationale: The user-approved compatibility contract is recorded in `workspace/agents/memory/decisions.md`; the reproduced failure, superseded bridge prerequisite, and confirmed development integration are recorded in `workspace/agents/memory/facts.md`. They have corresponding entries in `workspace/agents/memory/changelog.md`.
+
+## Verified Production Completion
+
+PR #83 merged into main at 7a289ab9edcb8799c295041b2fab63a79ba233fa; actual main CI 37454486476 and development CI 37454491771 passed. Qualification 37455327437 passed current-pair updates, actual legacy 0.8.0 updates, and modern-bootstrap rejection on Linux, macOS Intel/ARM, and Windows while production remained held. Release Artifacts 37454486538 then published verified SKM 0.9.0 through the normal eligible-reviewer approval path on 2026-10-06; all nine assets, manifest/source identity, checksums, Linux binary identity, and repeat-update stability were verified.
+
+Exact legacy probe/rejection regression tests pass. All four native supplemental paths started from immutable development 0.8.0 at 07b4bba, exercised its version/update commands, verified replacement to this exact candidate, and repeated with the new self commands; Windows cleanup also passed.
+
+Memory is updated in `workspace/agents/memory/facts.md` and
+`workspace/agents/memory/changelog.md`. Applied version 0.9.0 is now released;
+no duplicate bump is introduced. Earlier local/pending statements describe
+historical snapshots. These completion records receive fresh independent review
+and frozen aggregate verification before their record-only main closeout.
