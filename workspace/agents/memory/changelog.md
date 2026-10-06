@@ -993,3 +993,18 @@ facts to `workspace/agents/memory/facts.md`. Moved the follow-up spec/catalog
 to test using the confirmed shared-test event. Recorded the requested primary
 checkout switch to development and lossless preservation of personal files;
 main completion and production publication remain separate.
+
+## 2026-10-06 - Record governance pin ownership
+
+- Type: decision
+- Source: user and repository
+- Confidence: high
+- Review: after main promotion
+- Supersedes: none
+
+Content:
+
+Appended the independent governance-pin decision to
+workspace/agents/memory/decisions.md. Removed the repository gate's dependence
+on Workspace metadata in skills.yaml, retained AGENTS/standard alias validation
+and generic privacy coverage, and kept SKM installation formats unchanged.

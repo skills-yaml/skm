@@ -8,7 +8,7 @@ Cargo.lock       # Pinning of compiled dependencies
 Taskfile.yml     # Local check, fix, test, and build task entrypoints
 AGENTS.md        # Contributor and agent workflow rules
 DESIGN.md        # Root design tokens and UI policy
-skills.yaml      # Workspace-docs 7.0.0 project pin; personal skill entries stay uncommitted
+skills.yaml      # SKM installation manifest; personal skill entries stay uncommitted
 workspace/releases.json # Shared SKM release reservations and historical-spec boundary
 
 workspace/
@@ -24,9 +24,15 @@ src/
   linker.rs      # Path validation, target resolution, symlink checks, and linking
 ```
 
-The committed project manifest pins the released `workspace-docs@7.0.0` standard and
-does not publish personal skill entries. Target projects still create their own
-manifests with `skm init`.
+The contributor governance version is pinned in the generated `AGENTS.md`
+context and the contained `default`/`latest` aliases under
+`workspace/instructions/standards/workspace-docs/`. Workspace validation checks
+those declarations independently of `skills.yaml`.
+
+The committed SKM manifest is a minimal installation example and contains no
+Workspace metadata or personal skill entries. Target projects create their own
+installation manifests with `skm init`. Generic local toolkit/bundle/profile
+configuration remains optional SKM installation functionality.
 
 `scripts/validate_workspace.py`, `scripts/validate_versions.py`, and
 `scripts/validate_coordination.py` are the repository's Workspace Docs gates.
