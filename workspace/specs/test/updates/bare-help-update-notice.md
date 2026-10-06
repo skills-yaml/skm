@@ -1,6 +1,6 @@
 # Bare invocation update notice
 
-State: development
+State: test
 Primary feature: `updates`
 
 ## Problem
@@ -59,3 +59,10 @@ unit tests, 13 integration tests, and 21 documentation-validator tests.
 
 Local implementation only; no confirmed test-channel integration or production
 release. Reuses the documented shared candidate without claiming a new target.
+
+## Confirmed Test Integration
+
+PR #74 merged the implementation into `development` at
+`e652af1122f54570c7dd189697730d6ac901cdaf` on 2026-09-30. Current development
+contains that integration. This record corrects the stale local-only lifecycle;
+main integration and production publication are not inferred.

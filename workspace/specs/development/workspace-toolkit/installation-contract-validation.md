@@ -121,3 +121,16 @@ That follow-up supersedes this candidate's retention of typed standard pins,
 source hashing, strict root publisher fields, and publisher-specific bundle
 constraints. The review/test evidence above describes this earlier candidate;
 historical results and unconfirmed integration remain unchanged.
+
+## Delivery Baseline Reconciliation
+
+The 2026-10-06 merge request authorizes delivery through the configured test and
+main targets. The isolated delivery candidate merges current development
+`2e18f4e97d42ea3b6cd2387d50db07495841a727`, preserving the independently shipped
+0.8.1 compatibility history and updated shared-release baseline. Runtime fixes
+that only enlarged the old allowlist are superseded by publisher-independent
+validation; their done history and memory entries remain intact. The applied
+0.9.0 target is reused without a duplicate bump. Personal YAML, lockfile, agent
+links, and staged changes are excluded from delivery. This combined candidate
+receives fresh independent review and full checks/tests before push or merge.
+Actual test integration and main merge remain pending until verified events.
