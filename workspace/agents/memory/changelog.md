@@ -1008,3 +1008,18 @@ Appended the independent governance-pin decision to
 workspace/agents/memory/decisions.md. Removed the repository gate's dependence
 on Workspace metadata in skills.yaml, retained AGENTS/standard alias validation
 and generic privacy coverage, and kept SKM installation formats unchanged.
+
+## 2026-10-06 - Record governance decoupling development integration
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: after main promotion
+- Supersedes: none
+
+Content:
+
+Appended PR #87 integration, independent review, combined validation, and
+lossless local metadata-cleanup facts to `workspace/agents/memory/facts.md`.
+Moved the follow-up spec/catalog to test from the confirmed development event.
+Main completion remains pending; no SKM runtime version or production change.
