@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate tracked Workspace Docs 6 peer records without reading local board state."""
+"""Validate tracked Workspace Docs 7 peer records without reading local board state."""
 
 from __future__ import annotations
 
@@ -131,8 +131,8 @@ class CoordinationValidator:
                 if task_ref == "detached":
                     if authorization != "none":
                         self.error(agent, "detached record must have no branch authorization")
-                elif not task_ref or not authorization or not re.match(r"^\d{4}-\d{2}-\d{2} direct user request\b", authorization):
-                    self.error(agent, "attached task branch requires dated direct-user authorization")
+                elif not task_ref or not authorization or not re.match(r"^\d{4}-\d{2}-\d{2} (?:task request|direct user request)\b", authorization):
+                    self.error(agent, "attached task branch requires dated task-request authorization")
                 if not scope or any(not self.safe_scope(item) for item in scope):
                     self.error(agent, "agent scope needs safe repository-relative paths")
                 if any(f"## {heading}" not in body for heading in REQUIRED_HEADINGS):

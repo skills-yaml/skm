@@ -21,6 +21,7 @@ The project task management must be handled by gotask (task) [Task](https://gith
   - `workspace:check`  Validate workspace-docs structure, spec catalog, memory impact, and privacy
   - `fix`      Auto-format code and apply available automatic clippy fixes
   - `test`     Run cargo tests
+  - `workspace:test`, `versions:test`, `coordination:test` Run focused native validator regression suites
   - `build`    Build the optimized release binary
   - `versions:check` Validate spec version impact and the release ledger
   - `coordination:check` Validate tracked peer work records
@@ -48,3 +49,11 @@ The project task management must be handled by gotask (task) [Task](https://gith
 - Derive paths from explicit vars (e.g. `COMPONENT_ROOT`) passed from the root include.
 - Do not rely on `.TASKFILE_DIR` or relative `dir` alone; namespaced invocations resolve differently.
 - Prefer paths relative to the current Taskfile
+
+## Modular Verification
+
+Use the declared [module contracts](../../validation/README.md) during coherent
+edits and review fixes. Select all affected consumers; unknown scope uses
+aggregate fallback. After independent review and record reconciliation, freeze
+the candidate and run full `task check` and `task test`. Final evidence reuse
+is disabled. Later relevant edits renew review and verification.

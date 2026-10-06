@@ -111,6 +111,53 @@ class VersionValidationTests(unittest.TestCase):
         self.write_ledger()
         self.assertTrue(any("member specs" in item for item in self.errors()))
 
+    def move_spec(self, state: str, previous: str | None = None) -> None:
+        content = self.spec.read_text().replace("State: test", f"State: {state}")
+        if previous is not None:
+            content = content.replace(f"State: {state}", f"State: {state}\nPrevious State: {previous}", 1)
+        target = self.root / f"workspace/specs/{state}/example/feature.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        self.spec.unlink()
+        target.write_text(content)
+        self.spec = target
+        self.ledger["releases"][0]["specs"] = [target.relative_to(self.root).as_posix()]
+        self.write_ledger()
+
+    def test_done_accepts_applied_version_without_publication(self) -> None:
+        self.move_spec("done")
+        self.assertEqual(self.errors(), [])
+
+    def test_done_rejects_planned_version(self) -> None:
+        self.move_spec("done")
+        self.ledger["releases"][0]["status"] = "planned"
+        self.write_ledger()
+        self.assertTrue(any("test/done specs need an applied version" in error for error in self.errors()))
+
+    def test_publication_does_not_require_done_acceptance(self) -> None:
+        self.ledger["releases"][0]["status"] = "released"
+        self.write_ledger()
+        self.assertEqual(self.errors(), [])
+
+    def test_blocked_test_cannot_evade_applied_version(self) -> None:
+        self.move_spec("blocked", "test")
+        self.assertEqual(self.errors(), [])
+        self.ledger["releases"][0]["status"] = "planned"
+        self.write_ledger()
+        self.assertTrue(any("test/done specs need an applied version" in error for error in self.errors()))
+
+    def test_blocked_development_retains_development_start_timing(self) -> None:
+        self.move_spec("blocked", "development")
+        self.ledger["releases"][0]["status"] = "planned"
+        self.write_ledger()
+        self.assertTrue(any("development-start bump is not applied" in error for error in self.errors()))
+
+    def test_blocked_previous_state_must_be_valid_and_unique(self) -> None:
+        self.move_spec("blocked", "done")
+        self.assertTrue(any("valid Previous State" in error for error in self.errors()))
+        self.spec.write_text(self.spec.read_text().replace("Previous State: done", "Previous State: test\nPrevious State: development"))
+        self.assertTrue(any("valid Previous State" in error for error in self.errors()))
+
+
 
 if __name__ == "__main__":
     unittest.main()

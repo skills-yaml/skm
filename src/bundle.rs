@@ -11,8 +11,8 @@ use std::time::Duration;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
+// Root publisher metadata is opaque; installation fields retain typed parsing.
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct NamespaceManifest {
     schema_version: u32,
     namespace: String,
@@ -22,8 +22,6 @@ struct NamespaceManifest {
     source_repository: Option<String>,
     #[serde(default)]
     source_revision: Option<String>,
-    #[serde(default)]
-    workspace_docs_compatibility: Option<String>,
     #[serde(default)]
     minimum_skm_version: Option<String>,
     #[serde(default)]
@@ -393,61 +391,44 @@ fn validate_manifest(manifest: &NamespaceManifest, namespace: &str) -> Result<()
         {
             return Err(format!("Bundle '{id}' has duplicate or unknown members").into());
         }
-        if namespace == "workspace"
-            && id == "all-workspace-skills"
-            && members != manifest.packages.keys().collect()
-        {
-            return Err("all-workspace-skills must contain every published package".into());
-        }
     }
-    if namespace == "workspace" {
-        if !manifest.bundles.contains_key("all-workspace-skills") {
-            return Err("Workspace manifest must publish all-workspace-skills".into());
-        }
-        for value in [
-            &manifest.toolkit_version,
-            &manifest.source_repository,
-            &manifest.source_revision,
-            &manifest.workspace_docs_compatibility,
-            &manifest.minimum_skm_version,
-            &manifest.skm_adapter_compatibility,
-        ] {
-            if value.as_deref().is_none_or(str::is_empty) {
-                return Err(
-                    "Workspace bundle manifest is missing provenance or compatibility metadata"
-                        .into(),
-                );
-            }
-        }
-        linker::validate_exact_version(manifest.toolkit_version.as_deref().unwrap())?;
-        let minimum = manifest.minimum_skm_version.as_deref().unwrap();
+    if let Some(version) = &manifest.toolkit_version {
+        linker::validate_exact_version(version)?;
+    }
+    if let Some(minimum) = &manifest.minimum_skm_version {
         linker::validate_exact_version(minimum)?;
         if semver_parts(minimum)? > semver_parts(env!("CARGO_PKG_VERSION"))? {
-            return Err(format!("Workspace bundle requires SKM {minimum} or newer").into());
+            return Err(format!("Bundle requires SKM {minimum} or newer").into());
         }
-        if manifest.source_repository.as_deref()
-            != Some("https://github.com/skills-yaml/workspace.git")
-            || !manifest
-                .source_revision
-                .as_deref()
-                .unwrap()
+    }
+    if let Some(adapter) = &manifest.skm_adapter_compatibility {
+        if adapter != "2.x" {
+            return Err(format!("unsupported SKM adapter compatibility: {adapter}").into());
+        }
+    }
+    if manifest
+        .source_repository
+        .as_ref()
+        .is_some_and(|source| source.trim().is_empty())
+    {
+        return Err("source_repository cannot be empty".into());
+    }
+    if let Some(revision) = &manifest.source_revision {
+        if revision.len() != 40
+            || !revision
                 .bytes()
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-            || manifest.source_revision.as_deref().unwrap().len() != 40
-            || !matches!(
-                manifest.workspace_docs_compatibility.as_deref(),
-                Some("4.x" | "5.x" | "6.x")
-            )
-            || manifest.skm_adapter_compatibility.as_deref() != Some("2.x")
         {
-            return Err("Workspace bundle provenance or compatibility is unsupported".into());
+            return Err(
+                "source_revision must be a 40-character lowercase hexadecimal commit".into(),
+            );
         }
     }
     Ok(())
 }
 
 fn semver_parts(version: &str) -> Result<(u64, u64, u64)> {
-    let mut parts = version.split('.');
+    let mut parts = version.strip_prefix('v').unwrap_or(version).split('.');
     Ok((
         parts.next().ok_or("missing major version")?.parse()?,
         parts.next().ok_or("missing minor version")?.parse()?,
@@ -841,6 +822,38 @@ mod tests {
         fn plan(&self) -> Result<Prepared> {
             prepare(self.project.path(), "acme/starter", "local", false)
         }
+
+        fn publisher(namespace: &str, metadata: &str) -> Self {
+            let fixture = Self::new();
+            let directory = fixture.registry.path().join(format!("skills/{namespace}"));
+            if namespace != "acme" {
+                fs::rename(fixture.registry.path().join("skills/acme"), &directory).unwrap();
+            }
+            let skill_path = directory.join("alpha/v1.0.0/SKILL.md");
+            let skill = fs::read_to_string(&skill_path).unwrap();
+            fs::write(
+                skill_path,
+                skill.replace("acme/helper", &format!("{namespace}/helper")),
+            )
+            .unwrap();
+            fs::write(
+                directory.join("manifest.yaml"),
+                format!(
+                    "schema_version: 2\nnamespace: {namespace}\n{metadata}\npackages:\n  alpha: 1.0.0\n  helper: 2.0.0\nbundles:\n  starter:\n    packages: [alpha]\n  all-workspace-skills:\n    packages: [alpha]\n",
+                ),
+            )
+            .unwrap();
+            fixture
+        }
+
+        fn publisher_plan(&self, namespace: &str, bundle: &str) -> Result<Prepared> {
+            prepare(
+                self.project.path(),
+                &format!("{namespace}/{bundle}"),
+                "local",
+                false,
+            )
+        }
     }
 
     #[test]
@@ -994,25 +1007,115 @@ mod tests {
     }
 
     #[test]
-    fn workspace_manifest_requires_complete_bundle_and_supported_release() {
-        let raw = format!(
-            "schema_version: 2\nnamespace: workspace\ntoolkit_version: 0.3.0\nsource_repository: https://github.com/skills-yaml/workspace.git\nsource_revision: {}\nworkspace_docs_compatibility: 5.x\nminimum_skm_version: 0.4.0\nskm_adapter_compatibility: 2.x\npackages:\n  alpha: 1.0.0\n  beta: 1.0.0\nbundles:\n  all-workspace-skills:\n    packages: [alpha, beta]\n",
-            "a".repeat(40)
-        );
-        let manifest: NamespaceManifest = serde_yaml::from_str(&raw).unwrap();
-        validate_manifest(&manifest, "workspace").unwrap();
-        let incomplete = raw.replace("[alpha, beta]", "[alpha]");
-        let manifest: NamespaceManifest = serde_yaml::from_str(&incomplete).unwrap();
-        assert!(validate_manifest(&manifest, "workspace")
-            .unwrap_err()
-            .to_string()
-            .contains("every published package"));
-        let future = raw.replace("minimum_skm_version: 0.4.0", "minimum_skm_version: 99.0.0");
-        let manifest: NamespaceManifest = serde_yaml::from_str(&future).unwrap();
-        assert!(validate_manifest(&manifest, "workspace")
-            .unwrap_err()
-            .to_string()
-            .contains("or newer"));
+    fn publishers_install_subsets_and_metadata_under_identical_format_rules() {
+        for namespace in ["workspace", "acme", "company"] {
+            for bundle in ["starter", "all-workspace-skills"] {
+                for metadata in [
+                    "",
+                    "workspace_docs_compatibility: 99.x",
+                    "publisher_policy: {anything: [future, 99]}",
+                    "minimum_skm_version: v0.4.0",
+                    "workspace_docs_compatibility: {managed_by: skills}",
+                    "toolkit_version: 0.3.0\nminimum_skm_version: 0.4.0\nskm_adapter_compatibility: 2.x\nsource_repository: https://example.com/publisher.git\nsource_revision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                ] {
+                    let fixture = Fixture::publisher(namespace, metadata);
+                    let config_path = fixture.project.path().join("skills.yaml");
+                    let before = fs::read(&config_path).unwrap();
+                    let first = fixture.publisher_plan(namespace, bundle).unwrap();
+                    assert_eq!(first.public.members, [format!("{namespace}/alpha")]);
+                    assert_eq!(first.public.dependency_only, [format!("{namespace}/helper")]);
+                    assert_eq!(fs::read(&config_path).unwrap(), before);
+                    assert!(!fixture.project.path().join(".agents").exists());
+
+                    apply(fixture.project.path(), &first).unwrap();
+                    let after = fs::read(&config_path).unwrap();
+                    let config = SkillsConfig::load_from_file(&config_path).unwrap();
+                    assert_eq!(config.skills.len(), 2);
+                    for (name, version) in [("alpha", "1.0.0"), ("helper", "2.0.0")] {
+                        assert!(config.skills.iter().any(|skill| {
+                            skill.name == format!("{namespace}/{name}")
+                                && skill.version.as_deref() == Some(version)
+                                && skill.source.as_deref() == Some("local")
+                        }));
+                        assert!(linker::symlink_points_to(
+                            &fixture.project.path().join(format!(".agents/skills/{name}")),
+                            &fixture.registry.path().join(format!("skills/{namespace}/{name}/v{version}")),
+                        ).unwrap());
+                    }
+                    let second = fixture.publisher_plan(namespace, bundle).unwrap();
+                    assert!(second.public.additions.is_empty());
+                    assert!(second.links.is_empty());
+                    apply(fixture.project.path(), &second).unwrap();
+                    assert_eq!(fs::read(config_path).unwrap(), after);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn declared_installation_constraints_apply_to_every_publisher_before_writes() {
+        for namespace in ["workspace", "acme", "company"] {
+            for (metadata, expected) in [
+                ("minimum_skm_version: 99.0.0", "requires SKM 99.0.0"),
+                ("minimum_skm_version: later", "exact semantic versioning"),
+                (
+                    "skm_adapter_compatibility: 99.x",
+                    "unsupported SKM adapter compatibility",
+                ),
+                ("toolkit_version: later", "exact semantic versioning"),
+                ("source_repository: ''", "source_repository cannot be empty"),
+                (
+                    "source_revision: invalid",
+                    "source_revision must be a 40-character lowercase hexadecimal commit",
+                ),
+            ] {
+                let fixture = Fixture::publisher(namespace, metadata);
+                let config_path = fixture.project.path().join("skills.yaml");
+                let before = fs::read(&config_path).unwrap();
+                let error = fixture
+                    .publisher_plan(namespace, "starter")
+                    .unwrap_err()
+                    .to_string();
+                assert!(error.contains(expected), "{error}");
+                assert_eq!(fs::read(config_path).unwrap(), before);
+                assert!(!fixture.project.path().join(".agents").exists());
+            }
+            for (from, to, expected) in [
+                (
+                    "schema_version: 2",
+                    "schema_version: 99",
+                    "schema-2 manifest",
+                ),
+                (
+                    "packages: [alpha]",
+                    "packages: [alpha, alpha]",
+                    "duplicate or unknown members",
+                ),
+                (
+                    "packages: [alpha]",
+                    "packages: [missing]",
+                    "duplicate or unknown members",
+                ),
+                ("alpha: 1.0.0", "alpha: latest", "exact semantic versioning"),
+            ] {
+                let fixture = Fixture::publisher(namespace, "");
+                let manifest_path = fixture
+                    .registry
+                    .path()
+                    .join(format!("skills/{namespace}/manifest.yaml"));
+                let manifest = fs::read_to_string(&manifest_path).unwrap();
+                fs::write(manifest_path, manifest.replace(from, to)).unwrap();
+                let config_path = fixture.project.path().join("skills.yaml");
+                let before = fs::read(&config_path).unwrap();
+                let error = fixture
+                    .publisher_plan(namespace, "starter")
+                    .unwrap_err()
+                    .to_string();
+                assert!(error.contains(expected), "{error}");
+                assert_eq!(fs::read(config_path).unwrap(), before);
+                assert!(!fixture.project.path().join(".agents").exists());
+            }
+        }
     }
 
     #[test]

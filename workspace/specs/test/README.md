@@ -1,17 +1,10 @@
 # Test Specs
 
-Implemented specifications that have been integrated into `development`
-(this repository's test target) and are awaiting production release through
-`main`.
+Implemented specifications integrated into `development`, the shared test target.
+Use `test/<primary-feature>/<spec>.md` with confirmed integration evidence in the
+spec and root catalog. Move to done only after verified main merge and reconciled
+acceptance, verification, documentation, catalog, versions, and memory; publication
+is separate. Explicit older migration specs retain their recorded older contract.
 
-Required path:
-
-```text
-test/<primary-feature>/<spec>.md
-```
-
-A branch name alone is not evidence. Record the integration event in the spec
-and in the root catalog rationale.
-
-Move a test spec to `done/<primary-feature>/` only after release through
-`main`, with completion gates and memory impact reconciled.
+Work may block with recorded previous test state, kind, reason, and resume condition.
+Resume to test with renewed evidence. Never infer a transition from a branch name.

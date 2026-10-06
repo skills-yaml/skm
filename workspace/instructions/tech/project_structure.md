@@ -8,7 +8,7 @@ Cargo.lock       # Pinning of compiled dependencies
 Taskfile.yml     # Local check, fix, test, and build task entrypoints
 AGENTS.md        # Contributor and agent workflow rules
 DESIGN.md        # Root design tokens and UI policy
-skills.yaml      # Workspace-docs 6.0.0 project pin; personal skill entries stay uncommitted
+skills.yaml      # Workspace-docs 7.0.0 project pin; personal skill entries stay uncommitted
 workspace/releases.json # Shared SKM release reservations and historical-spec boundary
 
 workspace/
@@ -24,7 +24,7 @@ src/
   linker.rs      # Path validation, target resolution, symlink checks, and linking
 ```
 
-The committed project manifest pins the `workspace-docs@6.0.0` candidate and
+The committed project manifest pins the released `workspace-docs@7.0.0` standard and
 does not publish personal skill entries. Target projects still create their own
 manifests with `skm init`.
 

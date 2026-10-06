@@ -11,34 +11,17 @@ use walkdir::WalkDir;
 const LOCKFILE_NAME: &str = "skills.lock.yaml";
 const TRANSACTION_PATH: &str = ".skm/transactions/current";
 const ADAPTER_VERSION: &str = "2.0.0";
-const WORKSPACE_DOCS_COMPATIBILITY_ERROR: &str =
-    "toolkit must declare a supported workspace_docs_compatibility: 4.x, 5.x, or 6.x";
 
+// Root publisher metadata is opaque; installation fields retain typed parsing.
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct ToolkitManifest {
     schema_version: u32,
     id: String,
     version: String,
     minimum_skm_version: String,
-    #[serde(default, deserialize_with = "deserialize_workspace_docs_compatibility")]
-    workspace_docs_compatibility: Option<String>,
     skills: Vec<ToolkitSkill>,
     profiles: Vec<ToolkitProfile>,
     bundles: Vec<ToolkitBundle>,
-}
-
-fn deserialize_workspace_docs_compatibility<'de, D>(
-    deserializer: D,
-) -> Result<Option<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    match serde_yaml::Value::deserialize(deserializer)? {
-        serde_yaml::Value::Null => Ok(None),
-        serde_yaml::Value::String(value) => Ok(Some(value)),
-        _ => Err(serde::de::Error::custom(WORKSPACE_DOCS_COMPATIBILITY_ERROR)),
-    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -86,8 +69,8 @@ pub struct SkillsLock {
     pub schema_version: u32,
     pub project: String,
     pub toolkit: LockedToolkit,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub workspace: Option<LockedWorkspace>,
+    #[serde(flatten)]
+    pub metadata: BTreeMap<String, serde_yaml::Value>,
     pub agents: Vec<LockedAgent>,
     pub bundles: Vec<String>,
     pub profiles: Vec<LockedProfile>,
@@ -101,17 +84,6 @@ pub struct LockedToolkit {
     pub version: String,
     pub manifest: String,
     pub integrity: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct LockedWorkspace {
-    pub standard: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub source: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub integrity: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub revision: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -497,26 +469,6 @@ fn build_plan(
     }
 
     let outputs = desired.iter().map(|output| output.lock.clone()).collect();
-    let locked_workspace = if let Some(workspace) = &config.workspace {
-        let integrity = match workspace.source.as_deref() {
-            Some(source) if crate::workspace_source::is_git_source(source) => {
-                workspace.integrity.clone()
-            }
-            Some(source) => Some(crate::workspace_source::source_integrity(
-                project_root,
-                source,
-            )?),
-            None => None,
-        };
-        Some(LockedWorkspace {
-            standard: workspace.standard.clone(),
-            source: workspace.source.clone(),
-            integrity,
-            revision: workspace.revision.clone(),
-        })
-    } else {
-        None
-    };
     let lock = SkillsLock {
         schema_version: 1,
         project: config.name.clone(),
@@ -526,7 +478,10 @@ fn build_plan(
             manifest: manifest_rel,
             integrity: manifest_integrity,
         },
-        workspace: locked_workspace,
+        metadata: previous_lock
+            .as_ref()
+            .map(|lock| lock.metadata.clone())
+            .unwrap_or_default(),
         agents,
         bundles: config.bundles.clone(),
         profiles: profiles
@@ -737,12 +692,6 @@ fn validate_manifest(
             env!("CARGO_PKG_VERSION")
         )
         .into());
-    }
-    if !matches!(
-        manifest.workspace_docs_compatibility.as_deref(),
-        Some("4.x" | "5.x" | "6.x")
-    ) {
-        return Err(WORKSPACE_DOCS_COMPATIBILITY_ERROR.into());
     }
     ensure_unique_ids(manifest.skills.iter().map(|item| item.id.as_str()), "skill")?;
     ensure_unique_ids(
@@ -1677,7 +1626,7 @@ fn print_plan(plan: &InstallPlan, json: bool) -> Result<(), Box<dyn std::error::
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{ToolkitSelection, WorkspaceSelection};
+    use crate::config::ToolkitSelection;
     use tempfile::TempDir;
 
     fn fixture() -> (TempDir, SkillsConfig) {
@@ -1718,13 +1667,7 @@ mod tests {
             }),
             bundles: vec!["development-core".to_string()],
             profiles: Vec::new(),
-            workspace: Some(WorkspaceSelection {
-                standard: "workspace-docs@4.0.0".to_string(),
-                source: None,
-                revision: None,
-                integrity: None,
-            }),
-            trusted_sources: Vec::new(),
+            metadata: Default::default(),
         };
         (temp, config)
     }
@@ -2100,32 +2043,81 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unsupported_workspace_docs_compatibility() {
-        let (temp, config) = fixture();
-        let manifest_path = temp
-            .path()
-            .join("workspace/instructions/toolkit/manifest.yaml");
-        let manifest = fs::read_to_string(&manifest_path).unwrap();
-        fs::write(
-            manifest_path,
-            manifest.replace(
-                "workspace_docs_compatibility: 4.x",
-                "workspace_docs_compatibility: 7.x",
-            ),
-        )
-        .unwrap();
+    fn publisher_metadata_is_ignored_and_not_copied_to_new_locks() {
+        for compatibility in ["7.x", "99.x"] {
+            let (temp, mut config) = fixture();
+            config.metadata.insert(
+                "workspace".to_string(),
+                serde_yaml::from_str(
+                    "standard: workspace-docs@99.0.0\nsource: /not-an-installation-input",
+                )
+                .unwrap(),
+            );
+            let root = temp.path();
+            let manifest_path = root.join("workspace/instructions/toolkit/manifest.yaml");
+            let manifest = fs::read_to_string(&manifest_path).unwrap();
+            fs::write(
+                manifest_path,
+                manifest.replace(
+                    "workspace_docs_compatibility: 4.x",
+                    &format!("workspace_docs_compatibility: {compatibility}"),
+                ),
+            )
+            .unwrap();
 
-        let error = build_plan(&config, temp.path()).err().unwrap();
-        assert!(error
-            .to_string()
-            .contains("supported workspace_docs_compatibility: 4.x, 5.x, or 6.x"));
-        assert!(!temp.path().join(LOCKFILE_NAME).exists());
-        assert!(!temp.path().join(".agents/skills/write-spec").exists());
+            let first = build_plan(&config, root).unwrap();
+            assert!(!root.join(LOCKFILE_NAME).exists());
+            assert!(!root.join(".agents").exists());
+            apply_plan(root, first, None).unwrap();
+            check(&config, root).unwrap();
+            let lock_path = root.join(LOCKFILE_NAME);
+            let first_lock = fs::read(&lock_path).unwrap();
+            let lock: SkillsLock = serde_yaml::from_slice(&first_lock).unwrap();
+            assert!(lock.metadata.is_empty());
+            let second = build_plan(&config, root).unwrap();
+            assert!(second.public.actions.is_empty());
+            apply_plan(root, second, None).unwrap();
+            assert_eq!(fs::read(lock_path).unwrap(), first_lock);
+        }
     }
 
     #[test]
-    fn rejects_missing_and_malformed_workspace_docs_compatibility_before_writes() {
-        for replacement in ["", "workspace_docs_compatibility: 6"] {
+    fn reinstall_preserves_existing_lock_metadata_without_interpreting_it() {
+        let (temp, config) = fixture();
+        let root = temp.path();
+        apply_plan(root, build_plan(&config, root).unwrap(), None).unwrap();
+        let lock_path = root.join(LOCKFILE_NAME);
+        let mut lock: SkillsLock = serde_yaml::from_slice(&fs::read(&lock_path).unwrap()).unwrap();
+        lock.metadata.insert(
+            "workspace".to_string(),
+            serde_yaml::from_str("standard: workspace-docs@99.0.0\nsource: /absent-domain-source\nrevision: publisher-owned\nintegrity: publisher-owned").unwrap(),
+        );
+        lock.metadata.insert(
+            "publisher_policy".to_string(),
+            serde_yaml::from_str("[opaque, future]").unwrap(),
+        );
+        let before = serde_yaml::to_string(&lock).unwrap().into_bytes();
+        fs::write(&lock_path, &before).unwrap();
+
+        let plan = build_plan(&config, root).unwrap();
+        assert!(plan.public.actions.is_empty());
+        assert_eq!(plan.lock.metadata, lock.metadata);
+        apply_plan(root, plan, None).unwrap();
+        check(&config, root).unwrap();
+        assert_eq!(fs::read(lock_path).unwrap(), before);
+    }
+
+    #[test]
+    fn installs_without_interpreting_optional_workspace_metadata() {
+        for replacement in [
+            "",
+            "workspace_docs_compatibility: null",
+            "workspace_docs_compatibility: 7",
+            "workspace_docs_compatibility: {managed_by: skills}",
+            "workspace_docs_compatibility: [7.x, future]",
+            "workspace_docs_compatibility: ''",
+            "publisher_policy: {managed_by: skills}",
+        ] {
             let (temp, config) = fixture();
             let manifest_path = temp
                 .path()
@@ -2137,17 +2129,54 @@ mod tests {
             )
             .unwrap();
 
-            let error = build_plan(&config, temp.path()).err().unwrap();
-            assert!(error
-                .to_string()
-                .contains("supported workspace_docs_compatibility: 4.x, 5.x, or 6.x"));
+            let plan = build_plan(&config, temp.path()).unwrap();
             assert!(!temp.path().join(LOCKFILE_NAME).exists());
-            assert!(!temp.path().join(".agents/skills/write-spec").exists());
+            assert!(!temp.path().join(".agents").exists());
+            apply_plan(temp.path(), plan, None).unwrap();
+            check(&config, temp.path()).unwrap();
         }
     }
 
     #[test]
-    fn workspace_docs_6_does_not_bypass_minimum_skm_version() {
+    fn rejects_invalid_installation_fields_with_opaque_metadata() {
+        for (from, to, expected) in [
+            (
+                "schema_version: 1",
+                "schema_version: 99",
+                "unsupported toolkit schema",
+            ),
+            (
+                "schema_version: 1",
+                "schema_version: invalid",
+                "invalid type",
+            ),
+            (
+                "version: 0.1.0",
+                "version: 0.2.0",
+                "toolkit version mismatch",
+            ),
+        ] {
+            let (temp, config) = fixture();
+            let manifest_path = temp
+                .path()
+                .join("workspace/instructions/toolkit/manifest.yaml");
+            let manifest = fs::read_to_string(&manifest_path).unwrap();
+            fs::write(
+                manifest_path,
+                manifest
+                    .replace("workspace_docs_compatibility: 4.x", "")
+                    .replace(from, to),
+            )
+            .unwrap();
+            let error = build_plan(&config, temp.path()).err().unwrap().to_string();
+            assert!(error.contains(expected), "{error}");
+            assert!(!temp.path().join(LOCKFILE_NAME).exists());
+            assert!(!temp.path().join(".agents").exists());
+        }
+    }
+
+    #[test]
+    fn absent_workspace_metadata_does_not_bypass_minimum_skm_version() {
         let (temp, config) = fixture();
         let manifest_path = temp
             .path()
@@ -2156,10 +2185,7 @@ mod tests {
         fs::write(
             manifest_path,
             manifest
-                .replace(
-                    "workspace_docs_compatibility: 4.x",
-                    "workspace_docs_compatibility: 6.x",
-                )
+                .replace("workspace_docs_compatibility: 4.x", "")
                 .replace("minimum_skm_version: 0.2.0", "minimum_skm_version: 99.0.0"),
         )
         .unwrap();

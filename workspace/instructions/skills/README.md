@@ -1,6 +1,8 @@
 # Skills
 
-Repository-local skill instructions.
+Repository-owned skill instructions follow the current 7.0.0 policy. The
+portable coordination runtime retains its detached-worktree implementation;
+installed registry skills and their release/integrity metadata are unchanged.
 
 Current skills:
 

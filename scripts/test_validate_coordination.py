@@ -62,9 +62,9 @@ class CoordinationValidationTests(unittest.TestCase):
         self.agent.write_text(self.agent.read_text().replace("src/main.rs", "../other"))
         self.assertTrue(any("safe repository-relative paths" in item for item in self.errors()))
 
-    def test_attached_branch_needs_direct_request(self) -> None:
+    def test_attached_branch_needs_task_authority(self) -> None:
         self.agent.write_text(self.agent.read_text().replace("task_ref: detached", "task_ref: feat/example"))
-        self.assertTrue(any("direct-user authorization" in item for item in self.errors()))
+        self.assertTrue(any("task-request authorization" in item for item in self.errors()))
 
     def test_changed_base_revision_fails(self) -> None:
         self.agent.write_text(self.agent.read_text().replace(BASE, "b" * 40))
@@ -78,6 +78,14 @@ class CoordinationValidationTests(unittest.TestCase):
         config = self.root / "workspace/validation/peer-commands.json"
         config.write_text(json.dumps({"schema_version": 1, "commands": [["task", "check"]]}))
         self.assertTrue(any("complete Taskfile check and test" in item for item in self.errors()))
+
+    def test_attached_branch_accepts_task_authority_and_older_direct_request(self) -> None:
+        original = self.agent.read_text().replace("task_ref: detached", "task_ref: feat/example")
+        for authority in ("2026-10-05 task request migrate workspace", "2026-09-29 direct user request named branch"):
+            with self.subTest(authority=authority):
+                self.agent.write_text(original.replace("branch_authorization: none", f"branch_authorization: {authority}"))
+                self.assertEqual(self.errors(), [])
+
 
 
 if __name__ == "__main__":

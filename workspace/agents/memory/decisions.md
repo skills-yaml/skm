@@ -403,3 +403,67 @@ Registry namespace bundles. The existing production 0.6.0 binary lacks that
 command, so the bundle-capable candidate uses version 0.7.0 and the generated
 Workspace schema-2 manifest requires SKM 0.7.0 or newer. This decision does
 not claim a production release.
+
+## 2026-10-05 - Adopt Workspace Docs 7.0.0
+
+- Type: decision
+- Source: user and migration spec
+- Confidence: high
+- Review: after shared-test integration
+- Supersedes: 2026-09-29 - Adopt the Workspace Docs 6.0.0 candidate
+
+Content:
+
+The repository pins released `workspace-docs@7.0.0` and both contained standard
+aliases select 7.0.0. Retain the Rust CLI layout, manual policy, historical done
+specs, and older standard packages. The shared test target is `development`;
+v7 done requires verified main merge with reconciled acceptance and records,
+while publication remains separate. Blocked specs retain their previous stage,
+kind, reason, and resume condition. Governed instruction changes always require
+independent exact-candidate review before frozen-candidate full verification.
+Use affected Taskfile modules during iteration and no final evidence reuse.
+Reuse the already-applied shared SKM 0.9.0 candidate without another bump.
+SKM toolkit/bundle runtime support for Workspace Docs 7.x is a separate change.
+Explicit older migration specs retain their recorded completion contract.
+
+## 2026-10-05 - Delegate Workspace governance compatibility to skills
+
+- Type: decision
+- Source: user and installation-contract spec
+- Confidence: high
+- Review: after shared-test integration
+- Supersedes: the runtime allowlist boundary recorded with Workspace Docs 7.0.0 adoption
+
+Content:
+
+SKM validates toolkit and published bundle installation contracts, while Workspace
+skills determine governance compatibility. The legacy
+`workspace_docs_compatibility` manifest field is optional ignored YAML metadata;
+future major versions do not require changes to SKM. Installation schemas,
+minimum SKM versions, adapters, dependencies, provenance, source integrity,
+ownership, path safety, and transactional writes remain enforced. Workspace
+standard pins remain opaque lockfile identifiers. Reuse the applied shared
+0.9.0 candidate without another bump. Local implementation does not prove
+shared-test integration, main merge, or publication.
+
+## 2026-10-06 - SKM owns publisher-independent installation formats
+
+- Type: decision
+- Source: user and registry-format-ownership spec
+- Confidence: high
+- Review: after shared-test integration
+- Supersedes: 2026-10-05 - Delegate Workspace governance compatibility to skills
+
+Content:
+
+SKM works with registries and owns the skill, manifest, bundle, adapter, and
+installation-lock formats. Workspace is an ordinary publisher; runtime rules
+must not depend on its namespace, repository, bundle names, governance metadata,
+or standard sources. Optional installation metadata is checked uniformly for
+all publishers. Unknown root publisher metadata is ignored; existing config and
+lock metadata survive without interpretation or source trust. The user explicitly
+selected removal of Workspace-only init options and pin/hash handling while
+preserving existing YAML data. Generic toolkit/profile installation and actual
+package integrity, ownership, path, dependency, and transaction checks remain.
+Repository development governance is separate. Reuse the applied shared 0.9.0
+candidate; local completion does not prove integration or publication.

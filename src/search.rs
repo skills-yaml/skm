@@ -482,10 +482,7 @@ fn groups_from_reader(
                 .packages
                 .iter()
                 .collect::<std::collections::BTreeSet<_>>();
-            if member_set.len() != members.packages.len()
-                || (id == "all-workspace-skills"
-                    && member_set != manifest.packages.keys().collect())
-            {
+            if member_set.len() != members.packages.len() {
                 return None;
             }
             let packages = member_set
@@ -1044,17 +1041,24 @@ mod tests {
     }
 
     #[test]
+    fn bundle_names_have_no_publisher_specific_meaning() {
+        for namespace in ["workspace", "acme", "company"] {
+            let raw = format!("schema_version: 2\nnamespace: {namespace}\npackages:\n  spec: 1.2.0\n  plan: 1.0.0\nbundles:\n  all-workspace-skills:\n    packages: [spec]\n  starter:\n    packages: [spec]\n");
+            let (collections, bundles) = groups_from_reader(raw.as_bytes(), "local", namespace);
+            assert_eq!(collections[0].members, 2);
+            assert_eq!(bundles.len(), 2);
+            for bundle in bundles {
+                assert_eq!(bundle.packages, [format!("{namespace}/spec")]);
+            }
+        }
+    }
+
+    #[test]
     fn malformed_metadata_does_not_invent_a_description_or_bundle() {
         assert!(skill_details_from_reader("# no frontmatter".as_bytes()).is_none());
         let manifest = "schema_version: 2\nnamespace: workspace\npackages:\n  spec: 1.2.0\nbundles:\n  all-workspace-skills:\n    packages: [missing]\n";
         assert!(
             groups_from_reader(manifest.as_bytes(), "default", "workspace")
-                .1
-                .is_empty()
-        );
-        let incomplete = "schema_version: 2\nnamespace: workspace\npackages:\n  spec: 1.2.0\n  plan: 1.0.0\nbundles:\n  all-workspace-skills:\n    packages: [spec]\n";
-        assert!(
-            groups_from_reader(incomplete.as_bytes(), "default", "workspace")
                 .1
                 .is_empty()
         );

@@ -53,8 +53,23 @@ tasks:
     desc: Run unit and integration tests
     cmds:
       - cargo test -- --test-threads=1
+      - task: workspace:test
+      - task: versions:test
+      - task: coordination:test
+
+  workspace:test:
+    desc: Test Workspace structure, catalog, blocked metadata, memory, and privacy gates
+    cmds:
       - python3 -B scripts/test_validate_workspace.py
+
+  versions:test:
+    desc: Test version reservations and separate completion/publication semantics
+    cmds:
       - python3 -B scripts/test_validate_versions.py
+
+  coordination:test:
+    desc: Test tracked peer records and task authority
+    cmds:
       - python3 -B scripts/test_validate_coordination.py
 
   build:
@@ -67,6 +82,25 @@ tasks:
     cmds:
       - cargo test --bin skm updater::tests -- --test-threads=1
       - cargo test --test updater -- --test-threads=1
+
+  test:toolkit:
+    desc: Test toolkit installation, lockfile ownership, and adapter contracts
+    cmds:
+      - cargo test --bin skm toolkit::tests -- --test-threads=1
+
+  test:bundle:
+    desc: Test bundle manifest, dependency, and transactional installation contracts
+    cmds:
+      - cargo test --bin skm bundle::tests -- --test-threads=1
+
+  test:registry-format:
+    desc: Test registry discovery and publisher-neutral configuration interfaces
+    cmds:
+      - cargo test --bin skm search::tests -- --test-threads=1
+      - cargo test --bin skm config::tests -- --test-threads=1
+      - cargo test --bin skm installer::tests -- --test-threads=1
+      - cargo test --bin skm init_tests -- --test-threads=1
+      - 'cargo test --bin skm wizard:: -- --test-threads=1'
 
   test:release-contract:
     desc: Validate release workflow, manifest publisher, and qualification contracts

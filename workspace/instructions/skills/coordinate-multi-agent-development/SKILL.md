@@ -1,16 +1,6 @@
 ---
 name: coordinate-multi-agent-development
 description: Let peer agents coordinate on one machine through atomic task and version claims, self-created detached worktrees, shared file scopes, independent review, serialized integration, and lossless recovery. No coordinator agent is required.
-metadata:
-  skm-version: "0.1.3"
-  skm-source-repository: "https://github.com/skills-yaml/workspace.git"
-  skm-source-revision: "8b04052109ba04cd6d6c87caa742fa1742d7fb3d"
-  skm-source-path: "workspace/instructions/skills/coordinate-multi-agent-development"
-  skm-source-integrity: "sha256:9085bd2ce25ff6550517195ad1102cedeeaecc956ddb62c732774df606bb782a"
-  workspace-toolkit-version: "0.6.0"
-  workspace-docs-compatibility: "6.x"
-  minimum-skm-version: "0.7.0"
-  skm-adapter-compatibility: "2.x"
 ---
 
 # Coordinate Multi-Agent Development
@@ -97,8 +87,9 @@ remain atomic. Claim scopes are fixed for this task; finish it before starting
 a new task with a different scope.
 
 Keep the primary checkout coordination-only during concurrent mutation. The
-runtime creates no task branches. A direct user request is still required to
-create or select a task or delivery branch outside this detached workflow.
+runtime creates no task branches. Ordinary task branches outside this detached workflow follow the v7 task
+request authority and protections. Historical explicit older pins retain their
+direct-request boundary. Record dated task authority without inventing approval.
 Read-only peers remain exempt until they mutate project files.
 
 ## Maintain Work Records
@@ -210,3 +201,15 @@ over other peers or bypasses the governed-instruction approval boundary.
 Report tasks, peer identities, reviewed and integrated revisions, validation,
 remaining conflicts, retained worktrees, and recovery state. Reconcile spec
 lifecycle only on actual delivery evidence and separately classify memory impact.
+
+## Workspace Docs 7 Completion
+
+These repository-owned instructions follow the current 7.0.0 governance; the
+existing portable detached runtime and record schema remain unchanged. Internal
+integration does not establish shared-test integration, main completion, or
+publication. Main completion requires reconciled acceptance and records; applied
+versions suffice, while publication is separately evidenced. Governed instructions
+always need independent exact-candidate review. Reconcile knowable records before
+review, resolve every finding, then freeze and run full Taskfile checks/tests.
+Later relevant tracked edits renew review and verification. No final evidence reuse
+is configured. Preserve historical review and assignment records.

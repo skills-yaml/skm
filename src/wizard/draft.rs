@@ -111,12 +111,7 @@ impl Document {
                 return Err("Toolkit version cannot be empty".into());
             }
         } else if !config.bundles.is_empty() || !config.profiles.is_empty() {
-            return Err("Bundles and profiles require a toolkit manifest (Workspace step)".into());
-        }
-        if let Some(workspace) = &config.workspace {
-            if workspace.standard.trim().is_empty() {
-                return Err("Workspace standard cannot be empty".into());
-            }
+            return Err("Bundles and profiles require a toolkit manifest".into());
         }
         Ok(())
     }
@@ -222,7 +217,7 @@ impl Target {
     pub fn write(&self, value: &mut Value, text: &str) -> Result<()> {
         let string = Value::String(text.to_owned());
         match self {
-            Self::Field(key) if matches!(*key, "bundles" | "profiles" | "trusted_sources") => {
+            Self::Field(key) if matches!(*key, "bundles" | "profiles") => {
                 let items: Vec<Value> = text
                     .split(',')
                     .map(str::trim)
@@ -526,6 +521,18 @@ mod tests {
     }
 
     #[test]
+    fn domain_metadata_is_preserved_without_interpretation_on_save() {
+        let (_dir, mut document) = existing();
+        document.value["workspace"] = serde_yaml::from_str("[opaque, metadata]").unwrap();
+        document.value["trusted_sources"] = serde_yaml::from_str("publisher: ignored").unwrap();
+        let metadata = document.value["workspace"].clone();
+        document.save(false).unwrap();
+        let saved: Value = serde_yaml::from_slice(&fs::read(&document.path).unwrap()).unwrap();
+        assert_eq!(saved["workspace"], metadata);
+        assert_eq!(saved["trusted_sources"]["publisher"], "ignored");
+    }
+
+    #[test]
     fn invalid_names_sources_agents_and_incomplete_entries_cannot_save() {
         let (_dir, mut document) = existing();
         let original = document.value.clone();
@@ -537,7 +544,6 @@ mod tests {
             (Target::Skill(0, "source"), "../escape"),
             (Target::Skill(0, "path"), "  "),
             (Target::Nested("toolkit", "manifest"), "/absolute/path"),
-            (Target::Nested("workspace", "standard"), "  "),
         ] {
             document.value = original.clone();
             target.write(&mut document.value, text).unwrap();

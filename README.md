@@ -8,7 +8,7 @@ skill directories, so a project can declare the skills it needs once and keep
 all sixteen supported agent clients in sync. Project-local `skm install`
 writes a deterministic `skills.lock.yaml` after linking succeeds.
 
-[Install](#install) | [Release Channels](#release-channels) | [Quick Start](#quick-start) | [Commands](#commands) | [Configuration](#configuration) | [Workspace Toolkits](#workspace-toolkits)
+[Install](#install) | [Release Channels](#release-channels) | [Quick Start](#quick-start) | [Commands](#commands) | [Configuration](#configuration) | [Toolkits](#toolkits)
 
 ## Install
 
@@ -313,7 +313,7 @@ skm clean symlinks|reset ...
 
 - `init`: creates or edits `skills.yaml` through sequential prompts; use
   `--non-interactive` to create a default manifest for scripts. Toolkit flags
-  are described in [Workspace Toolkits](#workspace-toolkits).
+  are described in [Toolkits](#toolkits).
 - `install`: resolves configured skills once, preflights every target,
   transactionally links each one, and writes the project lockfile last.
 - `add`: adds and links one skill, or expands a published registry bundle and
@@ -435,15 +435,13 @@ name cannot be installed together into one project.
 Linking never overwrites a real file or directory; SKM only replaces existing
 symlinks, and `skm check` verifies that each link points to its expected source.
 
-## Workspace Toolkits
+## Toolkits
 
-SKM can also install Workspace development toolkits: versioned bundles, role
-profiles, and a pinned workspace-docs standard declared with optional
-`toolkit`, `bundles`, `profiles`, and `workspace` fields in `skills.yaml`.
-Projects that only manage skills never need these fields. Configuration,
-`init` flags, adoption with the `wk-adopt` skill, integrity guarantees, and the
-policy of installed Workspace workflows are documented in
-[workspace/docs/workspace-toolkit.md](workspace/docs/workspace-toolkit.md).
+SKM also installs local toolkits of versioned skills, bundles, and role profiles.
+The optional `toolkit`, `bundles`, and `profiles` fields use SKM-owned formats;
+publishers supply domain behavior through their skills. See
+[toolkit configuration](workspace/docs/toolkits.md) and the
+[registry format reference](workspace/docs/registry-format.md).
 
 ## Development
 
@@ -458,7 +456,9 @@ task build
 `task check` runs formatting checks, Clippy with warnings denied, `cargo check`,
 and the Workspace Docs structure, spec catalog, memory impact, privacy,
 version reservation, and peer record gates. The project currently pins the
-`workspace-docs@6.0.0` candidate; the standard's stable aliases remain on 5.0.0.
+`workspace-docs@7.0.0` standard; both standard aliases select released 7.0.0.
+Workspace Docs 7 separates verified main completion from publication and adds
+blocked-spec resume metadata. See [validation modules](workspace/validation/README.md).
 
 After `task build`, run `task test:init` for Linux terminal smoke coverage of
 the sequential init prompts, including registry search, saving, cancellation,
