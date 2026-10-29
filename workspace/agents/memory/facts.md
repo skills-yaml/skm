@@ -743,3 +743,25 @@ patched CLI. The cache fix and the previously integrated toolkit 0.7.2 and
 governance-decoupling follow-ups now have verified main completion and done
 records. SKM 0.9.1 is applied; production publication is separately gated.
 Unrelated staged and working files remain preserved.
+
+## 2026-10-29 - Publish and install SKM 0.9.1
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: none
+- Supersedes: production-publication pending for SKM 0.9.1
+
+Content:
+
+Four-platform update qualification 40912110608 passed for exact source
+f6ea86a1f6894ae95da6a390368953c9f4ce6bcc. Release Artifacts 40910854161
+published production SKM 0.9.1 through the existing release-prod reviewer
+path. The production tag/source, strict manifest, and nine assets are verified.
+The managed installed binary upgraded with checksum/manifest/identity checks
+and successfully repeated the original cache refresh (one updated, none failed).
+This resolves the Git URL rewrite failure without clearing the registry cache.
+Resolved source URLs are compared byte for byte, preserving meaningful path
+whitespace and avoiding lossy UTF-8 normalization.
+The release also contains the already-reviewed toolkit and governance follow-ups;
+subsequent tracked changes only reconcile their lifecycle and publication records.

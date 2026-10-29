@@ -9,7 +9,8 @@ promoted that exact reviewed revision to main at
 1e1ca5d66060d42e983e32f49dc8ffd66fccf44f on 2026-10-29. Fresh actual-main
 task check/test passed all 206 tests; actual main CI 40907993980 passed
 checks, tests, and build. Acceptance and records are reconciled.
-Production publication is separate and remains pending.
+Production SKM 0.9.1 was subsequently published by Release Artifacts
+40910854161 after four-platform qualification 40912110608 passed.
 
 ## Problem and Scope
 
@@ -137,4 +138,17 @@ unchanged from the recorded reviewed development trees. The cache fix
 additionally has a successful refresh of the reported project cache.
 No new governed instruction changes or personal configuration changes
 were needed. Source completion and applied SKM 0.9.1 are verified;
-production publication awaits its existing qualification and reviewer gate.
+At that stage, production publication awaited the existing qualification and reviewer gate.
+
+## Production Publication
+
+Release Update Qualification `40912110608` passed on Linux, macOS Intel,
+macOS Apple Silicon, and Windows for exact source
+`f6ea86a1f6894ae95da6a390368953c9f4ce6bcc`. Release Artifacts
+`40910854161` then published SKM 0.9.1 through the existing eligible-reviewer
+`release-prod` path. The strict production manifest, moving tag, source
+identity, and complete nine-asset set are verified. The installed managed
+binary upgraded through its checksum/manifest/identity verification to prod
+0.9.1 at that source, and the user's original `cache refresh` command succeeds
+with one registry updated and none failed. Final follow-up changes reconcile
+only lifecycle, release, and memory records; they change no shipped runtime.
