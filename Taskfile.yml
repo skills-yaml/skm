@@ -83,6 +83,12 @@ tasks:
       - cargo test --bin skm updater::tests -- --test-threads=1
       - cargo test --test updater -- --test-threads=1
 
+  test:cache:
+    desc: Test cache refresh before configuration and CLI consumers
+    cmds:
+      - cargo test --test command_layout cache_refresh -- --test-threads=1
+      - cargo test --test command_contract -- --test-threads=1
+
   test:toolkit:
     desc: Test toolkit installation, lockfile ownership, and adapter contracts
     cmds:

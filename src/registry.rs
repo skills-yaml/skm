@@ -246,7 +246,18 @@ pub fn refresh_from_url(name: &str, url: &str) -> Result<(), Box<dyn std::error:
                 "origin",
             ])
             .output()?;
-        if !output.status.success() || String::from_utf8_lossy(&output.stdout).trim() != url {
+        // Both lookups must apply Git's insteadOf rules in the cache's context.
+        // --get-url resolves the configured URL without contacting the remote.
+        let expected = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&cache_path)
+            .args(["ls-remote", "--get-url", "--", url])
+            .output()?;
+        if !output.status.success()
+            || !expected.status.success()
+            || String::from_utf8_lossy(&output.stdout).trim()
+                != String::from_utf8_lossy(&expected.stdout).trim()
+        {
             return Err(format!(
                 "Cached registry '{name}' has a different or missing origin; run `skm cache clear {name}` before refreshing"
             )

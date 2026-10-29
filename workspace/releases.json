@@ -70,6 +70,21 @@
         "workspace/specs/done/workspace-toolkit/workspace-docs-7-compatibility.md"
       ],
       "evidence": "User-approved bounded v7 compatibility repair. PR #76 integrated into development at 9068581; release run 36847929386 published the verified 0.9.0 development artifact. PR #75 released maintenance source through main at 49468aab7f6bbbe9c474001823ad6f79ab207f32; CI 36849153059 and four-platform release 36849152975 passed. Published 0.8.1 Linux checksum/source identity, fresh twenty-member live installation, skm check, and no-op repetition passed. The development Cargo source remains the separately applied shared 0.9.0 candidate."
+    },
+    {
+      "id": "skm-cache-url-rewrite",
+      "component": "skm",
+      "baseline": "0.9.0",
+      "target": "0.9.1",
+      "impact": "patch",
+      "timing": "development-start",
+      "status": "applied",
+      "owner": "cache-refresh-fix",
+      "version_source": "Cargo.toml",
+      "specs": [
+        "workspace/specs/development/registry/cache-refresh-url-rewrites.md"
+      ],
+      "evidence": "Published production Cargo.toml at prod-latest reports 0.9.0, and development matches 37922cdaf9a7cb1fad3c5684ec4edc0afa854a73. No open tracked SKM reservation or local peer board exists. Single-author compatible refresh fix reserves 0.9.1 and applies it once to Cargo.toml and Cargo.lock before implementation. Integration and publication remain pending."
     }
   ]
 }

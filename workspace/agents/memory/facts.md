@@ -706,3 +706,20 @@ other values, and retain exact ignore/lockfile bytes plus local recovery.
 Installed skills pass `skm check`. Governance remains declared by AGENTS and
 contained standard aliases; SKM runtime formats are unchanged. The follow-up
 is in test; main completion and production promotion remain separate.
+
+## 2026-10-29 - Compare effective Git registry origins
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: after shared-test integration
+- Supersedes: none
+
+Content:
+
+Cached registry refresh compares the cached origin and configured source after
+Git resolves fetch URL rewrites in the cached repository's context. Git's
+`remote get-url` already expands `url.<base>.insteadOf`; resolve the configured
+URL with `ls-remote --get-url` before comparison. This lookup does not contact
+the remote. Missing or genuinely different origins remain rejected before pull;
+clearing a cache does not repair a literal-versus-rewritten URL comparison.
