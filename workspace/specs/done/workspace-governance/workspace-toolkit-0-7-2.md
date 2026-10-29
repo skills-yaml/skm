@@ -2,9 +2,14 @@
 
 ## Status
 
-State: `test`
+State: `done`
 
-Rationale: PR #85 merged the reviewed Workspace toolkit 0.7.2 guidance into development at c145429164e0e2dc2c798eaf5a5a40d98d1fa157 on 2026-10-06 after PR CI run 37515809249 passed. Fresh task check and task test passed on the actual combined revision (202 tests). Main completion is not claimed for this follow-up.
+Rationale: Confirmed development integration is preserved below. PR #90
+promoted that exact reviewed revision to main at
+1e1ca5d66060d42e983e32f49dc8ffd66fccf44f on 2026-10-29. Fresh actual-main
+task check/test passed all 206 tests; actual main CI 40907993980 passed
+checks, tests, and build. Acceptance and records are reconciled.
+Production publication is separate and remains pending.
 
 ## Problem and Scope
 
@@ -129,6 +134,19 @@ configuration was rewritten; live canonical source and installed metadata
 establish the requested versions without treating failed refresh as a pass.
 
 Shared-test integration is established by PR #85 and fresh combined-revision
-verification. Main merge and production publication are not claimed for this
-follow-up. SKM has no version bump because this change affects only governance
+verification. At test integration, main merge and production publication were not yet
+claimed for this follow-up. SKM has no version bump because this change affects only governance
 guidance and records. Workspace toolkit publication remains external.
+
+## Main Completion
+
+PR #90 promoted the reviewed development revision `1e1ca5d66060d42e983e32f49dc8ffd66fccf44f`
+to main on 2026-10-29 after promotion CI `40907463390` passed.
+Fresh actual-main `task check` / `task test` passed all 206 tests, and
+main CI `40907993980` passed checks, tests, and build. Earlier
+criterion evidence remains applicable: the promoted implementation is
+unchanged from the recorded reviewed development trees. The cache fix
+additionally has a successful refresh of the reported project cache.
+No new governed instruction changes or personal configuration changes
+were needed. Source completion and applied SKM 0.9.1 are verified;
+production publication awaits its existing qualification and reviewer gate.

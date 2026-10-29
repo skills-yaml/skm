@@ -723,3 +723,23 @@ Git resolves fetch URL rewrites in the cached repository's context. Git's
 URL with `ls-remote --get-url` before comparison. This lookup does not contact
 the remote. Missing or genuinely different origins remain rejected before pull;
 clearing a cache does not repair a literal-versus-rewritten URL comparison.
+
+## 2026-10-29 - Verify cache fix and governance main completion
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: after production publication
+- Supersedes: main-completion pending for toolkit 0.7.2 and governance decoupling
+
+Content:
+
+PR #89 integrated the independently reviewed Git URL rewrite correction into
+development at 1e1ca5d66060d42e983e32f49dc8ffd66fccf44f. PR #90 promoted that
+exact commit to main after promotion CI 40907463390 passed. Fresh actual-main
+task check/test passed all 206 tests and main CI 40907993980 passed checks,
+tests, and build. The reported project cache refreshed successfully with the
+patched CLI. The cache fix and the previously integrated toolkit 0.7.2 and
+governance-decoupling follow-ups now have verified main completion and done
+records. SKM 0.9.1 is applied; production publication is separately gated.
+Unrelated staged and working files remain preserved.
