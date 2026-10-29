@@ -32,6 +32,7 @@ or repository names, modify user Git/manifest configuration, or clear caches.
    relative source paths matching a remote name fail before updates and preserve
    cached content and configuration. Existing remote names cannot override
    command-local URL validation.
+   Compare exact resolved URL bytes, preserving meaningful path whitespace.
 4. Existing unrewritten refresh, project precedence, partial failure reporting,
    and fast-forward-only behavior remain intact without new dependencies.
 5. Regression fails before the fix, passes afterward, receives independent
@@ -116,3 +117,10 @@ configuration are recorded.
   regressions cover remote-name rejection and collisions with validation names.
   Renew independent review and focused gates for the corrected candidate.
 - Integration, main completion, and publication are pending.
+- Pre-publication review additionally found that trimming both resolved outputs
+  could accept distinct paths with trailing spaces. Compare the two Git stdout
+  byte vectors exactly; both include Git's terminating newline. A trailing-space
+  mismatch regression fails before correction, and a matching rewritten source
+  containing spaces must still fetch successfully. Reuse the applied, unpublished
+  SKM 0.9.1 reservation without another version bump. Supersede the held initial
+  production candidate and renew review, integration, and release qualification.
