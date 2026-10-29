@@ -82,7 +82,7 @@
       "owner": "cache-refresh-fix",
       "version_source": "Cargo.toml",
       "specs": [
-        "workspace/specs/development/registry/cache-refresh-url-rewrites.md"
+        "workspace/specs/test/registry/cache-refresh-url-rewrites.md"
       ],
       "evidence": "Published production Cargo.toml at prod-latest reports 0.9.0, and development matches 37922cdaf9a7cb1fad3c5684ec4edc0afa854a73. No open tracked SKM reservation or local peer board exists. Single-author compatible refresh fix reserves 0.9.1 and applies it once to Cargo.toml and Cargo.lock before implementation. Integration and publication remain pending."
     }

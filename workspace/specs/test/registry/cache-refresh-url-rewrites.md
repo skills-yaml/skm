@@ -2,11 +2,11 @@
 
 ## Status
 
-State: `development`
+State: `test`
 
-Rationale: The reported refresh failure is reproduced by comparing a rewritten
-cached origin with its original configured SSH URL. Implementation and review
-are active; shared-test integration and main completion remain pending.
+Rationale: PR #89 merged the independently reviewed fix into development at
+1e1ca5d66060d42e983e32f49dc8ffd66fccf44f after CI 40906924410 passed. Fresh
+combined task check/test passed all 206 tests. Main completion remains pending.
 
 ## Problem and Scope
 
@@ -115,4 +115,6 @@ configuration are recorded.
   unused command-local remote name to expand the configured URL literally;
   regressions cover remote-name rejection and collisions with validation names.
   Renew independent review and focused gates for the corrected candidate.
-- Integration, main completion, and publication are pending.
+- PR #89 confirms shared-test integration at `1e1ca5d`; independent review
+  approves that exact revision and fresh combined task check/test passes all
+  206 tests. Main completion and publication remain pending.
