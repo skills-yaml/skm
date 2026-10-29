@@ -365,8 +365,47 @@ fn cache_refresh_resolves_project_url_with_repository_local_rewrites() {
 }
 
 #[test]
+fn cache_refresh_preserves_spaces_in_rewritten_source() {
+    let home = rewritten_cache_fixture();
+    commit_cache_source(home.path(), "second.txt");
+    let source = home.path().join(if cfg!(windows) {
+        "source with spaces"
+    } else {
+        "source "
+    });
+    fs::rename(home.path().join("source"), &source).unwrap();
+    fs::write(
+        home.path().join(".gitconfig"),
+        format!(
+            "[url \"{}\"]\n\tinsteadOf = git@example.invalid:registry.git\n",
+            source.to_str().unwrap().replace('\\', "/")
+        ),
+    )
+    .unwrap();
+    let refresh = skm(home.path())
+        .args(["cache", "refresh", "default"])
+        .output()
+        .unwrap();
+    assert!(
+        refresh.status.success(),
+        "{}",
+        String::from_utf8_lossy(&refresh.stderr)
+    );
+    assert!(home
+        .path()
+        .join(".cache/skm/registries/default/second.txt")
+        .exists());
+}
+
+#[test]
 fn cache_refresh_rejects_invalid_origins_without_mutating_cache() {
-    for invalid in ["different", "missing", "not-a-repository", "remote-name"] {
+    for invalid in [
+        "different",
+        "missing",
+        "not-a-repository",
+        "remote-name",
+        "trailing-space",
+    ] {
         let home = rewritten_cache_fixture();
         let cache = home.path().join(".cache/skm/registries/default");
         match invalid {
@@ -383,6 +422,14 @@ fn cache_refresh_rejects_invalid_origins_without_mutating_cache() {
                 )
                 .unwrap();
             }
+            "trailing-space" => fs::write(
+                home.path().join("skills.yaml"),
+                format!(
+                    "name: fixture\nregistries:\n  default: '{} '\nagents: []\nskills: []\n",
+                    home.path().join("source").display()
+                ),
+            )
+            .unwrap(),
             _ => fs::rename(cache.join(".git"), cache.join("saved-git")).unwrap(),
         }
         let git_dir = cache.join(if invalid == "not-a-repository" {

@@ -34,7 +34,8 @@ or repository names, modify user Git/manifest configuration, or clear caches.
 3. Different effective URLs, missing origins, and invalid cached repositories
    fail before updates and preserve cached content and configuration. Relative
    source paths matching remote names remain literal; existing remote names
-   cannot override command-local URL validation.
+   cannot override command-local URL validation. Compare exact resolved URL
+   bytes, preserving meaningful path whitespace.
 4. Existing unrewritten refresh, project precedence, partial failure reporting,
    and fast-forward-only behavior remain intact without new dependencies.
 5. Regression fails before the fix, passes afterward, receives independent
@@ -149,3 +150,20 @@ additionally has a successful refresh of the reported project cache.
 No new governed instruction changes or personal configuration changes
 were needed. Source completion and applied SKM 0.9.1 are verified;
 production publication awaits its existing qualification and reviewer gate.
+
+## Corrected Pre-Publication Candidate
+
+Pre-publication review confirmed that trimming both resolved outputs could
+accept distinct paths with trailing spaces. The negative regression fails
+before correction, and a positive rewritten source containing spaces still
+fetches successfully. Compare the two Git stdout byte vectors exactly; both
+include Git's terminating newline. Independent review approves correction
+`dcd637871908bfed00dacd122e79b8b4ec749894`, and frozen checks, all 207 tests,
+and the release build pass. PR #91 passes CI `40910232459` and integrates into
+development at `f6ea86a1f6894ae95da6a390368953c9f4ce6bcc`; that exact tree
+receives independent review and fresh combined check/test passes all 207 tests.
+Main is normally fast-forwarded to the same revision, and fresh actual-main
+check/test passes all 207 tests. The shared unpublished 0.9.1 target is reused
+without a second bump. The superseded initial production run `40907993812`
+and qualification `40908810096` are canceled; renewed native CI and release
+qualification apply to the corrected source before publication.
