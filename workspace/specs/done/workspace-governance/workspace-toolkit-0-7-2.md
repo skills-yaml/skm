@@ -121,7 +121,7 @@ Rationale: The ordered validation contract is established in current guidance an
   installation lockfile were restored and byte-compared successfully. Prior
   copied implementation and stale lifecycle records are preserved in recovery;
   the checkout now uses verified shared integration records.
-- AC-5: The spec/catalog are in test with confirmed PR #85 integration evidence;
+- AC-5: At test integration, the spec/catalog were in test with confirmed PR #85 evidence;
   the durable validation decision and integration fact have changelog records.
   Independent review approved exact implementation candidate
   `6fc37901d26ceb20cb739b9f7f708d99f9ddd9fa` with no findings. Frozen checks/tests

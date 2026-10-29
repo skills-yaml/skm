@@ -122,8 +122,8 @@ Rationale: The removed coupling and canonical governance declarations are record
   `1c533ad28bb6a6c0f4914ac8f171c148b42e3625`; these lifecycle records receive
   renewed independent review and frozen gates before delivery.
 
-Shared-test integration and personal metadata cleanup are confirmed. Main
-completion remains pending. Personal configuration was not published. There
+At shared-test integration, personal metadata cleanup was confirmed and main
+completion remained pending. Personal configuration was not published. There
 is no SKM runtime version bump or requested production change.
 
 ## Main Completion
