@@ -2,9 +2,15 @@
 
 ## Status
 
-State: `test`
+State: `done`
 
-Rationale: PR #85 merged the reviewed Workspace toolkit 0.7.2 guidance into development at c145429164e0e2dc2c798eaf5a5a40d98d1fa157 on 2026-10-06 after PR CI run 37515809249 passed. Fresh task check and task test passed on the actual combined revision (202 tests). Main completion is not claimed for this follow-up.
+Rationale: Confirmed development integration is preserved below. PR #90
+promoted that exact reviewed revision to main at
+1e1ca5d66060d42e983e32f49dc8ffd66fccf44f on 2026-10-29. Fresh actual-main
+task check/test passed all 206 tests; actual main CI 40907993980 passed
+checks, tests, and build. Acceptance and records are reconciled.
+Production SKM 0.9.1 was subsequently published by Release Artifacts
+40910854161 after four-platform qualification 40912110608 passed.
 
 ## Problem and Scope
 
@@ -116,7 +122,7 @@ Rationale: The ordered validation contract is established in current guidance an
   installation lockfile were restored and byte-compared successfully. Prior
   copied implementation and stale lifecycle records are preserved in recovery;
   the checkout now uses verified shared integration records.
-- AC-5: The spec/catalog are in test with confirmed PR #85 integration evidence;
+- AC-5: At test integration, the spec/catalog were in test with confirmed PR #85 evidence;
   the durable validation decision and integration fact have changelog records.
   Independent review approved exact implementation candidate
   `6fc37901d26ceb20cb739b9f7f708d99f9ddd9fa` with no findings. Frozen checks/tests
@@ -129,6 +135,32 @@ configuration was rewritten; live canonical source and installed metadata
 establish the requested versions without treating failed refresh as a pass.
 
 Shared-test integration is established by PR #85 and fresh combined-revision
-verification. Main merge and production publication are not claimed for this
-follow-up. SKM has no version bump because this change affects only governance
+verification. At test integration, main merge and production publication were not yet
+claimed for this follow-up. SKM has no version bump because this change affects only governance
 guidance and records. Workspace toolkit publication remains external.
+
+## Main Completion
+
+PR #90 promoted the reviewed development revision `1e1ca5d66060d42e983e32f49dc8ffd66fccf44f`
+to main on 2026-10-29 after promotion CI `40907463390` passed.
+Fresh actual-main `task check` / `task test` passed all 206 tests, and
+main CI `40907993980` passed checks, tests, and build. Earlier
+criterion evidence remains applicable: the promoted implementation is
+unchanged from the recorded reviewed development trees. The cache fix
+additionally has a successful refresh of the reported project cache.
+No new governed instruction changes or personal configuration changes
+were needed. Source completion and applied SKM 0.9.1 are verified;
+At that stage, production publication awaited the existing qualification and reviewer gate.
+
+## Production Publication
+
+Release Update Qualification `40912110608` passed on Linux, macOS Intel,
+macOS Apple Silicon, and Windows for exact source
+`f6ea86a1f6894ae95da6a390368953c9f4ce6bcc`. Release Artifacts
+`40910854161` then published SKM 0.9.1 through the existing eligible-reviewer
+`release-prod` path. The strict production manifest, moving tag, source
+identity, and complete nine-asset set are verified. The installed managed
+binary upgraded through its checksum/manifest/identity verification to prod
+0.9.1 at that source, and the user's original `cache refresh` command succeeds
+with one registry updated and none failed. Final follow-up changes reconcile
+only lifecycle, release, and memory records; they change no shipped runtime.

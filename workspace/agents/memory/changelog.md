@@ -1037,3 +1037,35 @@ Content:
 Recorded the effective fetch URL comparison contract and non-mutating Git URL
 resolution in facts.md, with global/local rewrite regressions and preserved
 mismatch rejection. Integration and publication are tracked in the linked spec.
+
+## 2026-10-29 - Record verified main completion
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: after production publication
+- Supersedes: none
+
+Content:
+
+Appended the verified cache-fix development/main delivery, actual-main checks,
+and successful reported-cache refresh to facts.md. Reconciled the cache fix
+and the two already-integrated governance follow-ups to done using confirmed
+main evidence, preserving their earlier acceptance and review history.
+SKM 0.9.1 remains applied pending separate production qualification/publication.
+
+## 2026-10-29 - Record SKM 0.9.1 production publication
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: none
+- Supersedes: none
+
+Content:
+
+Appended four-platform qualification, protected production publication, strict
+manifest/tag/asset verification, managed local upgrade, and successful original
+cache-refresh evidence to facts.md. Marked the applied 0.9.1 reservation released
+and reconciled the three completed specs' publication records. No runtime source,
+personal manifest, or Git configuration changes accompany these final records.

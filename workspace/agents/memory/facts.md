@@ -723,3 +723,45 @@ Git resolves fetch URL rewrites in the cached repository's context. Git's
 URL with `ls-remote --get-url` before comparison. This lookup does not contact
 the remote. Missing or genuinely different origins remain rejected before pull;
 clearing a cache does not repair a literal-versus-rewritten URL comparison.
+
+## 2026-10-29 - Verify cache fix and governance main completion
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: after production publication
+- Supersedes: main-completion pending for toolkit 0.7.2 and governance decoupling
+
+Content:
+
+PR #89 integrated the independently reviewed Git URL rewrite correction into
+development at 1e1ca5d66060d42e983e32f49dc8ffd66fccf44f. PR #90 promoted that
+exact commit to main after promotion CI 40907463390 passed. Fresh actual-main
+task check/test passed all 206 tests and main CI 40907993980 passed checks,
+tests, and build. The reported project cache refreshed successfully with the
+patched CLI. The cache fix and the previously integrated toolkit 0.7.2 and
+governance-decoupling follow-ups now have verified main completion and done
+records. SKM 0.9.1 is applied; production publication is separately gated.
+Unrelated staged and working files remain preserved.
+
+## 2026-10-29 - Publish and install SKM 0.9.1
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: none
+- Supersedes: production-publication pending for SKM 0.9.1
+
+Content:
+
+Four-platform update qualification 40912110608 passed for exact source
+f6ea86a1f6894ae95da6a390368953c9f4ce6bcc. Release Artifacts 40910854161
+published production SKM 0.9.1 through the existing release-prod reviewer
+path. The production tag/source, strict manifest, and nine assets are verified.
+The managed installed binary upgraded with checksum/manifest/identity checks
+and successfully repeated the original cache refresh (one updated, none failed).
+This resolves the Git URL rewrite failure without clearing the registry cache.
+Resolved source URLs are compared byte for byte, preserving meaningful path
+whitespace and avoiding lossy UTF-8 normalization.
+The release also contains the already-reviewed toolkit and governance follow-ups;
+subsequent tracked changes only reconcile their lifecycle and publication records.

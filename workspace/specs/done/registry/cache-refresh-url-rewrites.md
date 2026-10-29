@@ -2,11 +2,15 @@
 
 ## Status
 
-State: `development`
+State: `done`
 
-Rationale: The reported refresh failure is reproduced by comparing a rewritten
-cached origin with its original configured SSH URL. Implementation and review
-are active; shared-test integration and main completion remain pending.
+Rationale: PR #89 integrated the initial fix; PR #91 integrated the reviewed
+byte-preserving correction at f6ea86a1f6894ae95da6a390368953c9f4ce6bcc.
+Main was fast-forwarded to that exact development revision on 2026-10-29.
+Fresh actual-main task check/test passed all 207 tests; actual main CI
+40910853364 passed checks, tests, and build. Acceptance and records are reconciled.
+Production SKM 0.9.1 was subsequently published by Release Artifacts
+40910854161 after four-platform qualification 40912110608 passed.
 
 ## Problem and Scope
 
@@ -28,11 +32,11 @@ or repository names, modify user Git/manifest configuration, or clear caches.
    successfully and receives a new source commit without clearing the cache.
 2. A configured URL and cached origin that resolve to the same fetch URL are
    accepted, including project overrides and repository-local rewrite rules.
-3. Different effective URLs, missing origins, invalid cached repositories, and
-   relative source paths matching a remote name fail before updates and preserve
-   cached content and configuration. Existing remote names cannot override
-   command-local URL validation.
-   Compare exact resolved URL bytes, preserving meaningful path whitespace.
+3. Different effective URLs, missing origins, and invalid cached repositories
+   fail before updates and preserve cached content and configuration. Relative
+   source paths matching remote names remain literal; existing remote names
+   cannot override command-local URL validation. Compare exact resolved URL
+   bytes, preserving meaningful path whitespace.
 4. Existing unrewritten refresh, project precedence, partial failure reporting,
    and fast-forward-only behavior remain intact without new dependencies.
 5. Regression fails before the fix, passes afterward, receives independent
@@ -109,18 +113,77 @@ configuration are recorded.
 - AC-4: Existing project-precedence and install/upgrade command consumers pass.
   Inspection confirms the unchanged fast-forward-only pull and partial failure
   accounting. No runtime dependency or user configuration changes are included.
-- `task workspace:check` and `task versions:check` pass. Independent review and
-  complete frozen-candidate gates are required before delivery.
+- `task workspace:check` and `task versions:check` pass. Independent review
+  approves corrected candidate `de29190350e2adf389b6f6aadfd37b92cc3942c7`
+  with no remaining findings. Frozen `task check`, `task test` (206 tests), and
+  `task build` pass. The patched CLI also successfully refreshed the reported
+  project cache without clearing it or modifying configuration.
 - Independent review of `9380ada` identified Git's remote-name interpretation
   of a configured relative source such as `origin`. The correction uses an
   unused command-local remote name to expand the configured URL literally;
   regressions cover remote-name rejection and collisions with validation names.
-  Renew independent review and focused gates for the corrected candidate.
-- Integration, main completion, and publication are pending.
-- Pre-publication review additionally found that trimming both resolved outputs
-  could accept distinct paths with trailing spaces. Compare the two Git stdout
-  byte vectors exactly; both include Git's terminating newline. A trailing-space
-  mismatch regression fails before correction, and a matching rewritten source
-  containing spaces must still fetch successfully. Reuse the applied, unpublished
-  SKM 0.9.1 reservation without another version bump. Supersede the held initial
-  production candidate and renew review, integration, and release qualification.
+  The reviewer confirmed the finding resolved and approved `de29190`; the
+  focused cache and command-consumer gates pass afterward.
+- PR #89 confirms shared-test integration at `1e1ca5d`; independent review
+  approves that exact revision and fresh combined task check/test passes all
+  206 tests. Main completion is confirmed below; publication remained pending at that stage.
+
+- Exact integration revision `1e1ca5d66060d42e983e32f49dc8ffd66fccf44f`
+  matches the reviewed implementation tree and receives independent approval.
+  PR CI `40906924410`, combined development CI `40907370148`, promotion PR CI
+  `40907463390`, and fresh combined local check/test all pass. Development
+  Release Artifacts `40907370050` publishes all four platform builds.
+- Main was fast-forwarded from `cbf5146` to that exact development revision on
+  2026-10-29 in the context of promotion PR #90. The actual main ref is verified,
+  and fresh main `task check` / `task test` pass all 206 tests. Main CI
+  `40907993980` also passes checks, all tests, and the release build.
+  Publication remains separately gated.
+
+## Initial Main Completion
+
+PR #90 promoted the reviewed development revision `1e1ca5d66060d42e983e32f49dc8ffd66fccf44f`
+to main on 2026-10-29 after promotion CI `40907463390` passed.
+Fresh actual-main `task check` / `task test` passed all 206 tests, and
+main CI `40907993980` passed checks, tests, and build. Earlier
+criterion evidence remains applicable: the promoted implementation is
+unchanged from the recorded reviewed development trees. The cache fix
+additionally has a successful refresh of the reported project cache.
+No new governed instruction changes or personal configuration changes
+were needed. Source completion and applied SKM 0.9.1 are verified;
+At that stage, production publication awaited the existing qualification and reviewer gate.
+
+## Corrected Pre-Publication Candidate
+
+Pre-publication review confirmed that trimming both resolved outputs could
+accept distinct paths with trailing spaces. The negative regression fails
+before correction, and a positive rewritten source containing spaces still
+fetches successfully. Compare the two Git stdout byte vectors exactly; both
+include Git's terminating newline. Independent review approves correction
+`dcd637871908bfed00dacd122e79b8b4ec749894`, and frozen checks, all 207 tests,
+and the release build pass. PR #91 passes CI `40910232459` and integrates into
+development at `f6ea86a1f6894ae95da6a390368953c9f4ce6bcc`; that exact tree
+receives independent review and fresh combined check/test passes all 207 tests.
+Main is normally fast-forwarded to the same revision, and fresh actual-main
+check/test passes all 207 tests. The shared unpublished 0.9.1 target is reused
+without a second bump. The superseded initial production run `40907993812`
+and qualification `40908810096` are canceled; renewed native CI and release
+qualification apply to the corrected source before publication.
+
+The independent reviewer is the `cache_review` agent. Both source findings
+(remote-name ambiguity and whitespace normalization) were reproduced, fixed,
+and independently approved. Final source `f6ea86a` receives renewed approval;
+actual development CI `40910752475` and main CI `40910853364` pass checks,
+all 207 tests, and build. The published development source is the same revision.
+
+## Production Publication
+
+Release Update Qualification `40912110608` passed on Linux, macOS Intel,
+macOS Apple Silicon, and Windows for exact source
+`f6ea86a1f6894ae95da6a390368953c9f4ce6bcc`. Release Artifacts
+`40910854161` then published SKM 0.9.1 through the existing eligible-reviewer
+`release-prod` path. The strict production manifest, moving tag, source
+identity, and complete nine-asset set are verified. The installed managed
+binary upgraded through its checksum/manifest/identity verification to prod
+0.9.1 at that source, and the user's original `cache refresh` command succeeds
+with one registry updated and none failed. Final follow-up changes reconcile
+only lifecycle, release, and memory records; they change no shipped runtime.

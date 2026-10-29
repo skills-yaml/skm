@@ -78,13 +78,13 @@
       "target": "0.9.1",
       "impact": "patch",
       "timing": "development-start",
-      "status": "applied",
+      "status": "released",
       "owner": "cache-refresh-fix",
       "version_source": "Cargo.toml",
       "specs": [
-        "workspace/specs/development/registry/cache-refresh-url-rewrites.md"
+        "workspace/specs/done/registry/cache-refresh-url-rewrites.md"
       ],
-      "evidence": "Published production Cargo.toml at prod-latest reports 0.9.0, and development matches 37922cdaf9a7cb1fad3c5684ec4edc0afa854a73. No open tracked SKM reservation or local peer board exists. Single-author compatible refresh fix reserves 0.9.1 and applies it once to Cargo.toml and Cargo.lock before implementation. Integration and publication remain pending."
+      "evidence": "Published production Cargo.toml at prod-latest reports 0.9.0, and development matches 37922cdaf9a7cb1fad3c5684ec4edc0afa854a73. No open tracked SKM reservation or local peer board exists. Single-author compatible refresh fix reserves 0.9.1 and applies it once to Cargo.toml and Cargo.lock before implementation. Integration and publication remain pending. PR #89 integrated the independently reviewed fix into development at 1e1ca5d66060d42e983e32f49dc8ffd66fccf44f after CI 40906924410 passed; fresh combined task check/test passed all 206 tests and development CI 40907370148 passed. PR #90 promoted the exact reviewed development commit to main after promotion CI 40907463390 passed. Fresh actual-main task check/test passed all 206 tests, and actual main CI 40907993980 passed checks, tests, and build. Acceptance and memory are reconciled and the member spec is done. Production qualification/publication remain pending; status stays applied until verified publication. Pre-publication review then found whitespace normalization could accept distinct literal source paths. PR #91 integrated the independently reviewed exact-byte correction at f6ea86a1f6894ae95da6a390368953c9f4ce6bcc after CI 40910232459 passed. Normal main fast-forward and fresh actual integration/main task check/test passed all 207 tests; development CI 40910752475 and actual-main CI 40910853364 passed checks, tests, and build. The superseded production/qualification runs were canceled; the same unpublished 0.9.1 reservation is reused without another bump. Release Update Qualification 40912110608 passed consecutive managed updates on Linux, macOS Intel/ARM, and Windows for exact main/development source f6ea86a1f6894ae95da6a390368953c9f4ce6bcc while production was held. Release Artifacts 40910854161 published production SKM 0.9.1 through the existing release-prod eligible-reviewer path. Verified prod-latest source identity, strict manifest version/channel/commit, complete nine assets, and managed local upgrade with checksum/identity verification. The installed prod 0.9.1 repeats the original cache refresh successfully (one updated, none failed). Subsequent completion/publication records change no runtime source."
     }
   ]
 }
