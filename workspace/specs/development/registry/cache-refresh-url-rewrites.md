@@ -28,8 +28,10 @@ or repository names, modify user Git/manifest configuration, or clear caches.
    successfully and receives a new source commit without clearing the cache.
 2. A configured URL and cached origin that resolve to the same fetch URL are
    accepted, including project overrides and repository-local rewrite rules.
-3. Different effective URLs, missing origins, and invalid cached repositories
-   fail before updates and preserve cached content and configuration.
+3. Different effective URLs, missing origins, invalid cached repositories, and
+   relative source paths matching a remote name fail before updates and preserve
+   cached content and configuration. Existing remote names cannot override
+   command-local URL validation.
 4. Existing unrewritten refresh, project precedence, partial failure reporting,
    and fast-forward-only behavior remain intact without new dependencies.
 5. Regression fails before the fix, passes afterward, receives independent
@@ -84,8 +86,9 @@ updates content. Revert the bounded implementation to recover prior behavior.
 Status: `updated`
 
 Rationale: Record the durable requirement to compare Git-resolved fetch URLs
-in the cached repository's context in facts.md and changelog.md. No local Git
-rules, paths, or personal configuration are recorded.
+in the cached repository's context in `workspace/agents/memory/facts.md` and
+`workspace/agents/memory/changelog.md`. No local Git rules, paths, or personal
+configuration are recorded.
 
 ## Evidence
 
@@ -107,4 +110,9 @@ rules, paths, or personal configuration are recorded.
   accounting. No runtime dependency or user configuration changes are included.
 - `task workspace:check` and `task versions:check` pass. Independent review and
   complete frozen-candidate gates are required before delivery.
+- Independent review of `9380ada` identified Git's remote-name interpretation
+  of a configured relative source such as `origin`. The correction uses an
+  unused command-local remote name to expand the configured URL literally;
+  regressions cover remote-name rejection and collisions with validation names.
+  Renew independent review and focused gates for the corrected candidate.
 - Integration, main completion, and publication are pending.

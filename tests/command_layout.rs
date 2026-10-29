@@ -294,6 +294,11 @@ fn cache_refresh_honors_git_url_rewrites() {
     assert!(cache.join("second.txt").exists());
     assert!(String::from_utf8_lossy(&refresh.stdout).contains("Updated: 1"));
 
+    // Existing remotes must not override the command-local URL used for validation.
+    for name in ["skm-url-validation", "skm-url-validation-"] {
+        git(&cache, &["remote", "add", name, "/unexpected/source"]);
+    }
+
     // A literal cached origin and a rewritten project URL share the same source.
     git(
         &cache,
@@ -361,7 +366,7 @@ fn cache_refresh_resolves_project_url_with_repository_local_rewrites() {
 
 #[test]
 fn cache_refresh_rejects_invalid_origins_without_mutating_cache() {
-    for invalid in ["different", "missing", "not-a-repository"] {
+    for invalid in ["different", "missing", "not-a-repository", "remote-name"] {
         let home = rewritten_cache_fixture();
         let cache = home.path().join(".cache/skm/registries/default");
         match invalid {
@@ -370,6 +375,14 @@ fn cache_refresh_rejects_invalid_origins_without_mutating_cache() {
                 &["remote", "set-url", "origin", "/different/source"],
             ),
             "missing" => git(&cache, &["remote", "remove", "origin"]),
+            "remote-name" => {
+                git(home.path(), &["clone", "source", "origin"]);
+                fs::write(
+                    home.path().join("skills.yaml"),
+                    "name: fixture\nregistries:\n  default: origin\nagents: []\nskills: []\n",
+                )
+                .unwrap();
+            }
             _ => fs::rename(cache.join(".git"), cache.join("saved-git")).unwrap(),
         }
         let git_dir = cache.join(if invalid == "not-a-repository" {
