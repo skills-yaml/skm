@@ -227,3 +227,181 @@ fn cache_refresh_fetches_a_new_remote_commit() {
     assert!(cached.join("second.txt").exists());
     fs::remove_dir_all(home).unwrap();
 }
+
+fn rewritten_cache_fixture() -> tempfile::TempDir {
+    let home = tempfile::tempdir().unwrap();
+    let source = home.path().join("source");
+    fs::create_dir(&source).unwrap();
+    git(&source, &["init", "--initial-branch=main"]);
+    git(
+        &source,
+        &["config", "user.email", "skm-test@example.invalid"],
+    );
+    git(&source, &["config", "user.name", "SKM Test"]);
+    commit_cache_source(home.path(), "first.txt");
+    fs::write(
+        home.path().join(".gitconfig"),
+        format!(
+            "[url \"{}\"]\n\tinsteadOf = git@example.invalid:registry.git\n",
+            source.to_str().unwrap().replace('\\', "/")
+        ),
+    )
+    .unwrap();
+    fs::create_dir_all(home.path().join(".config/skm")).unwrap();
+    fs::write(
+        home.path().join(".config/skm/config.yaml"),
+        format!("registries:\n  default: {}\n", source.display()),
+    )
+    .unwrap();
+    fs::write(
+        home.path().join("skills.yaml"),
+        "name: fixture\nregistries:\n  default: git@example.invalid:registry.git\nagents: []\nskills: []\n",
+    )
+    .unwrap();
+    let clone = skm(home.path())
+        .args(["cache", "refresh", "default"])
+        .output()
+        .unwrap();
+    assert!(
+        clone.status.success(),
+        "{}",
+        String::from_utf8_lossy(&clone.stderr)
+    );
+    home
+}
+
+fn commit_cache_source(home: &std::path::Path, filename: &str) {
+    let source = home.join("source");
+    fs::write(source.join(filename), filename).unwrap();
+    git(&source, &["add", "."]);
+    git(&source, &["commit", "-m", filename]);
+}
+
+#[test]
+fn cache_refresh_honors_git_url_rewrites() {
+    let home = rewritten_cache_fixture();
+    let cache = home.path().join(".cache/skm/registries/default");
+    commit_cache_source(home.path(), "second.txt");
+    let refresh = skm(home.path())
+        .args(["cache", "refresh"])
+        .output()
+        .unwrap();
+    assert!(
+        refresh.status.success(),
+        "{}",
+        String::from_utf8_lossy(&refresh.stderr)
+    );
+    assert!(cache.join("second.txt").exists());
+    assert!(String::from_utf8_lossy(&refresh.stdout).contains("Updated: 1"));
+
+    // Existing remotes must not override the command-local URL used for validation.
+    for name in ["skm-url-validation", "skm-url-validation-"] {
+        git(&cache, &["remote", "add", name, "/unexpected/source"]);
+    }
+
+    // A literal cached origin and a rewritten project URL share the same source.
+    git(
+        &cache,
+        &[
+            "remote",
+            "set-url",
+            "origin",
+            &home
+                .path()
+                .join("source")
+                .to_str()
+                .unwrap()
+                .replace('\\', "/"),
+        ],
+    );
+    commit_cache_source(home.path(), "third.txt");
+    let refresh = skm(home.path())
+        .args(["cache", "refresh", "default"])
+        .output()
+        .unwrap();
+    assert!(
+        refresh.status.success(),
+        "{}",
+        String::from_utf8_lossy(&refresh.stderr)
+    );
+    assert!(cache.join("third.txt").exists());
+}
+
+#[test]
+fn cache_refresh_resolves_project_url_with_repository_local_rewrites() {
+    let home = rewritten_cache_fixture();
+    let cache = home.path().join(".cache/skm/registries/default");
+    git(
+        &cache,
+        &[
+            "config",
+            &format!(
+                "url.{}.insteadOf",
+                home.path()
+                    .join("source")
+                    .to_str()
+                    .unwrap()
+                    .replace('\\', "/")
+            ),
+            "git@local.invalid:registry.git",
+        ],
+    );
+    fs::write(
+        home.path().join("skills.yaml"),
+        "name: fixture\nregistries:\n  default: git@local.invalid:registry.git\nagents: []\nskills: []\n",
+    )
+    .unwrap();
+    commit_cache_source(home.path(), "second.txt");
+    let refresh = skm(home.path())
+        .args(["cache", "refresh", "default"])
+        .output()
+        .unwrap();
+    assert!(
+        refresh.status.success(),
+        "{}",
+        String::from_utf8_lossy(&refresh.stderr)
+    );
+    assert!(cache.join("second.txt").exists());
+}
+
+#[test]
+fn cache_refresh_rejects_invalid_origins_without_mutating_cache() {
+    for invalid in ["different", "missing", "not-a-repository", "remote-name"] {
+        let home = rewritten_cache_fixture();
+        let cache = home.path().join(".cache/skm/registries/default");
+        match invalid {
+            "different" => git(
+                &cache,
+                &["remote", "set-url", "origin", "/different/source"],
+            ),
+            "missing" => git(&cache, &["remote", "remove", "origin"]),
+            "remote-name" => {
+                git(home.path(), &["clone", "source", "origin"]);
+                fs::write(
+                    home.path().join("skills.yaml"),
+                    "name: fixture\nregistries:\n  default: origin\nagents: []\nskills: []\n",
+                )
+                .unwrap();
+            }
+            _ => fs::rename(cache.join(".git"), cache.join("saved-git")).unwrap(),
+        }
+        let git_dir = cache.join(if invalid == "not-a-repository" {
+            "saved-git"
+        } else {
+            ".git"
+        });
+        let config = fs::read(git_dir.join("config")).unwrap();
+        let head = fs::read(git_dir.join("HEAD")).unwrap();
+        commit_cache_source(home.path(), "second.txt");
+        let refresh = skm(home.path())
+            .args(["cache", "refresh", "default"])
+            .output()
+            .unwrap();
+        assert!(!refresh.status.success(), "accepted {invalid} origin");
+        assert!(String::from_utf8_lossy(&refresh.stderr).contains("different or missing origin"));
+        assert_eq!(fs::read(git_dir.join("config")).unwrap(), config);
+        assert_eq!(fs::read(git_dir.join("HEAD")).unwrap(), head);
+        assert!(cache.join("first.txt").exists());
+        assert!(!cache.join("second.txt").exists());
+    }
+}

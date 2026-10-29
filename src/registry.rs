@@ -246,7 +246,32 @@ pub fn refresh_from_url(name: &str, url: &str) -> Result<(), Box<dyn std::error:
                 "origin",
             ])
             .output()?;
-        if !output.status.success() || String::from_utf8_lossy(&output.stdout).trim() != url {
+        // Expand a literal URL with the cache's Git rules. Passing the URL directly
+        // to ls-remote could interpret a relative path like "origin" as a remote.
+        let remotes = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&cache_path)
+            .arg("remote")
+            .output()?;
+        let remote_names = String::from_utf8_lossy(&remotes.stdout);
+        let mut remote_name = "skm-url-validation".to_string();
+        while remote_names.lines().any(|name| name == remote_name) {
+            remote_name.push('-');
+        }
+        // Command-local configuration writes no files; --get-url uses no network.
+        let expected = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&cache_path)
+            .arg("-c")
+            .arg(format!("remote.{remote_name}.url={url}"))
+            .args(["ls-remote", "--get-url", "--", &remote_name])
+            .output()?;
+        if !output.status.success()
+            || !remotes.status.success()
+            || !expected.status.success()
+            || String::from_utf8_lossy(&output.stdout).trim()
+                != String::from_utf8_lossy(&expected.stdout).trim()
+        {
             return Err(format!(
                 "Cached registry '{name}' has a different or missing origin; run `skm cache clear {name}` before refreshing"
             )

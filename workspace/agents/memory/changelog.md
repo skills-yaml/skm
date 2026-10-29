@@ -1023,3 +1023,17 @@ Appended PR #87 integration, independent review, combined validation, and
 lossless local metadata-cleanup facts to `workspace/agents/memory/facts.md`.
 Moved the follow-up spec/catalog to test from the confirmed development event.
 Main completion remains pending; no SKM runtime version or production change.
+
+## 2026-10-29 - Record registry refresh URL rewrite comparison
+
+- Type: fact
+- Source: repo
+- Confidence: high
+- Review: after shared-test integration
+- Supersedes: none
+
+Content:
+
+Recorded the effective fetch URL comparison contract and non-mutating Git URL
+resolution in facts.md, with global/local rewrite regressions and preserved
+mismatch rejection. Integration and publication are tracked in the linked spec.
