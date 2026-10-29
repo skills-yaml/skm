@@ -269,8 +269,7 @@ pub fn refresh_from_url(name: &str, url: &str) -> Result<(), Box<dyn std::error:
         if !output.status.success()
             || !remotes.status.success()
             || !expected.status.success()
-            || String::from_utf8_lossy(&output.stdout).trim()
-                != String::from_utf8_lossy(&expected.stdout).trim()
+            || output.stdout != expected.stdout
         {
             return Err(format!(
                 "Cached registry '{name}' has a different or missing origin; run `skm cache clear {name}` before refreshing"
