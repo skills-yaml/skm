@@ -62,15 +62,9 @@ pub fn clean_symlinks(
         return Err("Must specify at least one of --broken, --orphaned, or --all".into());
     }
 
-    let config_path = if global {
-        crate::config_manager::check_global_manifest_parent()?;
-        crate::config_manager::get_global_manifest_path().ok_or("Cannot resolve global manifest")?
-    } else {
-        current_dir.join("skills.yaml")
-    };
-    let manifest_root = config_path.parent().ok_or("Invalid manifest path")?;
-    let project_config = match fs::symlink_metadata(&config_path) {
-        Ok(_) => Some(crate::load_config(&config_path)?),
+    let scope = crate::ManifestScope::select(global, &current_dir)?;
+    let project_config = match fs::symlink_metadata(&scope.path) {
+        Ok(_) => Some(crate::load_config(&scope.path)?),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
         Err(error) => return Err(error.into()),
     };
@@ -81,7 +75,7 @@ pub fn clean_symlinks(
     }
 
     let known_skills = if clean_orphaned {
-        collect_known_skill_names(project_config.as_ref(), manifest_root, global)?
+        collect_known_skill_names(project_config.as_ref(), &scope.root, global)?
     } else {
         HashSet::new()
     };
@@ -554,11 +548,9 @@ pub fn clean_old_versions(
     } else {
         None
     };
-    crate::config_manager::check_global_manifest_parent()?;
-    let global_path = crate::config_manager::get_global_manifest_path()
-        .ok_or("Cannot resolve global manifest")?;
-    let global_config = match fs::symlink_metadata(&global_path) {
-        Ok(_) => Some(crate::load_config(&global_path)?),
+    let global_scope = crate::ManifestScope::select(true, &current_dir)?;
+    let global_config = match fs::symlink_metadata(&global_scope.path) {
+        Ok(_) => Some(crate::load_config(&global_scope.path)?),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
         Err(error) => return Err(error.into()),
     };
@@ -566,8 +558,8 @@ pub fn clean_old_versions(
     // against the user manifest and its own effective registry URLs. A missing
     // or conflicting source makes pruning unsafe and must fail before writes.
     let global_config = if let Some(mut global) = global_config {
-        let root = global_path.parent().ok_or("Invalid global manifest path")?;
-        let dependencies = linker::resolve_skill_dependency_closure(&global.skills, root)?;
+        let dependencies =
+            linker::resolve_skill_dependency_closure(&global.skills, &global_scope.root)?;
         global.skills.extend(dependencies);
         Some(global)
     } else {
