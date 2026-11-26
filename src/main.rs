@@ -641,17 +641,50 @@ fn main() {
     let cli = parse_cli_with_help_notice(args, updater::maybe_print_startup_notice)
         .unwrap_or_else(|error| error.exit());
 
-    // Add and install previews do not initialize machine-local state.
+    // Preview and identity operations must leave user state untouched.
     let read_only_startup = matches!(
         &cli.command,
         Commands::Install { dry_run: true, .. }
             | Commands::Install { json: true, .. }
-            | Commands::Add { .. }
+            | Commands::Add { dry_run: true, .. }
+            | Commands::Add { json: true, .. }
+            | Commands::Remove { dry_run: true, .. }
+            | Commands::Cache(
+                CacheCommands::Prune { dry_run: true, .. }
+                    | CacheCommands::Clear { dry_run: true, .. }
+            )
+            | Commands::Clean(
+                CleanCommands::Symlinks { dry_run: true, .. }
+                    | CleanCommands::Reset { dry_run: true, .. }
+            )
+            | Commands::Config(
+                ConfigCommands::Set { dry_run: true, .. }
+                    | ConfigCommands::Unset { dry_run: true, .. }
+                    | ConfigCommands::Reset { dry_run: true, .. }
+            )
+            | Commands::Registry(RegistryCommands::Remove { dry_run: true, .. })
+            | Commands::Skill(
+                SkillCommands::Use { dry_run: true, .. }
+                    | SkillCommands::Upgrade { dry_run: true, .. }
+            )
+            | Commands::SelfUpdate(SelfCommands::Version)
     );
-    if !read_only_startup {
+    let recovery = matches!(
+        &cli.command,
+        Commands::Config(ConfigCommands::Reset { global: true, .. })
+            | Commands::Config(ConfigCommands::Reset {
+                global: false,
+                project: false,
+                ..
+            })
+            | Commands::Clean(
+                CleanCommands::Reset { config: true, .. } | CleanCommands::Reset { all: true, .. }
+            )
+    );
+    if !read_only_startup && !recovery {
         if let Err(e) = ensure_global_env() {
-            eprintln!("Warning: Failed to initialize global configuration: {}", e);
-            eprintln!("SKM may not function correctly. Run 'skm setup' to manually configure.");
+            eprintln!("Error: cannot initialize SKM user state: {e}");
+            std::process::exit(1);
         }
     }
 

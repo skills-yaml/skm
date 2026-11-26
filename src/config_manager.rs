@@ -7,24 +7,18 @@ use std::path::{Path, PathBuf};
 /// Default registry URL
 pub const DEFAULT_REGISTRY_URL: &str = "git@github.com:skills-yaml/registry.git";
 
-/// Get the SKM config directory path
-pub fn get_config_dir() -> Option<PathBuf> {
-    dirs::config_dir().map(|d| d.join("skm"))
-}
-
 /// Canonical settings and manifest directory for the global-home migration.
 pub fn get_user_config_dir() -> Option<PathBuf> {
     dirs::home_dir().map(|d| d.join(".skm"))
 }
 
-#[allow(dead_code)]
 pub fn get_user_base_config_path() -> Option<PathBuf> {
     get_user_config_dir().map(|d| d.join("config.yaml"))
 }
 
 /// Get the global base config path
 pub fn get_base_config_path() -> Option<PathBuf> {
-    get_config_dir().map(|d| d.join("config.yaml"))
+    get_user_base_config_path()
 }
 
 /// Get the user-owned global skills manifest path.
@@ -38,8 +32,7 @@ pub fn get_cache_dir() -> Option<PathBuf> {
     dirs::cache_dir().map(|d| d.join("skm"))
 }
 
-/// Canonical cache location for the global-home migration. Existing consumers
-/// switch together with legacy cache discovery in the next implementation step.
+/// Canonical cache location for user-scoped SKM state.
 #[allow(dead_code)]
 pub fn get_user_cache_dir() -> Option<PathBuf> {
     get_user_config_dir().map(|d| d.join("cache"))
@@ -128,6 +121,50 @@ fn validate_base(content: &str, path: &Path) -> ConfigResult<serde_yaml::Value> 
     Ok(value)
 }
 
+/// Validate and atomically replace the canonical settings document.
+pub(crate) fn write_base_settings(value: &serde_yaml::Value) -> ConfigResult<()> {
+    let path = get_base_config_path().ok_or("Could not determine user home directory")?;
+    let content = serde_yaml::to_string(value)?;
+    validate_base(&content, &path)?;
+    check_base_settings_target(true)?;
+    let parent = path.parent().ok_or("Missing settings directory")?;
+    let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+    if let Ok(metadata) = fs::symlink_metadata(&path) {
+        temp.as_file().set_permissions(metadata.permissions())?;
+    }
+    temp.write_all(content.as_bytes())?;
+    temp.as_file().sync_all()?;
+    check_base_settings_target(false)?;
+    temp.persist(&path)
+        .map_err(|error| format!("Cannot save {}: {}", path.display(), error.error))?;
+    Ok(())
+}
+
+/// Refuse unsafe home, parent, and settings-file types before recovery or backup.
+pub(crate) fn check_base_settings_target(create_parent: bool) -> ConfigResult<()> {
+    let home = dirs::home_dir().ok_or("Could not determine user home directory")?;
+    directory(&home, false)?;
+    let parent = get_user_config_dir().ok_or("Could not determine user home directory")?;
+    if create_parent {
+        directory(&parent, true)?;
+    } else if !existing_directory(&parent)? {
+        return Ok(());
+    }
+    let path = parent.join("config.yaml");
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) if !metadata.file_type().is_file() => {
+            Err(format!("Expected a regular file at {}", path.display()).into())
+        }
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("Cannot inspect {}: {error}", path.display()).into()),
+    }
+}
+
+pub(crate) fn validate_base_value(value: &serde_yaml::Value, path: &Path) -> ConfigResult<()> {
+    validate_base(&serde_yaml::to_string(value)?, path).map(|_| ())
+}
+
 fn validate_manifest(content: &str, path: &Path) -> ConfigResult<()> {
     serde_yaml::from_str::<crate::config::SkillsConfig>(content)
         .map_err(|error| format!("Invalid skills manifest in {}: {}", path.display(), error))?;
@@ -175,13 +212,10 @@ impl BaseConfig {
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
         let path = get_base_config_path().ok_or("Could not determine config directory")?;
 
-        if !path.exists() {
-            // Return default config if file doesn't exist
+        let Some(content) = read_regular_file(&path)? else {
             return Ok(Self::new());
-        }
-
-        let content = fs::read_to_string(&path)?;
-        let config: serde_yaml::Value = serde_yaml::from_str(&content)?;
+        };
+        let config = validate_base(&content, &path)?;
 
         let default_registry = config
             .get("default_registry")
@@ -219,27 +253,19 @@ impl BaseConfig {
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         let path = get_base_config_path().ok_or("Could not determine config directory")?;
 
-        // Create config directory if it doesn't exist
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
+        check_base_settings_target(false)?;
+        // Keep unknown fields belonging to other publishers when settings change.
+        let mut value = match read_regular_file(&path)? {
+            Some(content) => validate_base(&content, &path)?,
+            None => serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
+        };
+        let fields = serde_yaml::to_value(self)?;
+        let mapping = value.as_mapping_mut().ok_or("Settings must be a mapping")?;
+        for (key, value) in fields.as_mapping().ok_or("Settings must be a mapping")? {
+            mapping.insert(key.clone(), value.clone());
         }
-
-        let file = fs::File::create(&path)?;
-        serde_yaml::to_writer(file, self)?;
-
-        Ok(())
+        write_base_settings(&value)
     }
-}
-
-/// Initialize the base configuration in user's home
-pub fn init_base_config() -> Result<(), Box<dyn std::error::Error>> {
-    let config = BaseConfig::new();
-    config.save()?;
-    eprintln!(
-        "Created base configuration at: {:?}",
-        get_base_config_path()
-    );
-    Ok(())
 }
 
 /// Ensure base config exists, create if it doesn't.
@@ -316,18 +342,10 @@ pub fn update_cache(registry_name: Option<&str>) -> Result<(), Box<dyn std::erro
 /// Ensure base configuration exists, create with defaults if missing
 /// This is separate from first_time_setup() which also updates cache
 pub fn ensure_global_env() -> Result<(), Box<dyn std::error::Error>> {
-    let path = get_base_config_path().ok_or("Could not determine config directory")?;
-
-    if !path.exists() {
-        eprintln!("Initializing global SKM configuration...");
-        init_base_config()?;
-    }
-
-    Ok(())
+    bootstrap_user_home()
 }
 
-/// Bootstrap canonical user-home state. Call only at the settings routing cutover.
-#[allow(dead_code)]
+/// Bootstrap canonical user-home state without replacing existing files.
 pub fn bootstrap_user_home() -> ConfigResult<()> {
     let home = dirs::home_dir().ok_or("Could not determine user home directory")?;
     directory(&home, false)?;
@@ -558,18 +576,43 @@ mod tests {
     }
     #[test]
     #[serial]
-    fn live_startup_uses_only_legacy_settings() {
-        let _home = create_temp_config_dir();
-        ensure_global_env().unwrap();
-        let legacy = get_base_config_path().unwrap();
-        assert!(legacy.is_file());
-        assert!(!get_user_config_dir().unwrap().exists());
-        let mut config = BaseConfig::load().unwrap();
-        config.check_for_updates = false;
-        config.save().unwrap();
-        ensure_global_env().unwrap();
-        assert!(!BaseConfig::load().unwrap().check_for_updates);
-        assert!(!get_user_config_dir().unwrap().exists());
+    fn dormant_cache_resolver_selects_ordered_roots_and_rejects_conflicts() {
+        use std::os::unix::fs::symlink;
+        let home = create_temp_config_dir();
+        let root = home._temp_dir.path();
+        let old_cache = std::env::var_os("XDG_CACHE_HOME");
+        std::env::set_var("XDG_CACHE_HOME", root.join("xdg-cache"));
+        let source = root.join("source");
+        let wrong = root.join("wrong");
+        fs::create_dir(&source).unwrap();
+        fs::create_dir(&wrong).unwrap();
+        let linker = root.join(".cache/skm/registries/local");
+        let os = root.join("xdg-cache/skm/registries/local");
+        let canonical = get_user_cache_dir().unwrap().join("registries/local");
+        fs::create_dir_all(linker.parent().unwrap()).unwrap();
+        fs::create_dir_all(os.parent().unwrap()).unwrap();
+        symlink(&source, &os).unwrap();
+        assert_eq!(
+            crate::linker::validated_registry_path("local", "source", root).unwrap(),
+            os
+        );
+        symlink(&wrong, &linker).unwrap();
+        assert!(crate::linker::validated_registry_path("local", "source", root).is_err());
+        fs::remove_file(&linker).unwrap();
+        symlink(&source, &linker).unwrap();
+        assert_eq!(
+            crate::linker::validated_registry_path("local", "source", root).unwrap(),
+            linker
+        );
+        fs::create_dir_all(canonical.parent().unwrap()).unwrap();
+        symlink(&wrong, &canonical).unwrap();
+        assert!(crate::linker::validated_registry_path("local", "source", root).is_err());
+        assert!(linker.exists());
+        assert!(os.exists());
+        match old_cache {
+            Some(value) => std::env::set_var("XDG_CACHE_HOME", value),
+            None => std::env::remove_var("XDG_CACHE_HOME"),
+        }
     }
 
     #[test]

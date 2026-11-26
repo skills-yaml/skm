@@ -6,7 +6,7 @@ State: development
 
 Primary feature: `configuration`
 
-Status rationale: Bootstrap and legacy-settings implementation started on 2026-11-26 in an isolated peer worktree. The applied shared 0.10.0 reservation is reused. Cache migration, command scope, review, integration, and acceptance remain pending.
+Status rationale: S1 path and bootstrap implementation is in peer review, reusing the applied shared 0.10.0 reservation. Cache-consumer guards, command scope, combined review, integration, and acceptance remain pending.
 
 ## Problem and Evidence
 
@@ -294,12 +294,24 @@ passes do not establish complete feature acceptance.
 
 ### Current S1 partial implementation
 
-A dormant helper creates the new layout and imports legacy settings; live startup
-and existing settings and cache consumers retain their legacy behavior. AC1 and
-AC6 remain partial. Activate bootstrap only with settings routing so that legacy
-writes cannot silently diverge from the canonical copy. Remaining S1 work also
-includes cache fallback, origin validation, and coordinated cache-consumer
-migration. The CLI must propagate bootstrap errors and retain preview exemptions.
+The `global-cache-paths` peer candidate activates silent create-if-absent user
+home bootstrap, imports legacy settings without deleting them, preserves opaque
+settings on registry mutation, validates global settings edits against the startup
+schema, and routes base settings readers/writers to the canonical path. Reset
+writes canonical defaults without reimporting legacy settings; recovery remains
+available for invalid settings and backup previews do not write. The new cache resolver selects canonical, historical linker,
+then distinct OS cache entries and validates the effective origin. It is dormant:
+existing readers and writers retain their legacy cache paths until the dependent
+cache-consumer task can activate the cutover atomically. This avoids introducing
+an unvalidated new cache read in the intermediate revision.
+
+The candidate adds temporary-home, concurrency, invalid-state, preview, and
+ordered resolver conflict fixtures. The dependent task must guard every reader,
+activate canonical writes and legacy reads, preserve legacy backing sources, and
+cover Git rewrites and local-directory aliases across consumers. S2 remains
+blocked on that work and combined review. No AC1, AC2, AC6 or AC7 is closed by
+this slice; command routing, full preview coverage and final acceptance remain
+pending.
 
 ## Validation Gates and Review
 

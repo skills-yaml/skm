@@ -725,11 +725,17 @@ pub fn resolve_registry_path(name: &str) -> Option<PathBuf> {
     if !is_safe_registry_name(name) {
         return None;
     }
+    Some(dirs::home_dir()?.join(".cache/skm/registries").join(name))
+}
 
-    let home = dirs::home_dir()?;
+/// Destination for future canonical cache writes after all readers are guarded.
+#[allow(dead_code)]
+pub(crate) fn canonical_registry_path(name: &str) -> Option<PathBuf> {
+    if !is_safe_registry_name(name) {
+        return None;
+    }
     Some(
-        home.join(".cache")
-            .join("skm")
+        crate::config_manager::get_user_cache_dir()?
             .join("registries")
             .join(name),
     )
@@ -785,6 +791,44 @@ pub(crate) fn registry_cache_matches(cache: &Path, location: &str, project: &Pat
     expected.is_ok_and(|expected| expected.status.success() && expected.stdout == origin.stdout)
 }
 
+/// Select and validate an existing cache before consuming it. Missing caches
+/// resolve to the canonical destination for a caller that will populate it.
+#[allow(dead_code)]
+pub(crate) fn validated_registry_path(
+    name: &str,
+    location: &str,
+    project: &Path,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let canonical =
+        canonical_registry_path(name).ok_or_else(|| format!("Invalid registry name: {name}"))?;
+    let home = dirs::home_dir().ok_or("Could not determine user home directory")?;
+    let mut candidates = vec![
+        canonical.clone(),
+        home.join(".cache/skm/registries").join(name),
+    ];
+    if let Some(cache) = dirs::cache_dir() {
+        let legacy = cache.join("skm/registries").join(name);
+        if !candidates.contains(&legacy) {
+            candidates.push(legacy);
+        }
+    }
+    for cache in candidates {
+        match fs::symlink_metadata(&cache) {
+            Ok(_) if !registry_cache_matches(&cache, location, project) => {
+                return Err(format!("Cached registry '{name}' at {} has a different or missing origin; choose a distinct registry alias or resolve the conflicting cache", cache.display()).into());
+            }
+            Ok(_) => return Ok(cache),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(
+                    format!("Cannot inspect registry cache {}: {error}", cache.display()).into(),
+                )
+            }
+        }
+    }
+    Ok(canonical)
+}
+
 pub(crate) fn validate_registry_cache_origin(
     name: &str,
     location: &str,
@@ -793,7 +837,7 @@ pub(crate) fn validate_registry_cache_origin(
     let cache =
         resolve_registry_path(name).ok_or_else(|| format!("Invalid registry name: {name}"))?;
     match fs::symlink_metadata(&cache) {
-        Ok(_) if !registry_cache_matches(&cache, location, project) => Err(format!("Cached registry '{name}' has a different or missing origin; run skm cache clear {name} before using it").into()),
+        Ok(_) if !registry_cache_matches(&cache, location, project) => Err(format!("Cached registry '{name}' has a different or missing origin; choose a distinct registry alias or resolve the conflicting cache").into()),
         Ok(_) => Ok(()),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error.into()),

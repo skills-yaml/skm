@@ -29,6 +29,7 @@ pub struct SymlinkInfo {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum ResetItemKind {
+    BaseSettings,
     Config,
     Cache,
     Symlink,
@@ -672,7 +673,6 @@ pub fn reset(
                 .map(|d| d.join(".skm-backups"))
                 .unwrap_or_else(|| PathBuf::from(".skm-backups")),
         };
-        fs::create_dir_all(&dir)?;
         Some(dir)
     } else {
         None
@@ -683,13 +683,11 @@ pub fn reset(
 
     if reset_config {
         if let Some(path) = get_base_config_path() {
-            if path.exists() {
-                items.push(ResetItem {
-                    name: "Global configuration".to_string(),
-                    path,
-                    kind: ResetItemKind::Config,
-                });
-            }
+            items.push(ResetItem {
+                name: "Global configuration".to_string(),
+                path,
+                kind: ResetItemKind::BaseSettings,
+            });
         }
 
         let project_config = current_dir.join("skills.yaml");
@@ -772,6 +770,14 @@ pub fn reset(
         }
     }
 
+    // Check the global destination before creating backup directories or modifying files.
+    if reset_config {
+        crate::config_manager::check_base_settings_target(false)?;
+    }
+    if let Some(ref dir) = backup_dir {
+        fs::create_dir_all(dir)?;
+    }
+
     // Perform reset with optional backup
     let mut reset_count = 0;
     let timestamp = SystemTime::now()
@@ -779,7 +785,7 @@ pub fn reset(
         .unwrap()
         .as_secs();
     for (index, item) in items.iter().enumerate() {
-        if let Some(ref backup_dir) = backup_dir {
+        if let Some(backup_dir) = backup_dir.as_ref().filter(|_| item.path.exists()) {
             let backup_path = backup_dir.join(format!(
                 "{timestamp}_{index:03}_{}.backup",
                 sanitize_backup_name(&item.name)
@@ -790,6 +796,9 @@ pub fn reset(
         }
 
         match item.kind {
+            ResetItemKind::BaseSettings => crate::config_manager::write_base_settings(
+                &serde_yaml::to_value(BaseConfig::new())?,
+            )?,
             ResetItemKind::Symlink => fs::remove_file(&item.path)?,
             ResetItemKind::Config | ResetItemKind::Cache if item.path.is_dir() => {
                 fs::remove_dir_all(&item.path)?
@@ -1527,8 +1536,9 @@ mod tests {
         )
         .unwrap();
 
-        // Check configs are deleted
-        assert!(!global_config_path.exists());
+        // Global settings are reset to defaults; project configuration is deleted.
+        assert!(global_config_path.exists());
+        assert_eq!(BaseConfig::load().unwrap().default_registry, "default");
         assert!(!project_config_path.exists());
         // Backup files should exist in backup_dir
         assert!(backup_dir.exists());
