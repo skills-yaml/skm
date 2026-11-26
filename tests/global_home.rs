@@ -1,7 +1,7 @@
 #![cfg(unix)]
 
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
@@ -1524,6 +1524,79 @@ fn global_remove_unlinks_orphan_dependencies_but_retains_shared_ones() {
             usize::from(shared)
         );
         assert_eq!(value["extension"].as_str(), Some("retained"));
+    }
+}
+
+#[test]
+fn global_remove_rejects_manifest_symlink_swap_during_confirmation() {
+    let home = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    let home = home.path();
+    let registry = home.join(".skm/registry");
+    for (name, dependency) in [
+        ("parent", "  skm-dependencies: 'acme/helper@1.0.0'\n"),
+        ("helper", ""),
+    ] {
+        let source = registry.join(format!("skills/acme/{name}/v1.0.0"));
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("SKILL.md"),
+            format!("---\nname: {name}\nmetadata:\n  skm-version: '1.0.0'\n{dependency}---\n"),
+        )
+        .unwrap();
+    }
+    let manifest = home.join(".skm/skills.yaml");
+    fs::write(&manifest, "name: User\nagents: [codex, cursor]\nregistries: {default: registry}\nskills:\n  - {name: acme/parent, version: '1.0.0'}\nextension: retained\n").unwrap();
+    success(command(
+        home,
+        project.path(),
+        &["install", "--global", "--yes"],
+    ));
+    let original = fs::read(&manifest).unwrap();
+    let sibling = home.join(".skm/sibling.yaml");
+    fs::write(&sibling, &original).unwrap();
+    let targets: Vec<_> = [".agents/skills", ".cursor/skills"]
+        .iter()
+        .flat_map(|agent| {
+            ["parent", "helper"]
+                .iter()
+                .map(move |skill| home.join(agent).join(skill))
+        })
+        .map(|path| {
+            let destination = fs::read_link(&path).unwrap();
+            (path, destination)
+        })
+        .collect();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_skm"))
+        .current_dir(project.path())
+        .args(["remove", "acme/parent", "--global"])
+        .env("HOME", home)
+        .env("XDG_CONFIG_HOME", home.join("xdg-config"))
+        .env("XDG_CACHE_HOME", home.join("xdg-cache"))
+        .env("SKM_NO_UPDATE_CHECK", "1")
+        .stdin(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stderr = child.stderr.take().unwrap();
+    let mut prompt = Vec::new();
+    while !prompt.ends_with(b"[y/N] ") {
+        let mut byte = [0];
+        assert_eq!(
+            stderr.read(&mut byte).unwrap(),
+            1,
+            "removal ended before confirmation"
+        );
+        prompt.push(byte[0]);
+    }
+    fs::remove_file(&manifest).unwrap();
+    symlink(&sibling, &manifest).unwrap();
+    child.stdin.take().unwrap().write_all(b"y\n").unwrap();
+    assert!(!child.wait().unwrap().success());
+    assert!(manifest.is_symlink());
+    assert_eq!(fs::read(sibling).unwrap(), original);
+    for (path, destination) in targets {
+        assert_eq!(fs::read_link(path).unwrap(), destination);
     }
 }
 

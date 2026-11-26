@@ -148,10 +148,7 @@ where
     }
 
     if bundle_scope {
-        let metadata = fs::symlink_metadata(&config_path)?;
-        if !metadata.is_file() || metadata.file_type().is_symlink() {
-            return Err("Manifest must remain a regular file during removal; retry".into());
-        }
+        regular_manifest_metadata(&config_path)?;
     }
     if fs::read(&config_path)? != original {
         return Err("Manifest changed during removal; retry".into());
@@ -228,6 +225,14 @@ where
     Ok(())
 }
 
+fn regular_manifest_metadata(path: &Path) -> Result<fs::Metadata, Box<dyn std::error::Error>> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err("Manifest must remain a regular file during removal; retry".into());
+    }
+    Ok(metadata)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn remove_global_transaction(
     config_path: &Path,
@@ -248,12 +253,12 @@ fn remove_global_transaction(
         .and_then(|v| v.as_sequence_mut())
         .ok_or("skills must be a YAML sequence")?;
     entries.retain(|entry| entry.get("name").and_then(|v| v.as_str()) != Some(name));
+    let permissions = regular_manifest_metadata(config_path)?.permissions();
     let mut staged = tempfile::NamedTempFile::new_in(root)?;
-    staged
-        .as_file()
-        .set_permissions(fs::metadata(config_path)?.permissions())?;
+    staged.as_file().set_permissions(permissions)?;
     staged.write_all(serde_yaml::to_string(&document)?.as_bytes())?;
     staged.as_file().sync_all()?;
+    regular_manifest_metadata(config_path)?;
     if fs::read(config_path)? != original
         || plan_unlocked_removal(config, skill, root, true, force, verbose)? != targets
     {
@@ -298,6 +303,7 @@ fn remove_global_transaction(
                 return Err("injected removal failure".into());
             }
         }
+        regular_manifest_metadata(config_path)?;
         if fs::read(config_path)? != original {
             return Err("Manifest changed during removal; retry".into());
         }
