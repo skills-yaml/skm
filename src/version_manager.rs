@@ -619,6 +619,7 @@ pub fn use_version(
     );
 
     // Save updated configuration
+    let pin_changed = config.skills[skill_index].version.as_deref() != Some(version);
     config.skills[skill_index].version = Some(version.to_string());
     config.save_to_file(config_path)?;
 
@@ -630,6 +631,10 @@ pub fn use_version(
         &config.agents,
         global,
     )?;
+
+    if pin_changed {
+        installer::sync_existing_lock(config_path, project_root)?;
+    }
 
     println!("Done. Skill now using {}", version);
 
