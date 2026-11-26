@@ -755,4 +755,79 @@ mod tests {
         assert!(!project.join(".agents/skills/alpha").exists());
         assert!(!project.join("skills.lock.yaml").exists());
     }
+
+    #[test]
+    #[serial_test::serial]
+    fn bundle_member_replacement_rolls_back_removed_links_and_lock_on_failure() {
+        struct HomeGuard(Option<std::ffi::OsString>, Option<std::ffi::OsString>);
+        impl Drop for HomeGuard {
+            fn drop(&mut self) {
+                if let Some(value) = &self.0 {
+                    std::env::set_var("HOME", value);
+                } else {
+                    std::env::remove_var("HOME");
+                }
+                if let Some(value) = &self.1 {
+                    std::env::set_var("XDG_CACHE_HOME", value);
+                } else {
+                    std::env::remove_var("XDG_CACHE_HOME");
+                }
+            }
+        }
+        let home = tempfile::tempdir().unwrap();
+        let _guard = HomeGuard(std::env::var_os("HOME"), std::env::var_os("XDG_CACHE_HOME"));
+        std::env::set_var("HOME", home.path());
+        std::env::set_var("XDG_CACHE_HOME", home.path().join(".cache"));
+        let project = tempfile::tempdir().unwrap();
+        let registry = home.path().join(".cache/skm/registries/local");
+        for name in ["alpha", "beta"] {
+            let path = registry.join(format!("skills/acme/{name}/v1.0.0"));
+            fs::create_dir_all(&path).unwrap();
+            fs::write(
+                path.join("SKILL.md"),
+                format!("---\nname: {name}\nmetadata:\n  skm-version: \"1.0.0\"\n---\n# {name}\n"),
+            )
+            .unwrap();
+        }
+        let manifest = registry.join("skills/acme/manifest.yaml");
+        fs::write(&manifest, "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0, beta: 1.0.0}\nbundles: {starter: {packages: [alpha]}}\n").unwrap();
+        let config = SkillsConfig {
+            name: "fixture".into(),
+            version: None,
+            registries: None,
+            agents: vec!["codex".into()],
+            skills: vec![SkillSpec {
+                name: "acme/starter".into(),
+                version: None,
+                source: Some("local".into()),
+                path: None,
+                kind: Some("bundle".into()),
+            }],
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            metadata: Default::default(),
+        };
+        let root = project.path();
+        prepare(&config, root, false, None)
+            .unwrap()
+            .apply()
+            .unwrap();
+        let original = fs::read(root.join("skills.lock.yaml")).unwrap();
+        let alpha = root.join(".agents/skills/alpha");
+        let old_target = fs::read_link(&alpha).unwrap();
+        fs::write(&manifest, "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0, beta: 1.0.0}\nbundles: {starter: {packages: [beta]}}\n").unwrap();
+        let plan = prepare(&config, root, false, None).unwrap();
+        assert!(plan.apply_with_failure(Some(1)).is_err());
+        assert_eq!(fs::read_link(alpha).unwrap(), old_target);
+        assert!(!root.join(".agents/skills/beta").exists());
+        assert_eq!(fs::read(root.join("skills.lock.yaml")).unwrap(), original);
+        prepare(&config, root, false, None)
+            .unwrap()
+            .apply()
+            .unwrap();
+        assert!(!root.join(".agents/skills/alpha").exists());
+        assert!(root.join(".agents/skills/beta").is_symlink());
+        verify_lock(&config, root).unwrap();
+    }
 }
