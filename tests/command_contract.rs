@@ -150,6 +150,14 @@ fn ordinary_install_previews_links_and_lock_then_repeats_without_changes() {
         fs::read(fixture.project.join("skills.lock.yaml")).unwrap(),
         lock
     );
+    fs::write(
+        fixture.home.join(".skm/skills.yaml"),
+        format!(
+            "name: Global\nagents: [codex]\nskills:\n  - name: alpha\n    path: {}\n",
+            source.display()
+        ),
+    )
+    .unwrap();
     fixture.skm(&["install", "--global", "--yes"]);
     assert!(fixture.home.join(".agents/skills/alpha").is_symlink());
     assert_eq!(

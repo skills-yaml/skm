@@ -44,7 +44,7 @@ enum Commands {
         /// Compatibility alias for the complete interactive prompt flow
         #[arg(long, hide = true)]
         advanced: bool,
-        /// Prepare for global installation; skills.yaml stays in the current directory
+        /// Edit the user-wide skills manifest in ~/.skm
         #[arg(short, long)]
         global: bool,
         /// Use non-interactive mode with default values
@@ -261,6 +261,9 @@ enum SkillCommands {
     },
     /// Show configured skills with newer cached versions
     Outdated {
+        /// Inspect the user-wide skills manifest
+        #[arg(short, long)]
+        global: bool,
         /// Skill to inspect (all configured skills when omitted)
         skill_name: Option<String>,
         /// Refresh relevant registries before comparing versions
@@ -727,6 +730,28 @@ where
     }
 }
 
+struct ManifestScope {
+    root: std::path::PathBuf,
+    path: std::path::PathBuf,
+}
+
+impl ManifestScope {
+    fn select(global: bool, current_dir: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+        let path = if global {
+            config_manager::check_global_manifest_parent()?;
+            config_manager::get_global_manifest_path()
+                .ok_or("Could not determine user home directory")?
+        } else {
+            current_dir.join("skills.yaml")
+        };
+        let root = path
+            .parent()
+            .ok_or("Manifest has no parent directory")?
+            .to_path_buf();
+        Ok(Self { root, path })
+    }
+}
+
 fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
     let current_dir = env::current_dir()?;
     let config_path = current_dir.join("skills.yaml");
@@ -742,14 +767,18 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             profile,
             ..
         } => {
-            let mut document =
-                wizard::Document::load(&config_path, name.as_deref(), non_interactive)?;
-
             if global && toolkit_manifest.is_some() {
                 return Err(
                     "toolkit initialization is project-scoped; --global is not supported".into(),
                 );
             }
+            let scope = ManifestScope::select(global, &current_dir)?;
+            let mut document = wizard::Document::load_for_scope(
+                &scope.path,
+                name.as_deref(),
+                non_interactive,
+                global,
+            )?;
             if let Some(manifest) = toolkit_manifest {
                 document.value["toolkit"] = serde_yaml::to_value(config::ToolkitSelection {
                     manifest,
@@ -782,11 +811,13 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("\nNext steps:");
             if global {
                 eprintln!("  Run: skm install --global");
+                eprintln!("  Run: skm list --global");
+                eprintln!("  Run: skm check --global");
             } else {
                 eprintln!("  Run: skm install");
+                eprintln!("  Run: skm list");
+                eprintln!("  Run: skm check");
             }
-            eprintln!("  Run: skm list");
-            eprintln!("  Run: skm check");
         }
         Commands::Install {
             global,
@@ -794,17 +825,19 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             json,
             yes,
         } => {
-            let config = load_config(&config_path)?;
+            let scope = ManifestScope::select(global, &current_dir)?;
+            let config = load_config_for_scope(&scope.path, global)?;
             validate_config(&config)?;
+            validate_manifest_scope(&config, global)?;
 
             if config.toolkit.is_none() && !config.skills.is_empty() {
-                linker::require_skill_targets(&config.agents, &current_dir, global)?;
+                linker::require_skill_targets(&config.agents, &scope.root, global)?;
             }
 
             if config.skills.iter().any(|skill| skill.path.is_none()) {
-                validate_effective_registry_caches(&config, &current_dir)?;
+                validate_effective_registry_caches(&config, &scope.root)?;
                 if !dry_run && !json {
-                    ensure_registries_cached(&config)?;
+                    ensure_registries_cached(&config, &scope.root)?;
                 }
             }
 
@@ -821,11 +854,11 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 }
                 toolkit::install(
                     &config,
-                    &current_dir,
+                    &scope.root,
                     toolkit::InstallOptions { dry_run, json },
                 )?;
             } else {
-                let plan = installer::prepare(&config, &current_dir, global, None)?;
+                let plan = installer::prepare(&config, &scope.root, global, None)?;
                 plan.print(json)?;
                 if !dry_run && !json {
                     plan.apply()?;
@@ -843,9 +876,27 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             json,
             yes,
         } => {
+            let scope = ManifestScope::select(global, &current_dir)?;
+            let path = match (global, path) {
+                (true, Some(path)) => {
+                    let path = Path::new(&path);
+                    let absolute = if path.is_absolute() {
+                        path.to_path_buf()
+                    } else {
+                        current_dir.join(path)
+                    };
+                    Some(
+                        absolute
+                            .to_str()
+                            .ok_or("Local path is not valid UTF-8")?
+                            .to_owned(),
+                    )
+                }
+                (_, path) => path,
+            };
             add_registry_item(
-                &config_path,
-                &current_dir,
+                &scope.path,
+                &scope.root,
                 &name,
                 source,
                 kind,
@@ -895,33 +946,44 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             dry_run,
             verbose,
         } => {
-            let original = std::fs::read(&config_path).ok();
+            let scope = ManifestScope::select(global, &current_dir)?;
+            if global {
+                validate_manifest_scope(&load_config_for_scope(&scope.path, global)?, true)?;
+            }
+            let config_path = &scope.path;
+            let original = std::fs::read(config_path).ok();
             let had_bundle = original
                 .as_deref()
                 .and_then(|bytes| serde_yaml::from_slice::<SkillsConfig>(bytes).ok())
                 .is_some_and(|config| config.skills.iter().any(|skill| skill.is_bundle()));
             remover::remove_skill(
                 &skill_name,
-                &current_dir,
+                &scope.root,
                 global,
                 yes,
                 force,
                 dry_run,
                 verbose,
             )?;
-            if !global && !dry_run && !had_bundle && std::fs::read(&config_path).ok() != original {
-                installer::sync_existing_lock(&config_path, &current_dir)?;
+            if !global && !dry_run && !had_bundle && std::fs::read(config_path).ok() != original {
+                installer::sync_existing_lock(config_path, &current_dir)?;
             }
         }
         Commands::List { global } => {
-            let config = load_config(&config_path)?;
+            let scope = ManifestScope::select(global, &current_dir)?;
+            let config = load_config_for_scope(&scope.path, global)?;
             validate_config(&config)?;
+            validate_manifest_scope(&config, global)?;
             if config.toolkit.is_none() && !config.skills.is_empty() {
-                linker::require_skill_targets(&config.agents, &current_dir, global)?;
+                linker::require_skill_targets(&config.agents, &scope.root, global)?;
             }
-            eprintln!("Listing skills for project '{}':", config.name);
+            eprintln!(
+                "Listing skills for {} '{}':",
+                if global { "global manifest" } else { "project" },
+                config.name
+            );
 
-            let entries = linker::resolve_entries(&config.skills, &current_dir)?;
+            let entries = linker::resolve_entries(&config.skills, &scope.root)?;
             // Print bundle entries first with their member count.
             for entry in &entries {
                 if let linker::ResolvedEntry::Bundle { spec, members, .. } = entry {
@@ -934,16 +996,16 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                     );
                 }
             }
-            let resolved = linker::resolve_skill_dependency_closure(&config.skills, &current_dir)?;
+            let resolved = linker::resolve_skill_dependency_closure(&config.skills, &scope.root)?;
             linker::validate_unique_skill_targets(&resolved)?;
             for skill in &resolved {
                 let mut status = "OK".to_string();
                 let mut linked_targets = Vec::new();
                 let mut bad_targets = Vec::new();
-                let source_dir = linker::resolve_skill_source_dir(skill, &current_dir)?;
+                let source_dir = linker::resolve_skill_source_dir(skill, &scope.root)?;
                 let source_exists = source_dir.exists();
                 let targets =
-                    linker::resolve_agent_skill_targets(&config.agents, &current_dir, global)?;
+                    linker::resolve_agent_skill_targets(&config.agents, &scope.root, global)?;
 
                 for target in &targets {
                     let path = linker::get_skill_target_path(&target.path, &skill.name)?;
@@ -978,10 +1040,13 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             if config.toolkit.is_some() {
-                toolkit::list(&current_dir)?;
+                toolkit::list(&scope.root)?;
             }
         }
-        Commands::Check { global } => check_skills(&config_path, &current_dir, global)?,
+        Commands::Check { global } => {
+            let scope = ManifestScope::select(global, &current_dir)?;
+            check_skills(&scope.path, &scope.root, global)?;
+        }
         Commands::SelfUpdate(command) => match command {
             SelfCommands::Version => version::show_version(),
             SelfCommands::Check { channel } => {
@@ -1202,27 +1267,33 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             yes,
             dry_run,
         }) => {
-            let original = std::fs::read(&config_path).ok();
+            let scope = ManifestScope::select(global, &current_dir)?;
+            if global {
+                validate_manifest_scope(&load_config_for_scope(&scope.path, global)?, true)?;
+            }
+            let config_path = &scope.path;
+            let original = std::fs::read(config_path).ok();
             let (skill_name, version) = SkillSpec::parse_with_version(&skill_version)?;
             let version = version.unwrap_or_else(|| "latest".to_string());
-            version_manager::use_version(
-                &skill_name,
-                &version,
-                &config_path,
-                global,
-                yes,
-                dry_run,
-            )?;
-            if !global && !dry_run && std::fs::read(&config_path).ok() != original {
-                installer::sync_existing_lock(&config_path, &current_dir)?;
+            version_manager::use_version(&skill_name, &version, config_path, global, yes, dry_run)?;
+            if !global && !dry_run && std::fs::read(config_path).ok() != original {
+                installer::sync_existing_lock(config_path, &current_dir)?;
             }
         }
         Commands::Skill(SkillCommands::Outdated {
+            global,
             skill_name,
             refresh,
             pre,
         }) => {
-            version_manager::show_outdated(&config_path, skill_name.as_deref(), refresh, pre)?;
+            let scope = ManifestScope::select(global, &current_dir)?;
+            if global {
+                validate_manifest_scope(&load_config_for_scope(&scope.path, global)?, true)?;
+            }
+            if global && refresh {
+                return Err("Global outdated refresh is not yet supported; from ~/.skm run `skm cache refresh NAME`, then retry without --refresh".into());
+            }
+            version_manager::show_outdated(&scope.path, skill_name.as_deref(), refresh, pre)?;
         }
         Commands::Skill(SkillCommands::Upgrade {
             skill_name,
@@ -1232,26 +1303,58 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             dry_run,
             pre,
         }) => {
+            let scope = ManifestScope::select(global, &current_dir)?;
+            if global {
+                validate_manifest_scope(&load_config_for_scope(&scope.path, global)?, true)?;
+            }
+            let config_path = &scope.path;
             if all {
-                version_manager::upgrade_all(&config_path, global, pre, yes, dry_run)?;
+                version_manager::upgrade_all(config_path, global, pre, yes, dry_run)?;
             } else if let Some(skill_name) = skill_name {
-                let original = std::fs::read(&config_path).ok();
+                let original = std::fs::read(config_path).ok();
                 version_manager::update_to_latest(
                     &skill_name,
-                    &config_path,
+                    config_path,
                     global,
                     pre,
                     yes,
                     dry_run,
                 )?;
-                if !global && !dry_run && std::fs::read(&config_path).ok() != original {
-                    installer::sync_existing_lock(&config_path, &current_dir)?;
+                if !global && !dry_run && std::fs::read(config_path).ok() != original {
+                    installer::sync_existing_lock(config_path, &current_dir)?;
                 }
             }
         }
     }
 
     Ok(())
+}
+
+fn validate_manifest_scope(
+    config: &SkillsConfig,
+    global: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if global
+        && (config.toolkit.is_some()
+            || !config.bundles.is_empty()
+            || !config.profiles.is_empty()
+            || config.skills.iter().any(SkillSpec::is_bundle))
+    {
+        return Err("Toolkits and published bundles are project-only".into());
+    }
+    Ok(())
+}
+
+fn load_config_for_scope(
+    path: &Path,
+    global: bool,
+) -> Result<SkillsConfig, Box<dyn std::error::Error>> {
+    if global
+        && matches!(std::fs::symlink_metadata(path), Err(ref error) if error.kind() == std::io::ErrorKind::NotFound)
+    {
+        return Err("skills.yaml file not found. Run 'skm init --global' to create one.".into());
+    }
+    load_config(path)
 }
 
 fn load_config(path: &Path) -> Result<SkillsConfig, Box<dyn std::error::Error>> {
@@ -1276,8 +1379,9 @@ fn check_skills(
     current_dir: &Path,
     global: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let config = load_config(config_path)?;
+    let config = load_config_for_scope(config_path, global)?;
     validate_config(&config)?;
+    validate_manifest_scope(&config, global)?;
     if config.toolkit.is_none() && !config.skills.is_empty() {
         linker::require_skill_targets(&config.agents, current_dir, global)?;
     }
@@ -1385,6 +1489,8 @@ fn add_registry_item(
     if kind == Some(AddKind::Bundle) && global {
         return Err("published bundles can only be added to a project".into());
     }
+    let config = load_config_for_scope(config_path, global)?;
+    validate_manifest_scope(&config, global)?;
     let source = if path.is_none() {
         Some(source.unwrap_or(config_manager::BaseConfig::load()?.default_registry))
     } else {
@@ -1393,7 +1499,6 @@ fn add_registry_item(
     let mut is_bundle = false;
     if path.is_none() {
         let registry = source.as_deref().unwrap_or("default");
-        let config = load_config(config_path)?;
         let (discovery, root, _temporary) =
             search::discover_for_add(&config, project_root, registry, dry_run || json)?;
         let skill_exists = discovery.entries.iter().any(|entry| entry.name == name);
@@ -1448,8 +1553,14 @@ fn add_skill_with_confirmation<F>(
 where
     F: FnOnce(&str) -> Result<bool, Box<dyn std::error::Error>>,
 {
+    let config = load_config_for_scope(config_path, global)?;
+    validate_manifest_scope(&config, global)?;
     let original = std::fs::read(config_path)?;
-    let mut config = load_config(config_path)?;
+    let mut config = load_config_for_scope(config_path, global)?;
+    if std::fs::read(config_path)? != original {
+        return Err("skills.yaml changed after add planning; retry".into());
+    }
+    validate_manifest_scope(&config, global)?;
     validate_config(&config)?;
     linker::validate_skill_name(&new_skill.name)?;
     new_skill.validate_kind()?;
@@ -1486,14 +1597,15 @@ where
         eprintln!("'{}' is already present in skills.yaml", new_skill.name);
     } else {
         eprintln!(
-            "Add {} '{}' to skills.yaml ({} scope); run skm install afterwards.",
+            "Add {} '{}' to skills.yaml ({} scope); run skm install{} afterwards.",
             if new_skill.is_bundle() {
                 "bundle"
             } else {
                 "skill"
             },
             new_skill.name,
-            if global { "global" } else { "project" }
+            if global { "global" } else { "project" },
+            if global { " --global" } else { "" }
         );
     }
     if dry_run || json || already_present {
@@ -1530,8 +1642,9 @@ where
     }
     staged.persist(config_path)?;
     eprintln!(
-        "Added '{}' to skills.yaml; run skm install to link it.",
-        new_skill.name
+        "Added '{}' to skills.yaml; run skm install{} to link it.",
+        new_skill.name,
+        if global { " --global" } else { "" }
     );
     Ok(())
 }
@@ -1569,7 +1682,10 @@ fn validate_effective_registry_caches(
     Ok(())
 }
 
-fn ensure_registries_cached(config: &SkillsConfig) -> Result<(), Box<dyn std::error::Error>> {
+fn ensure_registries_cached(
+    config: &SkillsConfig,
+    project: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
     // First, try to use the base config registries
     let base_config = config_manager::ensure_base_config()?;
 
@@ -1583,12 +1699,11 @@ fn ensure_registries_cached(config: &SkillsConfig) -> Result<(), Box<dyn std::er
         }
     }
 
-    let project = std::env::current_dir()?;
     // Validate every existing candidate before any clone or symlink is written.
     let paths = all_registries
         .iter()
         .map(|(name, url)| {
-            linker::validated_registry_path(name, url, &project).map(|path| (name, url, path))
+            linker::validated_registry_path(name, url, project).map(|path| (name, url, path))
         })
         .collect::<Result<Vec<_>, _>>()?;
     for (name, url, selected) in paths {
@@ -1608,6 +1723,7 @@ fn ensure_registries_cached(config: &SkillsConfig) -> Result<(), Box<dyn std::er
         eprintln!("Cloning registry '{}' from '{}'...", name, url);
         let output = std::process::Command::new("git")
             .arg("clone")
+            .current_dir(project)
             .arg("--")
             .arg(url)
             .arg(&path)
@@ -1831,8 +1947,6 @@ mod init_tests {
             assert!(init(&args).is_err());
             assert!(!project.path().exists());
         }
-        init(&["--non-interactive", "--global", "--name", "global-config"]).unwrap();
-        assert!(project.path().exists());
     }
 
     #[test]

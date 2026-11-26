@@ -44,7 +44,7 @@ fn get_registries_cache_dir() -> Option<PathBuf> {
     get_cache_dir().map(|d| d.join("registries"))
 }
 
-const EMPTY_GLOBAL_MANIFEST: &str = "name: Global skills\nagents: []\nskills: []\n";
+pub(crate) const EMPTY_GLOBAL_MANIFEST: &str = "name: Global skills\nagents: []\nskills: []\n";
 
 type ConfigResult<T> = Result<T, Box<dyn std::error::Error>>;
 
@@ -137,6 +137,20 @@ pub(crate) fn write_base_settings(value: &serde_yaml::Value) -> ConfigResult<()>
     check_base_settings_target(false)?;
     temp.persist(&path)
         .map_err(|error| format!("Cannot save {}: {}", path.display(), error.error))?;
+    Ok(())
+}
+
+/// Check global manifest ancestors without creating user state.
+pub(crate) fn check_global_manifest_parent() -> ConfigResult<()> {
+    let home = dirs::home_dir().ok_or("Could not determine user home directory")?;
+    directory(&home, false)?;
+    let parent = get_user_config_dir().ok_or("Could not determine user home directory")?;
+    if existing_directory(&parent)? {
+        let cache = parent.join("cache");
+        if existing_directory(&cache)? {
+            existing_directory(&cache.join("registries"))?;
+        }
+    }
     Ok(())
 }
 

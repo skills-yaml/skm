@@ -313,6 +313,19 @@ registry URL independently of the current project; S3 and S4 must complete
 global install, mutation and maintenance ownership. Preview and release-wide
 acceptance remain open until S5.
 
+### Current S2 scope-routing candidate
+
+The bounded candidate selects the project or user manifest and uses its parent
+for local sources and effective registry overrides, while agent targets remain
+home-relative. Temporary-home fixtures exercise two project directories,
+conflicting registry overrides, base inheritance, bootstrap init, selected
+agents, cancellation, metadata, local-path persistence and non-writing plans.
+These are partial AC2, AC3 and AC7 evidence, pending exact-candidate review.
+`skill outdated --global --refresh` fails safely until the dependent
+scope-aware registry refresh task updates the version-manager interface. S3
+and S4 retain installation transaction, all-target, mutation, and cleanup work;
+these checks do not establish full acceptance of those areas.
+
 ## Validation Gates and Review
 
 Use only Taskfile entrypoints and the repository's
