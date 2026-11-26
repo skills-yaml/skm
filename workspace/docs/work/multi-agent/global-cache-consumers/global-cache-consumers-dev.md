@@ -51,7 +51,9 @@ home/XDG fixtures exercise legacy fallback, conflict preservation, refresh,
 reinstall and cleanup; existing tests cover Git rewrites and local paths.
 Added migration tests for bundle install, upgrade, removal, rollback,
 conflicting retained origins and symlink escapes, plus missing relative local
-Git origins and explicit conflict recovery.
+Git origins and explicit conflict recovery. Follow-up review added a literal
+Git URL rewrite check before the local-path spelling fallback, including a bare
+registry name and a rejection case where the rewrite disagrees with the origin.
 
 ## Blockers and Dependencies
 

@@ -888,34 +888,47 @@ pub(crate) fn registry_cache_matches(cache: &Path, location: &str, project: &Pat
     while names.lines().any(|line| line == name) {
         name.push('-');
     }
-    // Git records an absolute local clone URL while retaining components such
-    // as `..`. Use that same spelling before applying Git's URL rewrites.
-    // Git records local clone origins as absolute paths, including the
-    // original `..` spelling. Keep that spelling even if the source has
-    // since disappeared; remote URLs and scp-style locations stay unchanged.
-    let local_spelling =
-        if canonical_local.is_some() || (!location.contains("://") && !location.contains(':')) {
-            let root = if project.is_absolute() {
-                project.to_path_buf()
-            } else {
-                std::env::current_dir().unwrap_or_default().join(project)
-            };
-            Some(root.join(location))
-        } else {
-            None
-        };
-    let effective_location = local_spelling
-        .as_deref()
-        .and_then(Path::to_str)
-        .unwrap_or(location);
-    let expected = std::process::Command::new("git")
-        .arg("-C")
-        .arg(cache)
-        .arg("-c")
-        .arg(format!("remote.{name}.url={effective_location}"))
-        .args(["ls-remote", "--get-url", "--", &name])
-        .output();
-    expected.is_ok_and(|expected| expected.status.success() && expected.stdout == origin.stdout)
+    // Ask Git to resolve the literal first so repository-local URL rewrites
+    // retain their normal semantics, even for a bare name without a colon.
+    let effective_url = |value: &str| {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(cache)
+            .arg("-c")
+            .arg(format!("remote.{name}.url={value}"))
+            .args(["ls-remote", "--get-url", "--", &name])
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| output.stdout)
+    };
+    let Some(literal) = effective_url(location) else {
+        return false;
+    };
+    if literal == origin.stdout {
+        return true;
+    }
+    let mut unrewritten = location.as_bytes().to_vec();
+    unrewritten.push(b'\n');
+    // Do not bypass a rewrite that resolved to a different source. For an
+    // unrewritten local path Git stores an absolute clone URL, retaining `..`
+    // components even after the original directory has disappeared.
+    if literal != unrewritten
+        || !(canonical_local.is_some() || (!location.contains("://") && !location.contains(':')))
+    {
+        return false;
+    }
+    let root = if project.is_absolute() {
+        project.to_path_buf()
+    } else if let Ok(current) = std::env::current_dir() {
+        current.join(project)
+    } else {
+        return false;
+    };
+    let Some(local_spelling) = root.join(location).to_str().map(str::to_owned) else {
+        return false;
+    };
+    effective_url(&local_spelling).is_some_and(|expected| expected == origin.stdout)
 }
 
 /// Select and validate an existing cache before consuming it. Missing caches

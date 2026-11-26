@@ -365,6 +365,51 @@ fn cache_refresh_resolves_project_url_with_repository_local_rewrites() {
 }
 
 #[test]
+fn cache_refresh_honors_bare_name_rewrites_without_bypassing_conflicts() {
+    let home = rewritten_cache_fixture();
+    let cache = home.path().join(".skm/cache/registries/default");
+    let source = home.path().join("source");
+    git(
+        &cache,
+        &[
+            "config",
+            &format!("url.{}.insteadOf", source.display()),
+            "named-registry",
+        ],
+    );
+    fs::write(
+        home.path().join("skills.yaml"),
+        "name: fixture\nregistries: {default: named-registry}\nagents: []\nskills: []\n",
+    )
+    .unwrap();
+    commit_cache_source(home.path(), "second.txt");
+    let refresh = skm(home.path())
+        .args(["cache", "refresh", "default"])
+        .output()
+        .unwrap();
+    assert!(
+        refresh.status.success(),
+        "{}",
+        String::from_utf8_lossy(&refresh.stderr)
+    );
+    assert!(cache.join("second.txt").exists());
+
+    // A local path with the same spelling must not bypass a mismatching rewrite.
+    let local = home.path().join("named-registry");
+    fs::create_dir(&local).unwrap();
+    git(
+        &cache,
+        &["remote", "set-url", "origin", local.to_str().unwrap()],
+    );
+    let refresh = skm(home.path())
+        .args(["cache", "refresh", "default"])
+        .output()
+        .unwrap();
+    assert!(!refresh.status.success());
+    assert!(String::from_utf8_lossy(&refresh.stderr).contains("different or missing origin"));
+}
+
+#[test]
 fn cache_refresh_preserves_spaces_in_rewritten_source() {
     let home = rewritten_cache_fixture();
     commit_cache_source(home.path(), "second.txt");
