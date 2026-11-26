@@ -69,6 +69,7 @@ struct LinkAction {
     source: PathBuf,
     canonical_source: PathBuf,
     previous: Option<PathBuf>,
+    unchanged: bool,
 }
 
 pub struct Prepared {
@@ -299,23 +300,24 @@ fn prepare_inner(
                 Err(error) if error.kind() == io::ErrorKind::NotFound => None,
                 Err(error) => return Err(error.into()),
             };
-            if previous.is_some() && linker::symlink_points_to(&path, &source)? {
-                continue;
+            let unchanged = previous.is_some() && linker::symlink_points_to(&path, &source)?;
+            if !unchanged {
+                public.actions.push(PlanAction {
+                    action: if previous.is_some() {
+                        "replace"
+                    } else {
+                        "create"
+                    },
+                    path: path.display().to_string(),
+                    target: Some(source.display().to_string()),
+                });
             }
-            public.actions.push(PlanAction {
-                action: if previous.is_some() {
-                    "replace"
-                } else {
-                    "create"
-                },
-                path: path.display().to_string(),
-                target: Some(source.display().to_string()),
-            });
             links.push(LinkAction {
                 path,
                 source: source.clone(),
                 canonical_source: canonical_source.clone(),
                 previous,
+                unchanged,
             });
         }
     }
@@ -490,7 +492,7 @@ pub fn sync_existing_lock(config_path: &Path, project: &Path) -> Result<()> {
         return Ok(());
     }
     let prepared = prepare(&config, project, false, None)?;
-    if !prepared.links.is_empty() {
+    if prepared.links.iter().any(|link| !link.unchanged) {
         return Err("Skill links are incomplete; run skm install to refresh the lockfile".into());
     }
     prepared.apply()
@@ -507,7 +509,7 @@ fn read_regular_optional(path: &Path) -> Result<Option<Vec<u8>>> {
     }
 }
 
-fn validate_parent(root: &Path, path: &Path) -> Result<()> {
+pub(crate) fn validate_parent(root: &Path, path: &Path) -> Result<()> {
     let parent = path.parent().ok_or("Skill target has no parent")?;
     let relative = parent.strip_prefix(root)?;
     let mut current = root.to_path_buf();
@@ -549,9 +551,6 @@ impl Prepared {
     }
 
     pub(crate) fn apply_with_failure(&self, fail_after_link: Option<usize>) -> Result<()> {
-        if self.public.actions.is_empty() {
-            return Ok(());
-        }
         if let Some((path, original, _)) = &self.manifest {
             if read_regular_optional(path)?.as_deref() != Some(original.as_slice()) {
                 return Err("skills.yaml changed after planning; retry".into());
@@ -561,6 +560,13 @@ impl Prepared {
             if read_regular_optional(path)?.as_ref() != previous.as_ref() {
                 return Err("skills.lock.yaml changed after planning; retry".into());
             }
+        }
+        // Even a no-op plan must still describe the observed sources and targets.
+        for link in &self.links {
+            self.validate_link(link)?;
+        }
+        if self.public.actions.is_empty() {
+            return Ok(());
         }
         let transaction = tempfile::Builder::new()
             .prefix(".skm-install-")
@@ -587,35 +593,41 @@ impl Prepared {
                 removed.push(removal);
             }
             for (index, link) in self.links.iter().enumerate() {
-                validate_parent(&self.root, &link.path)?;
-                if fs::canonicalize(&link.source)? != link.canonical_source {
-                    return Err(format!(
-                        "Skill source changed after planning: {}",
-                        link.source.display()
-                    )
-                    .into());
-                }
-                match (&link.previous, fs::symlink_metadata(&link.path)) {
-                    (None, Err(error)) if error.kind() == io::ErrorKind::NotFound => {}
-                    (Some(previous), Ok(metadata))
-                        if metadata.file_type().is_symlink()
-                            && fs::read_link(&link.path)? == *previous => {}
-                    _ => {
-                        return Err(format!(
-                            "Skill target changed after planning: {}",
-                            link.path.display()
-                        )
-                        .into())
-                    }
+                self.validate_link(link)?;
+                if link.unchanged {
+                    continue;
                 }
                 ensure_parents(&link.path, &self.root, &mut created_directories)?;
-                completed.push(link);
+                self.validate_link(link)?;
                 if link.previous.is_some() {
                     fs::remove_file(&link.path)?;
                 }
+                completed.push(link);
                 linker::symlink_dir(&link.source, &link.path)?;
                 if fail_after_link == Some(index + 1) {
                     return Err("injected install failure".into());
+                }
+            }
+            if let Some((path, original, _)) = &self.manifest {
+                if read_regular_optional(path)?.as_deref() != Some(original.as_slice()) {
+                    return Err("skills.yaml changed during installation; retry".into());
+                }
+            }
+            for link in self.links.iter().filter(|link| link.unchanged) {
+                self.validate_link(link)?;
+            }
+            for link in self.links.iter().filter(|link| !link.unchanged) {
+                validate_parent(&self.root, &link.path)?;
+                if !link.path.is_symlink()
+                    || fs::read_link(&link.path)? != link.source
+                    || fs::canonicalize(&link.source)? != link.canonical_source
+                    || !link.source.join("SKILL.md").is_file()
+                {
+                    return Err(format!(
+                        "Skill link or source changed during installation: {}",
+                        link.path.display()
+                    )
+                    .into());
                 }
             }
             if let Some((path, original, updated)) = &self.manifest {
@@ -677,10 +689,27 @@ impl Prepared {
                 }
             }
             for link in completed.into_iter().rev() {
-                if link.path.is_symlink() {
-                    if let Err(restore) = fs::remove_file(&link.path) {
+                if let Err(restore) = validate_parent(&self.root, &link.path) {
+                    rollback_errors.push(format!("unsafe rollback parent: {restore}"));
+                    continue;
+                }
+                match fs::symlink_metadata(&link.path) {
+                    Ok(metadata)
+                        if metadata.file_type().is_symlink()
+                            && fs::read_link(&link.path).ok().as_ref() == Some(&link.source) =>
+                    {
+                        if let Err(restore) = fs::remove_file(&link.path) {
+                            rollback_errors.push(format!(
+                                "could not remove link {}: {restore}",
+                                link.path.display()
+                            ));
+                            continue;
+                        }
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                    _ => {
                         rollback_errors.push(format!(
-                            "could not remove link {}: {restore}",
+                            "link changed during rollback: {}",
                             link.path.display()
                         ));
                         continue;
@@ -704,7 +733,9 @@ impl Prepared {
                 }
             }
             for directory in created_directories.into_iter().rev() {
-                let _ = fs::remove_dir(directory);
+                if validate_parent(&self.root, &directory).is_ok() {
+                    let _ = fs::remove_dir(directory);
+                }
             }
             if rollback_errors.is_empty() {
                 return Err(
@@ -720,6 +751,36 @@ impl Prepared {
             .into());
         }
         Ok(())
+    }
+
+    fn validate_link(&self, link: &LinkAction) -> Result<()> {
+        validate_parent(&self.root, &link.path)?;
+        if fs::canonicalize(&link.source)? != link.canonical_source
+            || !link.source.is_dir()
+            || !link.source.join("SKILL.md").is_file()
+        {
+            return Err(format!(
+                "Skill source changed after planning: {}",
+                link.source.display()
+            )
+            .into());
+        }
+        match (&link.previous, fs::symlink_metadata(&link.path)) {
+            (None, Err(error)) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            (Some(previous), Ok(metadata))
+                if metadata.file_type().is_symlink()
+                    && fs::read_link(&link.path)? == *previous
+                    && (!link.unchanged
+                        || linker::symlink_points_to(&link.path, &link.source)?) =>
+            {
+                Ok(())
+            }
+            _ => Err(format!(
+                "Skill target changed after planning: {}",
+                link.path.display()
+            )
+            .into()),
+        }
     }
 }
 
@@ -881,6 +942,96 @@ mod tests {
         assert_eq!(fs::read(&manifest_path).unwrap(), b"name: external\n");
         assert!(!project.join(".agents/skills/alpha").exists());
         assert!(!project.join("skills.lock.yaml").exists());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn global_install_rolls_back_and_rejects_stale_noop_plans() {
+        struct HomeGuard(Option<std::ffi::OsString>);
+        impl Drop for HomeGuard {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(value) => std::env::set_var("HOME", value),
+                    None => std::env::remove_var("HOME"),
+                }
+            }
+        }
+        let (home, mut config) = fixture();
+        let _guard = HomeGuard(std::env::var_os("HOME"));
+        std::env::set_var("HOME", home.path());
+        let manifest_root = home.path().join(".skm");
+        fs::create_dir(&manifest_root).unwrap();
+        for skill in &mut config.skills {
+            skill.path = Some(
+                home.path()
+                    .join(skill.path.as_ref().unwrap())
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+        }
+        let manifest = serde_yaml::to_string(&config).unwrap().into_bytes();
+        fs::write(manifest_root.join("skills.yaml"), &manifest).unwrap();
+        let old = home.path().join("old");
+        fs::create_dir(&old).unwrap();
+        fs::create_dir_all(home.path().join(".agents/skills")).unwrap();
+        symlink(&old, home.path().join(".agents/skills/alpha")).unwrap();
+        let plan = prepare(
+            &config,
+            &manifest_root,
+            true,
+            Some((manifest.clone(), manifest.clone())),
+        )
+        .unwrap();
+        fs::write(
+            manifest_root.join("skills.yaml"),
+            b"name: externally changed\n",
+        )
+        .unwrap();
+        assert!(plan.apply().is_err());
+        assert_eq!(
+            fs::read_link(home.path().join(".agents/skills/alpha")).unwrap(),
+            old
+        );
+        fs::write(manifest_root.join("skills.yaml"), &manifest).unwrap();
+        fs::create_dir_all(home.path().join(".cursor/skills")).unwrap();
+        fs::write(home.path().join(".cursor/skills/beta"), b"owned").unwrap();
+        assert!(plan.apply().is_err());
+        assert_eq!(
+            fs::read(home.path().join(".cursor/skills/beta")).unwrap(),
+            b"owned"
+        );
+        fs::remove_dir_all(home.path().join(".cursor")).unwrap();
+        let source = home.path().join("alpha/SKILL.md");
+        let source_bytes = fs::read(&source).unwrap();
+        fs::remove_file(&source).unwrap();
+        assert!(plan.apply().is_err());
+        fs::write(source, source_bytes).unwrap();
+        assert!(plan.apply_with_failure(Some(2)).is_err());
+        assert_eq!(
+            fs::read_link(home.path().join(".agents/skills/alpha")).unwrap(),
+            old
+        );
+        assert!(!home.path().join(".agents/skills/beta").exists());
+        assert!(!home.path().join(".cursor").exists());
+        assert_eq!(
+            fs::read(manifest_root.join("skills.yaml")).unwrap(),
+            manifest
+        );
+        plan.apply().unwrap();
+        assert!(!manifest_root.join("skills.lock.yaml").exists());
+        let plan = prepare(
+            &config,
+            &manifest_root,
+            true,
+            Some((manifest.clone(), manifest.clone())),
+        )
+        .unwrap();
+        assert!(plan.public.actions.is_empty());
+        fs::remove_file(home.path().join(".agents/skills/alpha")).unwrap();
+        symlink(&old, home.path().join(".agents/skills/alpha")).unwrap();
+        assert!(plan.apply().is_err());
+        fs::write(manifest_root.join("skills.yaml"), b"name: changed\n").unwrap();
+        assert!(plan.apply().is_err());
     }
 
     #[test]
