@@ -23,6 +23,8 @@ struct NamespaceManifest {
     packages: BTreeMap<String, String>,
     #[serde(default)]
     bundles: BTreeMap<String, BundleMembers>,
+    #[serde(default)]
+    bundle_versions: BTreeMap<String, BTreeMap<String, BTreeMap<String, String>>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -30,6 +32,8 @@ struct NamespaceManifest {
 struct BundleMembers {
     packages: Vec<String>,
 }
+
+pub(crate) const MAX_NAMESPACE_MANIFEST_SIZE: u64 = 8 * 1024 * 1024;
 
 fn read_manifest(
     root: &Path,
@@ -47,8 +51,11 @@ fn read_manifest(
         }
     }
     let metadata = fs::symlink_metadata(&manifest_path)?;
-    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 256 * 1024 {
-        return Err("bundle manifest must be a regular file of at most 256 KiB".into());
+    if !metadata.is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.len() > MAX_NAMESPACE_MANIFEST_SIZE
+    {
+        return Err("bundle manifest must be a regular file of at most 8 MiB".into());
     }
     let manifest: NamespaceManifest = serde_yaml::from_slice(&fs::read(&manifest_path)?)?;
     validate_manifest(&manifest, namespace)?;
@@ -60,22 +67,66 @@ pub(crate) fn published_members(
     namespace: &str,
     id: &str,
     source: &str,
-) -> Result<Vec<SkillSpec>, Box<dyn std::error::Error>> {
+    selector: Option<&str>,
+) -> Result<(Option<String>, Vec<SkillSpec>), Box<dyn std::error::Error>> {
     let manifest = read_manifest(root, namespace)?;
     let bundle = manifest.bundles.get(id).ok_or_else(|| {
         format!("Bundle '{namespace}/{id}' is not published by registry '{source}'")
     })?;
-    Ok(bundle
-        .packages
-        .iter()
-        .map(|member| SkillSpec {
-            name: format!("{namespace}/{member}"),
-            version: Some(manifest.packages[member].clone()),
-            source: Some(source.to_string()),
-            path: None,
-            kind: None,
-        })
-        .collect())
+    let history = manifest.bundle_versions.get(id);
+    let alias = matches!(selector, None | Some("latest") | Some("default"));
+    let resolved = if alias {
+        history
+            .and_then(|history| {
+                history
+                    .keys()
+                    .max_by_key(|v| semver_parts(v).expect("validated release"))
+            })
+            .cloned()
+    } else {
+        let selected = selector.expect("exact selector");
+        validate_bundle_release(selected)?;
+        let history = history.ok_or_else(|| format!("Bundle '{namespace}/{id}' has no published version history; use latest or default or ask the publisher to provide bundle_versions"))?;
+        if !history.contains_key(selected) {
+            return Err(
+                format!("Bundle '{namespace}/{id}' has no published release {selected}").into(),
+            );
+        }
+        Some(selected.to_string())
+    };
+    let members: BTreeMap<String, String> = match &resolved {
+        Some(version) => history.expect("resolved history")[version].clone(),
+        None => bundle
+            .packages
+            .iter()
+            .map(|member| (member.clone(), manifest.packages[member].clone()))
+            .collect(),
+    };
+    Ok((
+        resolved,
+        members
+            .into_iter()
+            .map(|(member, version)| SkillSpec {
+                name: format!("{namespace}/{member}"),
+                version: Some(version),
+                source: Some(source.to_string()),
+                path: None,
+                kind: None,
+            })
+            .collect(),
+    ))
+}
+
+fn validate_bundle_release(version: &str) -> Result<(), Box<dyn std::error::Error>> {
+    validate_exact_version(version)?;
+    if version.starts_with('v') {
+        return Err(format!(
+            "Bundle release must be MAJOR.MINOR.PATCH without a v prefix: {version}"
+        )
+        .into());
+    }
+    semver_parts(version)?;
+    Ok(())
 }
 
 fn validate_manifest(
@@ -106,6 +157,42 @@ fn validate_manifest(
                 .any(|name| !manifest.packages.contains_key(name))
         {
             return Err(format!("Bundle '{id}' has duplicate or unknown members").into());
+        }
+    }
+    for (id, history) in &manifest.bundle_versions {
+        valid_id(id)?;
+        let bundle = manifest
+            .bundles
+            .get(id)
+            .ok_or_else(|| format!("Bundle history '{id}' has no current bundle"))?;
+        if history.is_empty() {
+            return Err(format!("Bundle history '{id}' is empty").into());
+        }
+        for (release, members) in history {
+            validate_bundle_release(release)?;
+            if members.is_empty() {
+                return Err(format!("Bundle '{id}' release {release} is empty").into());
+            }
+            for (member, version) in members {
+                valid_id(member)?;
+                validate_skill_name(&format!("{namespace}/{member}"))?;
+                validate_exact_version(version)?;
+            }
+        }
+        let latest = history
+            .keys()
+            .max_by_key(|v| semver_parts(v).expect("validated release"))
+            .expect("nonempty history");
+        let projection: BTreeMap<_, _> = bundle
+            .packages
+            .iter()
+            .map(|name| (name.clone(), manifest.packages[name].clone()))
+            .collect();
+        if history[latest] != projection {
+            return Err(format!(
+                "Bundle '{id}' latest release {latest} disagrees with bundles/packages projection"
+            )
+            .into());
         }
     }
     if let Some(version) = &manifest.toolkit_version {
@@ -223,6 +310,7 @@ pub enum ResolvedEntry {
     Bundle {
         spec: SkillSpec,
         members: Vec<SkillSpec>,
+        resolved_version: Option<String>,
     },
 }
 
@@ -366,13 +454,15 @@ where
     for skill in skills {
         skill.validate_kind()?;
         if skill.is_bundle() {
-            let direct = resolve_bundle_members_with(skill, project_root, &resolve_source)?;
+            let (resolved_version, direct) =
+                resolve_bundle_members_with(skill, project_root, &resolve_source)?;
             let members =
                 resolve_skill_dependency_closure_with(&direct, project_root, &resolve_source)?;
             all_specs.extend(members.iter().cloned());
             entries.push(ResolvedEntry::Bundle {
                 spec: skill.clone(),
                 members,
+                resolved_version,
             });
         } else {
             let closure = resolve_skill_dependency_closure_with(
@@ -425,7 +515,7 @@ fn resolve_bundle_members_with<F>(
     bundle: &SkillSpec,
     project_root: &Path,
     _resolve_source: F,
-) -> Result<Vec<SkillSpec>, Box<dyn std::error::Error>>
+) -> Result<(Option<String>, Vec<SkillSpec>), Box<dyn std::error::Error>>
 where
     F: Fn(&SkillSpec, &Path) -> Result<PathBuf, Box<dyn std::error::Error>>,
 {
@@ -442,12 +532,6 @@ where
         .as_deref()
         .filter(|s| !s.is_empty())
         .ok_or("Bundle requires an explicit registry source")?;
-    if !matches!(
-        bundle.version.as_deref(),
-        None | Some("latest") | Some("default")
-    ) {
-        return Err("Schema-2 bundles have no version history; use latest or default".into());
-    }
     let (namespace, id) = bundle
         .name
         .split_once('/')
@@ -493,7 +577,13 @@ where
                 bundle.name
             )
         })?;
-    published_members(&registry_root, namespace, id, source)
+    published_members(
+        &registry_root,
+        namespace,
+        id,
+        source,
+        bundle.version.as_deref(),
+    )
 }
 
 pub(crate) fn resolve_skill_dependency_closure_with<F>(
@@ -2053,6 +2143,28 @@ mod tests {
     }
 
     #[test]
+    fn versioned_bundle_history_rejects_invalid_releases_and_projections() {
+        let prefix = "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0}\nbundles: {starter: {packages: [alpha]}}\nbundle_versions:\n";
+        for history in [
+            "  starter: {}\n",
+            "  missing: {1.0.0: {alpha: 1.0.0}}\n",
+            "  starter: {1.0: {alpha: 1.0.0}}\n",
+            "  starter: {v1.0.0: {alpha: 1.0.0}}\n",
+            "  starter: {1.0.0: {}}\n",
+            "  starter: {1.0.0: {alpha: 2.0.0}}\n",
+            "  starter: {1.0.0: {../bad: 1.0.0}}\n",
+            "  starter: {1.0.0: {alpha: latest}}\n",
+        ] {
+            let manifest: NamespaceManifest =
+                serde_yaml::from_str(&format!("{prefix}{history}")).unwrap();
+            assert!(
+                validate_manifest(&manifest, "acme").is_err(),
+                "accepted {history}"
+            );
+        }
+    }
+
+    #[test]
     #[cfg(unix)]
     #[serial_test::serial]
     fn resolve_entries_expands_bundle_entries_to_members() {
@@ -2104,7 +2216,7 @@ mod tests {
         let entries = resolve_entries_with(&[bundle], &project, resolve).unwrap();
         assert_eq!(entries.len(), 1);
         match &entries[0] {
-            ResolvedEntry::Bundle { spec, members } => {
+            ResolvedEntry::Bundle { spec, members, .. } => {
                 assert_eq!(spec.name, "acme/starter");
                 let member_names: Vec<&str> = members.iter().map(|m| m.name.as_str()).collect();
                 assert!(member_names.contains(&"acme/alpha"));

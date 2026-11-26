@@ -147,7 +147,12 @@ pub(crate) fn bundle_changes(
     let locked = lock.get("bundles").and_then(|v| v.as_sequence());
     let mut changes = Vec::new();
     for entry in linker::resolve_entries(&config.skills, project)? {
-        if let linker::ResolvedEntry::Bundle { spec, members } = entry {
+        if let linker::ResolvedEntry::Bundle {
+            spec,
+            members,
+            resolved_version,
+        } = entry
+        {
             let old = locked.and_then(|entries| {
                 entries
                     .iter()
@@ -175,6 +180,16 @@ pub(crate) fn bundle_changes(
                 })
                 .collect();
             let mut details = Vec::new();
+            if let Some(old) = old {
+                let previous = old.get("resolved_version").and_then(|v| v.as_str());
+                if previous != resolved_version.as_deref() {
+                    details.push(format!(
+                        "release: {} -> {}",
+                        previous.unwrap_or("unversioned"),
+                        resolved_version.as_deref().unwrap_or("unversioned")
+                    ));
+                }
+            }
             if old.is_none() {
                 details.push("not recorded in lockfile".to_string());
             }
@@ -251,6 +266,42 @@ pub fn show_outdated(
                 println!("{name}: {}", details.join(", "));
                 outdated += 1;
             }
+        }
+    }
+    // Compare pinned bundles with the latest release without changing the selector.
+    for skill in config
+        .skills
+        .iter()
+        .filter(|s| s.is_bundle() && skill_name.is_none_or(|name| name == s.name))
+    {
+        if matches!(
+            skill.version.as_deref(),
+            None | Some("latest") | Some("default")
+        ) {
+            continue;
+        }
+        let mut latest = config.clone();
+        latest
+            .skills
+            .retain(|s| s.name == skill.name && s.is_bundle());
+        latest.skills[0].version = Some("latest".into());
+        let latest_entries = linker::resolve_entries(&latest.skills, project)?;
+        let latest_version = latest_entries.iter().find_map(|entry| match entry {
+            linker::ResolvedEntry::Bundle {
+                resolved_version, ..
+            } => resolved_version.as_deref(),
+            _ => None,
+        });
+        let selected = skill.version.as_deref().expect("exact selector");
+        if !latest_version.is_some_and(|v| compare_versions(v, selected) == Ordering::Greater) {
+            continue;
+        }
+        for (name, details) in bundle_changes(&latest, project)? {
+            println!(
+                "{name}: newer release {selected} -> {}; {} (use 'skm skill use {name}@<version>' to change the pin)",
+                latest_version.expect("newer release"), details.join(", ")
+            );
+            outdated += 1;
         }
     }
     for skill in config
@@ -535,6 +586,20 @@ pub fn update_to_latest(
     use_version(skill_name, latest, config_path, global, yes, dry_run)
 }
 
+fn print_bundle_pin_guidance(config: &SkillsConfig) {
+    for skill in config.skills.iter().filter(|s| s.is_bundle()) {
+        if !matches!(
+            skill.version.as_deref(),
+            None | Some("latest") | Some("default")
+        ) {
+            println!(
+                "{}: exact bundle pin preserved; use 'skm skill use {}@<version>' to change it",
+                skill.name, skill.name
+            );
+        }
+    }
+}
+
 fn upgrade_bundles(
     config: &SkillsConfig,
     config_path: &Path,
@@ -546,6 +611,7 @@ fn upgrade_bundles(
         return Err("published bundles are project-only".into());
     }
     let project = config_path.parent().unwrap_or_else(|| Path::new("."));
+    print_bundle_pin_guidance(config);
     let changes = bundle_changes(config, project)?;
     if changes.is_empty() {
         println!("Bundles are current.");
@@ -607,6 +673,7 @@ pub fn upgrade_all(
         }
     }
     let project = config_path.parent().unwrap_or_else(|| Path::new("."));
+    print_bundle_pin_guidance(&config);
     let bundle_drift = if config.skills.iter().any(|s| s.is_bundle()) {
         bundle_changes(&config, project)?
     } else {

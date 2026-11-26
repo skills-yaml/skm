@@ -560,3 +560,19 @@ lockfile (`skills.lock.yaml`) records both the bundle entry and its resolved
 members, making membership drift and version drift detectable by `skm check`.
 `skm add --kind bundle` writes the single bundle entry; re-adding is idempotent.
 Backward compatible: entries without `kind` are treated as `skill`.
+
+## 2026-11-26 - Publish exact bundle release history
+
+- Type: decision
+- Source: user and specification
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+Schema-2 registry bundles may publish exact numeric release history using
+`bundle_versions`; the current bundle and package fields remain the latest
+projection for older readers. Bundle aliases select the greatest release, while
+exact pins remain stable until explicitly changed. The skills lock records the
+selected release as well as its members; legacy bundles retain alias behavior.

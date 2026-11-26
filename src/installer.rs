@@ -24,6 +24,8 @@ struct LockedBundle {
     name: String,
     version: String,
     source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    resolved_version: Option<String>,
     members: Vec<LockedSkill>,
 }
 
@@ -112,11 +114,17 @@ pub fn prepare(
     let mut locked_bundles = Vec::new();
 
     for entry in &entries {
-        if let linker::ResolvedEntry::Bundle { spec, members } = entry {
+        if let linker::ResolvedEntry::Bundle {
+            spec,
+            members,
+            resolved_version,
+        } = entry
+        {
             locked_bundles.push(LockedBundle {
                 name: spec.name.clone(),
                 version: spec.version.clone().unwrap_or_else(|| "latest".into()),
                 source: spec.source.clone().unwrap_or_else(|| "default".into()),
+                resolved_version: resolved_version.clone(),
                 members: members
                     .iter()
                     .map(|member| LockedSkill {

@@ -1099,3 +1099,16 @@ Content:
 Recorded the `kind: bundle` skills.yaml contract in
 `workspace/agents/memory/decisions.md`: bundles stay as single declarative
 entries, members resolve at install time, and the lockfile tracks both.
+
+## 2026-11-26 - Record exact published bundle releases
+
+- Type: decision
+- Source: user and specification
+- Confidence: high
+- Review: after development integration
+- Supersedes: none
+
+Content:
+
+Recorded additive schema-2 bundle release history, stable exact selectors and
+lockfile release tracking in decisions.md.

@@ -924,7 +924,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let entries = linker::resolve_entries(&config.skills, &current_dir)?;
             // Print bundle entries first with their member count.
             for entry in &entries {
-                if let linker::ResolvedEntry::Bundle { spec, members } = entry {
+                if let linker::ResolvedEntry::Bundle { spec, members, .. } = entry {
                     println!(
                         " - {} (bundle, {} members, version: {}, source: {})",
                         spec.name,
@@ -1411,7 +1411,7 @@ fn add_registry_item(
             if id.contains('/') {
                 return Err("Bundle ID must be namespace/name".into());
             }
-            linker::published_members(&root, namespace, id, registry)?;
+            linker::published_members(&root, namespace, id, registry, None)?;
         } else if !skill_exists {
             return Err(format!("Skill '{name}' is not published by registry '{registry}'").into());
         }
