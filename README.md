@@ -324,7 +324,7 @@ skm cache prune <registry>|--all [--keep <number>] [--dry-run] [--yes]
 skm cache clear <registry>|--all [--dry-run] [--yes]
 skm skill versions <skill-name> [--registry <registry>] [--json] [--stable-only] [--pre] [--limit <limit>]
 skm skill use <skill-name>@<version> [--global] [--yes] [--dry-run]
-skm skill outdated [skill-name] [--refresh] [--pre]
+skm skill outdated [skill-name] [--global] [--refresh] [--pre]
 skm skill upgrade <skill-name>|--all [--global] [--yes] [--dry-run] [--pre]
 skm self version
 skm self check [--channel prod|development]

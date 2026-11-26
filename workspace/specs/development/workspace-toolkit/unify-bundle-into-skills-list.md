@@ -6,14 +6,13 @@ State: development
 
 Primary feature: `workspace-toolkit`
 
-Status rationale: Follow-up to bundle-skill-entries.md (same branch, same
-release). The `kind: bundle` manifest contract is implemented; this spec removes
-the dedicated bundle code path (`src/bundle.rs`, separate add transaction,
-bundle-specific CLI flags) and routes everything through the unified `skills:`
-list resolved by `linker::resolve_entries`. Implementation is active in
-isolated peer worktrees; integration and acceptance verification remain pending.
-Independently reviewed by agent neo on 2026-11-10; findings
-incorporated.
+Status rationale: The unified add and maintenance slices are independently
+reviewed and locally integrated: source `03f3649` → peer integration `8ded132`
+and source `d460052` → `7a6be79`; both are included in combined peer revision
+`6e76f98`. The earlier specification review by agent neo on 2026-11-10 remains
+historical. Local peer integration is not a remote `development` merge;
+combined acceptance, final candidate review and shared-test delivery remain
+pending. The applied shared 0.10.0 reservation is unchanged.
 
 ## Problem and Evidence
 
