@@ -27,11 +27,11 @@ Implement the claimed scope.
 
 ## Actions
 
-Claimed a detached worktree and shared SKM 0.10.0 reservation. Corrected bundle-specific dependency closures and compatible overlaps, reused publisher schema validation, added load-time validation, lock drift reporting, bundle upgrade and removal, and rollback-protected obsolete link cleanup. Added lifecycle, drift, overlap, validation, and rollback regressions. Addressed review findings by removing installed members from the recorded lock snapshot, retaining shared ownership, preserving the snapshot during removal, and validating concrete output names instead of bundle IDs.
+Claimed a detached worktree and shared SKM 0.10.0 reservation. Corrected bundle-specific dependency closures and compatible overlaps, reused publisher schema validation, added load-time validation, lock drift reporting, bundle upgrade and removal, and rollback-protected obsolete link cleanup. Added lifecycle, drift, overlap, validation, and rollback regressions. Addressed review findings by removing installed members from the recorded lock snapshot, retaining shared ownership, preserving the snapshot during removal, and validating concrete output names instead of bundle IDs. Preserved lock field order after removing the final bundle and added a regression through the check command handler after registry drift.
 
 ## Validation
 
-The focused bundle module passes 17 tests after review fixes. Full gates must be rerun after combining the current peer integration revision; independent review must cover the new candidate.
+The focused bundle module passes 17 tests after the latest review fix. Full gates and independent exact-candidate review remain required.
 
 ## Blockers and Dependencies
 

@@ -1551,6 +1551,7 @@ mod tests {
         let lock: serde_yaml::Value =
             serde_yaml::from_slice(&fs::read(project.join("skills.lock.yaml")).unwrap()).unwrap();
         assert!(lock.get("bundles").is_none());
+        crate::check_skills(&config_path, project, false).unwrap();
     }
 
     #[cfg(unix)]

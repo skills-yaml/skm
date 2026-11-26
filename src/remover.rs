@@ -307,7 +307,7 @@ fn update_installed_lock(
                 value
                     .as_mapping_mut()
                     .ok_or("Invalid skills.lock.yaml")?
-                    .remove(serde_yaml::Value::String("bundles".into()));
+                    .shift_remove(serde_yaml::Value::String("bundles".into()));
             }
         }
     }
