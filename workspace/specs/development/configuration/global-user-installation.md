@@ -6,7 +6,7 @@ State: development
 
 Primary feature: `configuration`
 
-Status rationale: S1–S4 and the AC1 bootstrap repair are independently reviewed and integrated in local peer revision `d58ebd7`. S5 documentation and combined acceptance review are active. No merge into the remote `development` target has occurred; the applied shared 0.10.0 reservation is reused.
+Status rationale: S1–S4 and the bootstrap, cleanup-root and reset repairs are independently reviewed and integrated in local peer revision `d61c608`. The candidate is ready for renewed whole-spec review; combined acceptance remains pending. No merge into the remote `development` target has occurred; the applied shared 0.10.0 reservation is reused.
 
 ## Problem and Evidence
 
@@ -296,7 +296,7 @@ passes do not establish complete feature acceptance.
 
 The following independently reviewed source revisions were integrated after
 native peer gates passed. The latest local combined revision is
-`d58ebd790520af95dfc246ca8ff5115fe4143076`.
+`d61c60809b64cd47da06debc3d4a641f9b8a76a5`.
 These are local peer integrations, not a merge into the configured remote
 `development` test target. The WIP records retain the individual review fixes.
 
@@ -305,7 +305,8 @@ These are local peer integrations, not a merge into the configured remote
 | S1 bootstrap | `57ee1bf` → `b7d0582`; `65ce77a` → `b5440b0`; `b34779c` → `e81eed3` | Deferred bootstrap until settings routing; validated settings writes and reset recovery; guarded retained cache origins, cleanup and literal Git URL rewrites. The registry-cache bootstrap repair `b0f6f43` → `d58ebd7` creates the specified directory after preflight. |
 | S2 scope | `80e6e54` → `e1bddf4`; `60712b1` → `9524626` | Guarded unsafe preview ancestors, scope-specific add validation and guidance; resolved relative refresh origins under symlinked home ancestors. |
 | S3 install | `22c6d71` → `7b646c7` | Used platform-aware symlink removal and retained file/directory symlink type and target on rollback. |
-| S4 maintenance | `5403ad0` → `6e76f98` | Preserved dependency ownership, refused symlinked cleanup roots, compared native path components and retained global dependency pins during cache pruning. |
+| S4 maintenance | `5403ad0` → `6e76f98`; `b7c7f0d` → `2ce33b8` | Preserved dependency ownership, refused symlinked cleanup roots, compared native path components and retained global dependency pins during cache pruning. Cleanup and prune now use the selected manifest root consistently through symlinked home ancestors. |
+| Reset recovery | `f08853d` → `d61c608` | Prepares safe bootstrap state after confirmation and before reset writes, while preserving declined and preview behavior. |
 
 The integrated peer records identify these source revisions as reviewed before
 their respective local integrations. At those integrations the board recorded
@@ -315,11 +316,11 @@ approvals by `global-cache-consumers-review`, `global-scope-review`,
 and `5403ad0` respectively. Earlier integrated records identify `57ee1bf` and
 `65ce77a` as reviewed. `global-bootstrap-registry-review` approved exact repair
 `b0f6f432bb6b96e090349048fe7a18047cdd04d2` before local integration at
-`d58ebd7`. These are historical review events; re-registering the spec clears
+`d58ebd7`. `global-cleaner-root-review` approved `b7c7f0dd771104db07d271d5041c9c787b477365` before integration at `2ce33b8`; `global-reset-bootstrap-review` approved `f08853d52a04b16ef3c7af31b2f2ab88447e9337` before integration at `d61c60809b64cd47da06debc3d4a641f9b8a76a5`. These are historical review events; re-registering the spec clears
 previous board approval entries. Slice approvals do not substitute for review
 of this S5 documentation or acceptance of the final combined revision.
 
-### Combined acceptance evidence through local revision `d58ebd7`
+### Combined acceptance evidence through local revision `d61c608`
 
 The following maps criteria to existing fixtures on the combined source. It is
 candidate evidence, not a claim that the final acceptance or all platforms have
@@ -327,13 +328,28 @@ been approved. Final review and gates must be renewed after this record changes.
 
 | Criterion | Supporting evidence and remaining limit |
 | --- | --- |
-| AC1 | `src/config_manager.rs` and `tests/global_home.rs` cover valid empty state, byte preservation, concurrent creators, invalid YAML, unsafe types and symlinks. The reviewed repair `b0f6f432bb6b96e090349048fe7a18047cdd04d2`, integrated locally at `d58ebd790520af95dfc246ca8ff5115fe4143076`, creates `.skm/cache/registries` and guards unsafe paths. Independent Linux CLI smoke confirmed the complete silent layout, byte-preserving rerun and partial-state repair, rejection of file, directory-symlink and dangling registry paths before YAML writes, actionable chmod-0500 home failure, 16 concurrent starts, and project/global dry-run and JSON previews with no writes, parseable JSON and zero Git-shim calls. Focused `task test:global-home`, `task test:cache`, and `task test:updater` and native combined `task check` and `task test` passed. Windows execution and final combined acceptance remain open. |
-| AC2 | `global_manifest_is_shared_across_projects_and_previews_do_not_write`, `global_add_uses_user_registry_override_and_inherited_base_from_either_directory`, and version/inspection fixtures exercise separate projects and effective registries. `cache_transition_retains_legacy_sources_and_rejects_conflicts` and `tests/command_layout.rs` cover origin conflicts and Git rewrites. |
+| AC1 | `src/config_manager.rs` and `tests/global_home.rs` cover valid empty state, byte preservation, concurrent creators, invalid YAML, unsafe types and symlinks. The reviewed repair `b0f6f432bb6b96e090349048fe7a18047cdd04d2`, integrated locally at `d58ebd790520af95dfc246ca8ff5115fe4143076`, creates `.skm/cache/registries` and guards unsafe paths. Independent Linux CLI smoke confirmed the complete silent layout, byte-preserving rerun and partial-state repair, rejection of file, directory-symlink and dangling registry paths before YAML writes, actionable chmod-0500 home failure, 16 concurrent starts, and project/global dry-run and JSON previews with no writes, parseable JSON and zero Git-shim calls. Focused `task test:global-home`, `task test:cache`, and `task test:updater` and native combined `task check` and `task test` passed. Reset recovery fixtures cover fresh and malformed settings, repeat runs, confirmed and declined prompts, unsafe paths, and permission failure before settings/project mutation. Windows execution and final combined acceptance remain open. |
+| AC2 | `global_manifest_is_shared_across_projects_and_previews_do_not_write`, `global_add_uses_user_registry_override_and_inherited_base_from_either_directory`, and version/inspection fixtures exercise separate projects and effective registries. `cache_transition_retains_legacy_sources_and_rejects_conflicts` and `tests/command_layout.rs` cover origin conflicts and Git rewrites. `cleanup_uses_physical_global_manifest_root_through_symlinked_home_ancestor` covers equivalent logical/physical home spellings and continued rejection of a different origin. |
 | AC3 | `src/wizard/prompt.rs::global_prompt_saves_agents_and_cancel_preserves_metadata` covers selected agents and cancellation; global manifest command fixtures cover stable local paths and cross-directory mutation; `global_removal_rolls_back_a_partial_failure` and installer failure fixtures cover rollback. |
 | AC4 | `global_install_targets_every_selected_agent_and_checks_exact_sources`, `global_install_rejects_bad_targets_and_preflights_all_destinations`, `global_install_applies_registry_dependencies_to_every_selected_target`, and linker target/deduplication tests cover target selection, invalid/no targets and dependencies. Installer collision, stale-plan and injected-failure tests cover preflight and rollback. Native Windows remains unexecuted. |
-| AC5 | Global inspection, exact-source check and cross-directory removal/cleanup fixtures in `tests/global_home.rs`, plus cleaner ownership and unsafe-root fixtures, cover declarations, development links, dependency ownership and protected real targets. |
+| AC5 | Global inspection, exact-source check and cross-directory removal/cleanup fixtures in `tests/global_home.rs`, plus cleaner ownership and unsafe-root fixtures, cover declarations, development links, dependency ownership and protected real targets. The symlinked-home cleanup fixture covers orphan and cache-prune previews, dependency pins and conflict rejection. |
 | AC6 | Bootstrap import/new-settings/invalid-state fixtures and `cache_transition_retains_legacy_sources_and_rejects_conflicts` cover retained settings and distinct cache roots, conflicting origins, refresh and reinstall. `bootstrap_new_settings_win_over_invalid_legacy` covers existing canonical settings alongside legacy state. An independent reviewer simulated two partial states on runtime source `6e76f98`: one with only custom canonical settings and another with only custom canonical skills plus the cache directory, each with legacy settings. Both regenerated the missing document and preserved existing canonical and legacy bytes. No process was interrupted; the demonstration does not establish recovery for every interruption point. Rollback guards fail closed if paths change; no destructive legacy-cache migration is promised. |
-| AC7 | `preview_help_identity_and_invalid_arguments_do_not_bootstrap`, global preview snapshots and unsafe ancestor fixtures cover non-writing previews and identity/help behavior; JSON preview coverage is in the command fixtures. `global_add_uses_user_registry_override_and_inherited_base_from_either_directory` checks failure and unchanged state for an `.invalid` registry preview, but does not prove whether transport was attempted. Separately, an independent isolated Git-shim demonstration on runtime source `6e76f98` found that global add/install dry-run and plan JSON against uncached `.invalid` HTTPS failed without invoking Git and left complete home/project snapshots unchanged; these were failed previews, not successful ones. README and `workspace/docs/installation-scopes.md` describe separate settings and selected-agent skills, migration, and downgrade/export. |
+| AC7 | `preview_help_identity_and_invalid_arguments_do_not_bootstrap`, global preview snapshots and unsafe ancestor fixtures cover non-writing previews and identity/help behavior; JSON preview coverage is in the command fixtures. `global_add_uses_user_registry_override_and_inherited_base_from_either_directory` checks failure and unchanged state for an `.invalid` registry preview, but does not prove whether transport was attempted. Separately, an independent isolated Git-shim demonstration on runtime source `6e76f98` found that global add/install dry-run and plan JSON against uncached `.invalid` HTTPS failed without invoking Git and left complete home/project snapshots unchanged; these were failed previews, not successful ones. Reset fixtures also verify declined and dry-run operations do not bootstrap or write. README and `workspace/docs/installation-scopes.md` describe separate settings and selected-agent skills, migration, and downgrade/export. |
+
+Whole-spec review exposed two concrete failures. A cleanup regression reproduced
+a false different-or-missing-origin error when a home ancestor was symlinked;
+`b7c7f0d` reuses the selected manifest root for orphan cleanup and cache-prune
+dependency ownership. Its focused cache/global-home suites and aggregate tests
+passed. Settings reset could leave required bootstrap state missing; review of
+its first fix also found writes after a declined prompt and a permission failure
+after settings/project mutation. `f08853d` prepares safe state only after
+confirmation and before reset writes. `task test:global-home`, `task check`,
+`task test`, and `task versions:check` passed on the repaired candidate, including
+an unprivileged mode-0500 fixture. Native peer integration gates passed on the
+combined revision `d61c608`. A backup-enabled `clean reset` may still leave a
+backup created before a later unsafe-global-state preflight failure; the
+`unsafe_reset_with_backup_preserves_settings_and_project` fixture verifies that
+settings and project bytes remain unchanged in that case.
 
 Native Windows execution for platform-specific symlink and home behavior has not
 been performed. The peer integration gates exercised the local environment;
