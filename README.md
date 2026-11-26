@@ -253,7 +253,11 @@ skills:
 
 `skm install` resolves the bundle to its members and writes both the bundle
 and its resolved members into `skills.lock.yaml`. `skm check` detects when the
-published bundle gains new members or a member publishes a new version.
+published bundle changes members or a member's published version changes.
+`skm skill outdated` reports these changes and `skm skill upgrade --all`
+updates the lock and links, removing obsolete members that no other entry needs.
+Schema-2 bundles do not publish bundle versions: use `latest` or `default`;
+exact bundle version selections are rejected.
 
 Install the skills declared in `skills.yaml` into project-local agent folders:
 
@@ -412,8 +416,8 @@ skills:
 ```
 
 `kind` is optional and defaults to `skill`. `kind: bundle` entries are
-registry-only (no `path`) and are resolved to their published members at
-install time. The lockfile records both the bundle and its resolved members.
+registry-only (no `path`), require an explicit registry `source`, and are
+resolved to their published members at install time. The lockfile records both the bundle and its resolved members.
 
 ### Registry skill dependencies
 

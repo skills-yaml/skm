@@ -863,6 +863,10 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             verbose,
         } => {
             let original = std::fs::read(&config_path).ok();
+            let had_bundle = original
+                .as_deref()
+                .and_then(|bytes| serde_yaml::from_slice::<SkillsConfig>(bytes).ok())
+                .is_some_and(|config| config.skills.iter().any(|skill| skill.is_bundle()));
             remover::remove_skill(
                 &skill_name,
                 &current_dir,
@@ -872,7 +876,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 dry_run,
                 verbose,
             )?;
-            if !global && !dry_run && std::fs::read(&config_path).ok() != original {
+            if !global && !dry_run && !had_bundle && std::fs::read(&config_path).ok() != original {
                 installer::sync_existing_lock(&config_path, &current_dir)?;
             }
         }
@@ -898,6 +902,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             let resolved = linker::resolve_skill_dependency_closure(&config.skills, &current_dir)?;
+            linker::validate_unique_skill_targets(&resolved)?;
             for skill in &resolved {
                 let mut status = "OK".to_string();
                 let mut linked_targets = Vec::new();
@@ -943,74 +948,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 toolkit::list(&current_dir)?;
             }
         }
-        Commands::Check { global } => {
-            let config = load_config(&config_path)?;
-            validate_config(&config)?;
-            if config.toolkit.is_none() && !config.skills.is_empty() {
-                linker::require_skill_targets(&config.agents, &current_dir, global)?;
-            }
-            let mut all_ok = true;
-
-            let resolved = linker::resolve_skill_dependency_closure(&config.skills, &current_dir)?;
-            for skill in &resolved {
-                // Verify source path
-                let source_dir = linker::resolve_skill_source_dir(skill, &current_dir)?;
-
-                if !source_dir.exists() {
-                    eprintln!(
-                        "[FAIL] Skill '{}' source directory not found: {:?}",
-                        skill.name, source_dir
-                    );
-                    all_ok = false;
-                    continue;
-                }
-
-                if !source_dir.join("SKILL.md").exists() {
-                    eprintln!("[FAIL] Skill '{}' missing SKILL.md", skill.name);
-                    all_ok = false;
-                    continue;
-                }
-
-                // Verify links
-                for target in
-                    linker::resolve_agent_skill_targets(&config.agents, &current_dir, global)?
-                {
-                    let path = linker::get_skill_target_path(&target.path, &skill.name)?;
-                    let agents = target.agents.join(", ");
-                    if !path.is_symlink() {
-                        eprintln!(
-                            "[FAIL] Missing symlink at '{}' for agents [{}] to skill '{}'",
-                            path.display(),
-                            agents,
-                            skill.name
-                        );
-                        all_ok = false;
-                        continue;
-                    }
-
-                    if !linker::symlink_points_to(&path, &source_dir)? {
-                        eprintln!(
-                            "[FAIL] Link at '{}' for agents [{}] to skill '{}' points at the wrong target",
-                            path.display(),
-                            agents,
-                            skill.name
-                        );
-                        all_ok = false;
-                    }
-                }
-            }
-
-            if all_ok && config.toolkit.is_some() {
-                toolkit::check(&config, &current_dir)?;
-            } else if all_ok {
-                if !global {
-                    installer::verify_lock(&config, &current_dir)?;
-                }
-                eprintln!("[SUCCESS] All skills validated and correctly linked.");
-            } else {
-                return Err("Validation checks failed. Some skills or links are missing.".into());
-            }
-        }
+        Commands::Check { global } => check_skills(&config_path, &current_dir, global)?,
         Commands::SelfUpdate(command) => match command {
             SelfCommands::Version => version::show_version(),
             SelfCommands::Check { channel } => {
@@ -1300,6 +1238,80 @@ fn load_config(path: &Path) -> Result<SkillsConfig, Box<dyn std::error::Error>> 
     SkillsConfig::load_from_file(path)
 }
 
+fn check_skills(
+    config_path: &Path,
+    current_dir: &Path,
+    global: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let config = load_config(config_path)?;
+    validate_config(&config)?;
+    if config.toolkit.is_none() && !config.skills.is_empty() {
+        linker::require_skill_targets(&config.agents, current_dir, global)?;
+    }
+    let mut all_ok = true;
+
+    let resolved = linker::resolve_skill_dependency_closure(&config.skills, current_dir)?;
+    linker::validate_unique_skill_targets(&resolved)?;
+    for skill in &resolved {
+        // Verify source path
+        let source_dir = linker::resolve_skill_source_dir(skill, current_dir)?;
+
+        if !source_dir.exists() {
+            eprintln!(
+                "[FAIL] Skill '{}' source directory not found: {:?}",
+                skill.name, source_dir
+            );
+            all_ok = false;
+            continue;
+        }
+
+        if !source_dir.join("SKILL.md").exists() {
+            eprintln!("[FAIL] Skill '{}' missing SKILL.md", skill.name);
+            all_ok = false;
+            continue;
+        }
+
+        // Verify links
+        for target in linker::resolve_agent_skill_targets(&config.agents, current_dir, global)? {
+            let path = linker::get_skill_target_path(&target.path, &skill.name)?;
+            let agents = target.agents.join(", ");
+            if !path.is_symlink() {
+                eprintln!(
+                    "[FAIL] Missing symlink at '{}' for agents [{}] to skill '{}'",
+                    path.display(),
+                    agents,
+                    skill.name
+                );
+                all_ok = false;
+                continue;
+            }
+
+            if !linker::symlink_points_to(&path, &source_dir)? {
+                eprintln!(
+                    "[FAIL] Link at '{}' for agents [{}] to skill '{}' points at the wrong target",
+                    path.display(),
+                    agents,
+                    skill.name
+                );
+                all_ok = false;
+            }
+        }
+    }
+
+    if all_ok && config.toolkit.is_some() {
+        toolkit::check(&config, current_dir)?;
+    } else if all_ok {
+        if !global {
+            installer::verify_lock(&config, current_dir)?;
+        }
+        eprintln!("[SUCCESS] All skills validated and correctly linked.");
+    } else {
+        return Err("Validation checks failed. Some skills or links are missing.".into());
+    }
+
+    Ok(())
+}
+
 fn validate_config(config: &SkillsConfig) -> Result<(), Box<dyn std::error::Error>> {
     linker::validate_agents(&config.agents)?;
 
@@ -1314,7 +1326,7 @@ fn validate_config(config: &SkillsConfig) -> Result<(), Box<dyn std::error::Erro
             .into());
         }
     }
-    linker::validate_unique_skill_targets(&config.skills)?;
+    linker::validate_configured_skill_targets(&config.skills)?;
 
     Ok(())
 }
@@ -1434,7 +1446,7 @@ where
     let skill_name = new_skill.name.clone();
     config.skills.push(new_skill.clone());
     linker::require_skill_targets(&config.agents, project_root, global)?;
-    linker::validate_unique_skill_targets(&config.skills)?;
+    linker::validate_configured_skill_targets(&config.skills)?;
     if config.skills.iter().any(|skill| skill.path.is_none()) {
         ensure_registries_cached(&config)?;
     }

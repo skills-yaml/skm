@@ -27,7 +27,24 @@ impl SkillSpec {
     /// Validates the kind field value. Returns an error for unsupported kinds.
     pub fn validate_kind(&self) -> Result<(), Box<dyn std::error::Error>> {
         match self.kind.as_deref() {
-            None | Some("skill") | Some("bundle") => Ok(()),
+            None | Some("skill") => Ok(()),
+            Some("bundle") => {
+                if self.path.is_some() {
+                    return Err(format!("Bundle '{}' cannot use a local path", self.name).into());
+                }
+                if self.source.as_deref().is_none_or(str::is_empty) {
+                    return Err(format!(
+                        "Bundle '{}' requires an explicit registry source",
+                        self.name
+                    )
+                    .into());
+                }
+                crate::linker::validate_skill_name(&self.name)?;
+                if self.name.split('/').count() != 2 {
+                    return Err(format!("Bundle ID must be namespace/name: {}", self.name).into());
+                }
+                Ok(())
+            }
             Some(other) => Err(format!(
                 "Invalid skill kind '{other}' for '{}'; expected 'skill' or 'bundle'",
                 self.name
@@ -86,6 +103,9 @@ impl SkillsConfig {
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
         let config: SkillsConfig = serde_yaml::from_str(&contents)?;
+        for skill in &config.skills {
+            skill.validate_kind()?;
+        }
         Ok(config)
     }
 
@@ -192,5 +212,19 @@ mod tests {
         let reloaded = SkillsConfig::load_from_file(&path).unwrap();
         assert!(reloaded.skills[0].is_bundle());
         assert_eq!(reloaded.skills[0].name, "workspace/all-workspace-skills");
+    }
+    #[test]
+    fn load_rejects_invalid_bundle_entries() {
+        let project = tempfile::tempdir().unwrap();
+        let path = project.path().join("skills.yaml");
+        for entry in [
+            "{name: acme/x, kind: widget}",
+            "{name: acme/x, kind: bundle}",
+            "{name: x, kind: bundle, source: default}",
+            "{name: acme/x, kind: bundle, source: default, path: .}",
+        ] {
+            std::fs::write(&path, format!("name: example\nskills: [{entry}]\n")).unwrap();
+            assert!(SkillsConfig::load_from_file(&path).is_err(), "{entry}");
+        }
     }
 }
