@@ -65,18 +65,23 @@ where
     };
 
     // The installed lock describes links even after registry membership drifts.
-    let (targets, lock_update) = if !global && config.skills.iter().any(SkillSpec::is_bundle) {
-        match read_install_lock(project_root)? {
-            Some(lock) => {
-                match plan_locked_removal(&config, &skill, &lock, project_root, force, verbose)? {
-                    Some((targets, removed_names)) => (targets, Some((lock, removed_names))),
-                    None => (Vec::new(), None),
-                }
+    let bundle_scope = !global && config.skills.iter().any(SkillSpec::is_bundle);
+    let bundle_lock = if bundle_scope {
+        read_install_lock(project_root)?
+    } else {
+        None
+    };
+    let (targets, removed_names) = if bundle_scope {
+        if let Some(lock) = &bundle_lock {
+            match plan_locked_removal(&config, &skill, lock, project_root, force, verbose)? {
+                Some((targets, removed_names)) => (targets, Some(removed_names)),
+                None => (Vec::new(), None),
             }
-            None => (
-                plan_unlocked_removal(&config, &skill, project_root, global, force, verbose)?,
+        } else {
+            (
+                plan_unlocked_removal(&config, &skill, project_root, false, force, verbose)?,
                 None,
-            ),
+            )
         }
     } else if global {
         (
@@ -146,6 +151,32 @@ where
         return Err("Manifest changed during removal; retry".into());
     }
 
+    if bundle_scope {
+        let current_lock = read_install_lock(project_root)?;
+        if current_lock.as_ref().map(|lock| &lock.original)
+            != bundle_lock.as_ref().map(|lock| &lock.original)
+        {
+            return Err("Lockfile changed during removal; retry".into());
+        }
+        let current_targets = if let Some(lock) = &bundle_lock {
+            plan_locked_removal(&config, &skill, lock, project_root, force, verbose)?
+                .map(|(targets, _)| targets)
+                .unwrap_or_default()
+        } else {
+            plan_unlocked_removal(&config, &skill, project_root, false, force, verbose)?
+        };
+        if current_targets != targets {
+            return Err("Targets changed during removal; retry".into());
+        }
+        for (target, snapshot) in targets.iter().zip(&snapshots) {
+            if let Some(snapshot) = snapshot {
+                if fs::read_link(&target.path)? != *snapshot {
+                    return Err("Target changed during removal; retry".into());
+                }
+            }
+        }
+    }
+
     // Update configuration first, then attempt every preflighted target. If an
     // unlink fails, the configuration change remains and the partial outcome
     // is reported as required by the command contract.
@@ -182,8 +213,8 @@ where
             )
             .into());
         }
-        if let Some((lock, removed_names)) = lock_update {
-            update_installed_lock(project_root, &lock, &skill, &removed_names)?;
+        if let (Some(lock), Some(removed_names)) = (&bundle_lock, &removed_names) {
+            update_installed_lock(project_root, lock, &skill, removed_names)?;
         }
     }
 
