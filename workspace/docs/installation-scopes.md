@@ -11,7 +11,7 @@ registry cache.
 | Install command | `skm install --yes` | `skm install --global --yes` |
 | Links | Agent directories inside the project | Agent directories under the current user's home |
 | Best fit | Team workflows and repository-specific skills | Personal baseline tools across repositories |
-| Manifest | Project `skills.yaml` | `skills.yaml` in the directory where the command runs |
+| Manifest | Project `skills.yaml` | `~/.skm/skills.yaml` |
 | Lockfile | Writes project `skills.lock.yaml` after linking succeeds | Does not write a project lockfile |
 | Versions | Prefer exact pins for reviewed team behavior | Exact pins or `latest`, according to update policy |
 
@@ -19,9 +19,10 @@ Global means one operating-system user, not every user on the machine. Run SKM
 as the intended user; running as root targets root's home. Each machine needs its
 own installation.
 
-`--global` changes link destinations. It does not move the manifest or create a
-machine-wide manifest. Keep a dedicated global manifest outside repositories so
-maintenance always uses the intended configuration.
+`--global` selects the user manifest and user-level agent directories from any
+working directory. Base settings and registries live in `~/.skm/config.yaml`;
+the user skill selection is a separate `~/.skm/skills.yaml`. The cache under
+`~/.skm/cache` is shared with project installations.
 
 ## Project-local example
 
@@ -54,14 +55,8 @@ reviewed manifest change.
 
 ## Global example
 
-As the intended user, create a dedicated manifest directory:
-
-```sh
-mkdir -p "$HOME/.config/skm/global-skills"
-cd "$HOME/.config/skm/global-skills"
-```
-
-Create its `skills.yaml`:
+As the intended user, run `skm init --global` to select agents and skills, or
+edit `~/.skm/skills.yaml` directly. For example:
 
 ```yaml
 name: Global skills
@@ -77,7 +72,7 @@ skills:
 Preview, install, and verify:
 
 ```sh
-skm cache refresh
+(cd "$HOME/.skm" && skm cache refresh)
 skm install --global --dry-run
 skm install --global --yes
 skm check --global
@@ -89,7 +84,7 @@ for each agent's directories and discovery requirements.
 
 Published bundles currently support project installation only: `skm add <bundle>
 --global` is rejected. For global use, declare the desired bundle members as
-individual skills in the dedicated manifest, then run `skm install --global`.
+individual skills in the user manifest, then run `skm install --global`.
 Installing Workspace skills makes them discoverable; it does not adopt a Workspace
 documentation standard or rewrite repository instructions.
 
@@ -106,23 +101,23 @@ to overwrite real files or directories at its targets.
 
 ## Refresh and update
 
-A cache refresh fetches registry contents. It does not itself re-link installed
+`skm cache refresh` uses the working directory manifest for registry overrides,
+so run it in `~/.skm` when refreshing the global manifest’s registries. A cache
+refresh fetches registry contents. It does not itself re-link installed
 skills or change exact pins. For a global manifest following `latest`, run:
 
 ```sh
-cd "$HOME/.config/skm/global-skills"
-skm cache refresh && skm install --global --yes && skm check --global
+(cd "$HOME/.skm" && skm cache refresh) && skm install --global --yes && skm check --global
 ```
 
-A daily scheduler can run that sequence as the intended user, with an explicit
-working directory and executable path. Registry credentials must work without an
+A daily scheduler can run that sequence as the intended user, with an explicit executable path. Registry credentials must work without an
 interactive prompt. Following `latest` automatically changes available skill
 instructions; use trusted registries and choose this policy deliberately.
 
 For exact pins, preview version changes before applying:
 
 ```sh
-skm cache refresh
+(cd "$HOME/.skm" && skm cache refresh)
 skm skill upgrade --all --global --dry-run
 skm skill upgrade --all --global --yes
 skm install --global --yes
@@ -133,3 +128,20 @@ For project skills, run these commands at the project root and omit `--global`.
 Caches are shared within a user account, so clearing a registry can affect links
 in both scopes. Keep both manifests when moving machines and regenerate links on
 each destination.
+
+## Migrating from older global commands
+
+Older versions read `skills.yaml` from the working directory even with
+`--global`. Review the old dedicated manifest, including its selected agents
+and relative paths. Back up any existing `~/.skm/skills.yaml`, copy or merge
+the reviewed selections into it, and adjust relative paths to be relative to
+`~/.skm` (or use absolute paths). Then run `skm install --global --dry-run`,
+`skm install --global --yes`, and `skm check --global`. Existing project
+manifest files are not automatically imported.
+
+Before downgrading, export `~/.skm/skills.yaml` to a dedicated directory,
+adjust relative paths for that directory, and run the older binary's global
+install from there. Downgrading does not synchronize later changes back.
+Retained legacy settings and caches can aid recovery; cache clearing can break
+links until installation is repeated. No release publication is needed for this
+migration.

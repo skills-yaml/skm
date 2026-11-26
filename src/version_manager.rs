@@ -458,6 +458,32 @@ pub fn list_versions_cmd(
     Ok(())
 }
 
+// Patch only the requested pins so publisher fields on entries survive edits.
+fn updated_manifest(
+    original: &[u8],
+    changes: &[(String, String)],
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let mut document: serde_yaml::Value = serde_yaml::from_slice(original)?;
+    let entries = document
+        .get_mut("skills")
+        .and_then(|v| v.as_sequence_mut())
+        .ok_or("skills must be a YAML sequence")?;
+    for (name, version) in changes {
+        let entry = entries
+            .iter_mut()
+            .find(|entry| entry.get("name").and_then(|v| v.as_str()) == Some(name))
+            .ok_or("Skill disappeared from manifest")?;
+        entry
+            .as_mapping_mut()
+            .ok_or("Skill must be a mapping")?
+            .insert(
+                serde_yaml::Value::String("version".into()),
+                serde_yaml::Value::String(version.clone()),
+            );
+    }
+    Ok(serde_yaml::to_string(&document)?.into_bytes())
+}
+
 /// Update a skill to a specific version
 pub fn use_version(
     skill_name: &str,
@@ -467,7 +493,8 @@ pub fn use_version(
     yes: bool,
     dry_run: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut config = SkillsConfig::load_from_file(config_path)?;
+    let original = fs::read(config_path)?;
+    let mut config: SkillsConfig = serde_yaml::from_slice(&original)?;
 
     // Find and update the skill
     let skill_index = config
@@ -480,7 +507,6 @@ pub fn use_version(
         if global {
             return Err("published bundles are project-only".into());
         }
-        let original = fs::read(config_path)?;
         config.skills[skill_index].version = Some(version.to_string());
         let project = config_path.parent().unwrap_or_else(|| Path::new("."));
         let updated = serde_yaml::to_string(&config)?.into_bytes();
@@ -526,6 +552,28 @@ pub fn use_version(
         .version
         .as_deref()
         .unwrap_or("latest");
+
+    if global {
+        config.skills[skill_index].version = Some(version.to_string());
+        let updated =
+            updated_manifest(&original, &[(skill_name.to_string(), version.to_string())])?;
+        let project = config_path.parent().unwrap_or_else(|| Path::new("."));
+        let plan = installer::prepare(&config, project, true, Some((original, updated)))?;
+        plan.print(false)?;
+        if dry_run {
+            return Ok(());
+        }
+        if !yes {
+            print!("Update skill selection? [y/N] ");
+            io::stdout().flush()?;
+            let mut response = String::new();
+            io::stdin().read_line(&mut response)?;
+            if !matches!(response.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
+                return Ok(());
+            }
+        }
+        return plan.apply();
+    }
 
     if dry_run {
         println!(
@@ -751,7 +799,16 @@ pub fn upgrade_all(
     let manifest = if changes.is_empty() {
         None
     } else {
-        Some((original, serde_yaml::to_string(&config)?.into_bytes()))
+        Some((
+            original.clone(),
+            updated_manifest(
+                &original,
+                &changes
+                    .iter()
+                    .map(|(name, _, new)| (name.clone(), new.clone()))
+                    .collect::<Vec<_>>(),
+            )?,
+        ))
     };
     let plan = installer::prepare(&config, project, global, manifest)?;
     for (name, details) in &bundle_drift {

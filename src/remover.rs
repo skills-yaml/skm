@@ -49,7 +49,8 @@ where
         return Err("skills.yaml file not found. Run 'skm init' to create one.".into());
     }
 
-    let mut config = SkillsConfig::load_from_file(&config_path)?;
+    let original = fs::read(&config_path)?;
+    let mut config: SkillsConfig = serde_yaml::from_slice(&original)?;
 
     let Some(skill) = config
         .skills
@@ -77,6 +78,11 @@ where
                 None,
             ),
         }
+    } else if global {
+        (
+            plan_unlocked_removal(&config, &skill, project_root, true, force, verbose)?,
+            None,
+        )
     } else {
         (
             linker::plan_skill_unlink(
@@ -90,6 +96,17 @@ where
             None,
         )
     };
+
+    let snapshots: Vec<_> = targets
+        .iter()
+        .map(|target| {
+            if target.kind == linker::UnlinkTargetKind::Symlink {
+                fs::read_link(&target.path).map(Some)
+            } else {
+                Ok(None)
+            }
+        })
+        .collect::<std::io::Result<_>>()?;
 
     if dry_run {
         eprintln!("Would remove skill '{}' from skills.yaml", skill_name);
@@ -107,6 +124,22 @@ where
     if !yes && !confirm(skill_name)? {
         eprintln!("Removal cancelled.");
         return Ok(());
+    }
+
+    if global {
+        return remove_global_transaction(
+            &config_path,
+            &original,
+            skill_name,
+            &skill,
+            project_root,
+            &config,
+            force,
+            verbose,
+            &targets,
+            &snapshots,
+            None,
+        );
     }
 
     // Update configuration first, then attempt every preflighted target. If an
@@ -150,6 +183,113 @@ where
         }
     }
 
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn remove_global_transaction(
+    config_path: &Path,
+    original: &[u8],
+    name: &str,
+    skill: &SkillSpec,
+    root: &Path,
+    config: &SkillsConfig,
+    force: bool,
+    verbose: bool,
+    targets: &[linker::UnlinkTarget],
+    snapshots: &[Option<std::path::PathBuf>],
+    fail_after_move: Option<usize>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut document: serde_yaml::Value = serde_yaml::from_slice(original)?;
+    let entries = document
+        .get_mut("skills")
+        .and_then(|v| v.as_sequence_mut())
+        .ok_or("skills must be a YAML sequence")?;
+    entries.retain(|entry| entry.get("name").and_then(|v| v.as_str()) != Some(name));
+    let mut staged = tempfile::NamedTempFile::new_in(root)?;
+    staged
+        .as_file()
+        .set_permissions(fs::metadata(config_path)?.permissions())?;
+    staged.write_all(serde_yaml::to_string(&document)?.as_bytes())?;
+    staged.as_file().sync_all()?;
+    if fs::read(config_path)? != original
+        || plan_unlocked_removal(config, skill, root, true, force, verbose)? != targets
+    {
+        return Err("Manifest or targets changed during removal; retry".into());
+    }
+    for (target, snapshot) in targets.iter().zip(snapshots) {
+        if let Some(snapshot) = snapshot {
+            if fs::read_link(&target.path)? != *snapshot {
+                return Err("Target changed during removal; retry".into());
+            }
+        }
+    }
+    let mut moved: Vec<(tempfile::TempDir, std::path::PathBuf)> = Vec::new();
+    let result: Result<(), Box<dyn std::error::Error>> = (|| {
+        for (target, snapshot) in targets.iter().zip(snapshots) {
+            let home = dirs::home_dir().ok_or("Cannot resolve home")?;
+            crate::installer::validate_parent(&home, &target.path)?;
+            let metadata = fs::symlink_metadata(&target.path)?;
+            let valid = match target.kind {
+                linker::UnlinkTargetKind::Symlink => {
+                    metadata.file_type().is_symlink()
+                        && snapshot.as_ref().is_some_and(|expected| {
+                            fs::read_link(&target.path).ok().as_ref() == Some(expected)
+                        })
+                }
+                linker::UnlinkTargetKind::Directory => {
+                    metadata.is_dir() && !metadata.file_type().is_symlink()
+                }
+                linker::UnlinkTargetKind::File => {
+                    metadata.is_file() && !metadata.file_type().is_symlink()
+                }
+            };
+            if !valid {
+                return Err("Target changed during removal; retry".into());
+            }
+            let temporary = tempfile::Builder::new()
+                .prefix(".skm-remove-")
+                .tempdir_in(target.path.parent().ok_or("Invalid target")?)?;
+            fs::rename(&target.path, temporary.path().join("entry"))?;
+            moved.push((temporary, target.path.clone()));
+            if fail_after_move == Some(moved.len()) {
+                return Err("injected removal failure".into());
+            }
+        }
+        if fs::read(config_path)? != original {
+            return Err("Manifest changed during removal; retry".into());
+        }
+        staged.persist(config_path)?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        let mut failures = Vec::new();
+        for (temporary, path) in moved.into_iter().rev() {
+            let restore_result = match fs::symlink_metadata(&path) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    fs::rename(temporary.path().join("entry"), &path)
+                }
+                _ => Err(std::io::Error::other("target occupied during rollback")),
+            };
+            if let Err(restore) = restore_result {
+                let retained = temporary.keep();
+                failures.push(format!(
+                    "{}: {restore}; retained at {}",
+                    path.display(),
+                    retained.display()
+                ));
+            }
+        }
+        if !failures.is_empty() {
+            return Err(format!("{error}; rollback failed: {}", failures.join("; ")).into());
+        }
+        return Err(error);
+    }
+    eprintln!(
+        "Removed skill '{}' from global manifest and {} target(s)",
+        name,
+        targets.len()
+    );
     Ok(())
 }
 
@@ -448,6 +588,58 @@ mod tests {
         config.save_to_file(project.join("skills.yaml")).unwrap();
         linker::link_skill(&config.skills[0], &project, &config.agents, false).unwrap();
         (project, skill_dir)
+    }
+
+    #[test]
+    #[cfg(unix)]
+    #[serial_test::serial]
+    fn global_removal_rolls_back_a_partial_failure() {
+        let home = tempfile::tempdir().unwrap();
+        let old_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", home.path());
+        let root = home.path().join(".skm");
+        fs::create_dir(&root).unwrap();
+        let source = root.join("source");
+        fs::create_dir(&source).unwrap();
+        fs::write(
+            source.join("SKILL.md"),
+            "---\nname: test\ndescription: test\n---\n",
+        )
+        .unwrap();
+        let original =
+            b"name: user\nagents: [codex, cursor]\nskills:\n  - {name: test, path: source}\n";
+        fs::write(root.join("skills.yaml"), original).unwrap();
+        let config: SkillsConfig = serde_yaml::from_slice(original).unwrap();
+        linker::link_skill(&config.skills[0], &root, &config.agents, true).unwrap();
+        let targets =
+            linker::plan_skill_unlink(&config.skills[0], &root, &config.agents, true, false, false)
+                .unwrap();
+        let snapshots: Vec<_> = targets
+            .iter()
+            .map(|target| Some(fs::read_link(&target.path).unwrap()))
+            .collect();
+        assert!(remove_global_transaction(
+            &root.join("skills.yaml"),
+            original,
+            "test",
+            &config.skills[0],
+            &root,
+            &config,
+            false,
+            false,
+            &targets,
+            &snapshots,
+            Some(1)
+        )
+        .is_err());
+        assert_eq!(fs::read(root.join("skills.yaml")).unwrap(), original);
+        for (target, snapshot) in targets.iter().zip(snapshots) {
+            assert_eq!(fs::read_link(&target.path).unwrap(), snapshot.unwrap());
+        }
+        match old_home {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
     }
 
     #[test]
