@@ -544,9 +544,10 @@ fn plan_unlocked_removal(
     force: bool,
     verbose: bool,
 ) -> Result<Vec<linker::UnlinkTarget>, Box<dyn std::error::Error>> {
-    // With no installed targets at all, no declaration can own a link. Avoid
-    // resolving sources (or requiring a cache) for the add-before-install state.
-    if global && global_targets_are_empty(config, project)? {
+    // Validate registry origins even when there are no links to remove.
+    // A cold selected cache can be skipped only when all existing links have
+    // been accounted for by the remaining declarations.
+    if global && global_removal_has_no_owned_targets(config, selected, project)? {
         return Ok(Vec::new());
     }
     let before = linker::resolve_skill_dependency_closure(&config.skills, project)?;
@@ -585,19 +586,109 @@ fn plan_unlocked_removal(
     Ok(targets)
 }
 
-fn global_targets_are_empty(
+fn global_removal_has_no_owned_targets(
     config: &SkillsConfig,
+    selected: &SkillSpec,
     project: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
+    let mut selected_cache_missing = false;
+    for skill in &config.skills {
+        if skill.path.is_none() {
+            let name = skill.source.as_deref().unwrap_or("default");
+            let cache_missing = removal_registry_cache_missing(name, config, project)?;
+            if skill.name == selected.name {
+                selected_cache_missing = cache_missing;
+            }
+        }
+    }
     let home = dirs::home_dir().ok_or("Cannot resolve home")?;
+    let mut existing = BTreeSet::new();
     for target in linker::resolve_agent_skill_targets(&config.agents, project, true)? {
         // Validate all parent components, including the target directory itself.
         crate::installer::validate_parent(&home, &target.path.join("placeholder"))?;
         match fs::read_dir(&target.path) {
-            Ok(mut entries) => {
-                if entries.next().transpose()?.is_some() {
-                    return Ok(false);
+            Ok(entries) => {
+                for entry in entries {
+                    existing.insert(entry?.path());
                 }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    if existing.is_empty() {
+        return Ok(true);
+    }
+    if !selected_cache_missing {
+        return Ok(false);
+    }
+    for target in linker::resolve_agent_skill_targets(&config.agents, project, true)? {
+        if existing.contains(&linker::get_skill_target_path(
+            &target.path,
+            &selected.name,
+        )?) {
+            return Ok(false);
+        }
+    }
+    let remaining: Vec<_> = config
+        .skills
+        .iter()
+        .filter(|skill| skill.name != selected.name)
+        .cloned()
+        .collect();
+    let retained = linker::resolve_skill_dependency_closure(&remaining, project)?;
+    for skill in retained {
+        for target in
+            linker::plan_skill_unlink(&skill, project, &config.agents, true, false, false)?
+        {
+            existing.remove(&target.path);
+        }
+    }
+    Ok(existing.is_empty())
+}
+
+fn removal_registry_cache_missing(
+    name: &str,
+    config: &SkillsConfig,
+    project: &Path,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let canonical = linker::canonical_registry_path(name)
+        .ok_or_else(|| format!("Invalid registry name: {name}"))?;
+    let override_location = config
+        .registries
+        .as_ref()
+        .and_then(|registries| registries.get(name));
+    let location = if let Some(location) = override_location {
+        Some(location.clone())
+    } else {
+        crate::config_manager::BaseConfig::load()?
+            .registries
+            .remove(name)
+    };
+    if let Some(location) = location {
+        let cache = linker::validated_registry_path(name, &location, project)?;
+        return match fs::symlink_metadata(cache) {
+            Ok(_) => Ok(false),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
+            Err(error) => Err(error.into()),
+        };
+    }
+
+    // With no configured URL, no cache origin can be trusted. Only an alias
+    // absent from every cache root permits the uninstalled removal shortcut.
+    let home = dirs::home_dir().ok_or("Cannot resolve home")?;
+    let mut candidates = vec![canonical, home.join(".cache/skm/registries").join(name)];
+    if let Some(cache) = dirs::cache_dir() {
+        candidates.push(cache.join("skm/registries").join(name));
+    }
+    for cache in candidates {
+        match fs::symlink_metadata(&cache) {
+            Ok(_) => {
+                return Err(format!(
+                    "Registry '{name}' is not configured; cannot validate cached registry at {}",
+                    cache.display()
+                )
+                .into())
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(error.into()),
