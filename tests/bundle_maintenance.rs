@@ -249,6 +249,65 @@ fn remove_rejects_target_replacement_while_waiting_for_confirmation() {
 }
 
 #[test]
+fn remove_rejects_manifest_symlink_swap_during_confirmation() {
+    let fixture = Fixture::new();
+    fixture.skm(&["install", "--yes"]);
+    let manifest = fixture.project.join("skills.yaml");
+    let original = fs::read(&manifest).unwrap();
+    let outside = fixture.root.path().join("outside.yaml");
+    fs::write(&outside, &original).unwrap();
+    let lock = fixture.project.join("skills.lock.yaml");
+    let lock_before = fs::read(&lock).unwrap();
+    let alpha = fixture.project.join(".agents/skills/alpha");
+    let helper = fixture.project.join(".agents/skills/helper");
+    let alpha_before = fs::read_link(&alpha).unwrap();
+    let helper_before = fs::read_link(&helper).unwrap();
+    let status = confirm_removal_after(&fixture, || {
+        fs::remove_file(&manifest).unwrap();
+        symlink(&outside, &manifest).unwrap();
+    });
+    assert!(!status.success());
+    assert!(manifest.is_symlink());
+    assert_eq!(fs::read(outside).unwrap(), original);
+    assert_eq!(fs::read(lock).unwrap(), lock_before);
+    assert_eq!(fs::read_link(alpha).unwrap(), alpha_before);
+    assert_eq!(fs::read_link(helper).unwrap(), helper_before);
+}
+
+#[test]
+fn remove_rejects_symlinked_target_parent_swap_during_confirmation() {
+    let fixture = Fixture::new();
+    fixture.skm(&["install", "--yes"]);
+    let manifest = fixture.project.join("skills.yaml");
+    let original = fs::read(&manifest).unwrap();
+    let lock = fixture.project.join("skills.lock.yaml");
+    let lock_before = fs::read(&lock).unwrap();
+    let targets = fixture.project.join(".agents/skills");
+    let saved = fixture.project.join(".agents/skills-saved");
+    let outside = fixture.root.path().join("outside-skills");
+    fs::create_dir(&outside).unwrap();
+    for skill in ["alpha", "helper"] {
+        symlink(
+            fs::read_link(targets.join(skill)).unwrap(),
+            outside.join(skill),
+        )
+        .unwrap();
+    }
+    let status = confirm_removal_after(&fixture, || {
+        fs::rename(&targets, &saved).unwrap();
+        symlink(&outside, &targets).unwrap();
+    });
+    assert!(!status.success());
+    assert_eq!(fs::read(manifest).unwrap(), original);
+    assert_eq!(fs::read(lock).unwrap(), lock_before);
+    assert!(targets.is_symlink());
+    for skill in ["alpha", "helper"] {
+        assert!(outside.join(skill).is_symlink());
+        assert!(saved.join(skill).is_symlink());
+    }
+}
+
+#[test]
 fn clean_preserves_bundle_members_and_removal_preserves_other_owners() {
     let fixture = Fixture::new();
     let path = fixture.project.join("skills.yaml");

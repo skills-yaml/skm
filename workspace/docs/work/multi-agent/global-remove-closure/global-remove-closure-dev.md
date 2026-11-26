@@ -22,11 +22,11 @@ Repair global removal ownership and protect project bundle removal from concurre
 
 ## Actions
 
-Created an isolated worktree through an atomic peer claim. Plan orphan removal from the resolved closure difference; preserve shared dependencies, reject changed project manifests before writes, and permit uncached removals when all configured targets are empty. Following independent review, recheck the lock including absence, recompute target plans, and compare symlink snapshots after confirmation before project bundle mutations.
+Created an isolated worktree through an atomic peer claim. Plan orphan removal from the resolved closure difference; preserve shared dependencies, reject changed project manifests before writes, and permit uncached removals when all configured targets are empty. Following independent review, recheck the lock including absence, recompute target plans, and compare symlink snapshots after confirmation before project bundle mutations. A second review found path substitutions: now reject a symlinked manifest and validate planned target parents after confirmation.
 
 ## Validation
 
-The original candidate reproduced both global failures in temporary-home fixtures. The first handoff reproduced two additional review findings involving lock changes and symlink replacement during confirmation; interactive fixtures now pass. `task test:global-home`, `task test:bundle`, `task check`, `task test`, and `task versions:check` passed. Review and final combined-candidate gates remain pending.
+The original candidate reproduced both global failures in temporary-home fixtures. The first handoff reproduced two additional review findings involving lock changes and symlink replacement during confirmation; interactive fixtures now pass. Subsequent manifest and target-parent symlink substitution regressions also reproduced and pass. `task test:global-home`, `task test:bundle`, `task check`, `task test`, and `task versions:check` passed. Review and final combined-candidate gates remain pending.
 
 ## Blockers and Dependencies
 

@@ -147,6 +147,12 @@ where
         );
     }
 
+    if bundle_scope {
+        let metadata = fs::symlink_metadata(&config_path)?;
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            return Err("Manifest must remain a regular file during removal; retry".into());
+        }
+    }
     if fs::read(&config_path)? != original {
         return Err("Manifest changed during removal; retry".into());
     }
@@ -169,6 +175,7 @@ where
             return Err("Targets changed during removal; retry".into());
         }
         for (target, snapshot) in targets.iter().zip(&snapshots) {
+            crate::installer::validate_parent(project_root, &target.path)?;
             if let Some(snapshot) = snapshot {
                 if fs::read_link(&target.path)? != *snapshot {
                     return Err("Target changed during removal; retry".into());
