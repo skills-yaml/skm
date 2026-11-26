@@ -1028,9 +1028,33 @@ fn global_install_applies_registry_dependencies_to_every_selected_target() {
         }
     }
     assert_eq!(fs::read(manifest).unwrap(), before);
+    let dry = success(command(
+        home,
+        project.path(),
+        &["clean", "symlinks", "--global", "--orphaned", "--dry-run"],
+    ));
+    assert!(!String::from_utf8_lossy(&dry.stdout).contains("beta"));
+    success(command(
+        home,
+        project.path(),
+        &["clean", "symlinks", "--global", "--orphaned", "--yes"],
+    ));
+    for agent in [".agents/skills", ".cursor/skills"] {
+        assert!(home.join(agent).join("beta").is_symlink());
+    }
     assert!(command(home, project.path(), &["check", "--global"])
         .status
         .success());
+    fs::rename(&registry, home.join(".skm/registry-unavailable")).unwrap();
+    let failed = command(
+        home,
+        project.path(),
+        &["clean", "symlinks", "--global", "--orphaned", "--yes"],
+    );
+    assert!(!failed.status.success());
+    for agent in [".agents/skills", ".cursor/skills"] {
+        assert!(home.join(agent).join("beta").is_symlink());
+    }
 }
 
 #[test]
@@ -1146,4 +1170,39 @@ fn global_cleanup_preview_rejects_unsafe_manifest_without_changes() {
     );
     assert!(!output.status.success());
     assert_eq!(snapshot(home.path()), before);
+}
+
+#[test]
+fn global_cleanup_refuses_symlinked_agent_root_and_preserves_project_links() {
+    let home = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    let home = home.path();
+    let project = project.path();
+    let source = project.join("source");
+    fs::create_dir(&source).unwrap();
+    fs::write(
+        source.join("SKILL.md"),
+        "---\nname: local\ndescription: test\n---\n",
+    )
+    .unwrap();
+    fs::write(
+        project.join("skills.yaml"),
+        "name: Project\nagents: [codex]\nskills: [{name: local, path: source}]\n",
+    )
+    .unwrap();
+    success(command(home, project, &["install", "--yes"]));
+    let root = home.join(".agents/skills");
+    fs::create_dir_all(root.parent().unwrap()).unwrap();
+    symlink(project.join(".agents/skills"), &root).unwrap();
+    let link = project.join(".agents/skills/local");
+    let before = fs::read_link(&link).unwrap();
+    for args in [
+        &["clean", "symlinks", "--global", "--orphaned", "--dry-run"][..],
+        &["clean", "symlinks", "--global", "--orphaned", "--yes"],
+    ] {
+        let result = command(home, project, args);
+        assert!(!result.status.success());
+        assert_eq!(fs::read_link(&link).unwrap(), before);
+    }
+    assert!(command(home, project, &["check"]).status.success());
 }

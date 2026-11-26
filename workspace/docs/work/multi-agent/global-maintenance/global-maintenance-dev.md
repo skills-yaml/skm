@@ -37,6 +37,9 @@ Claimed the planned task at the integrated prerequisite revision. Implemented
 transactional global removal, version updates through the installer transaction,
 user-manifest and development-registration cleanup ownership, portable symlink
 removal, and migration guidance. Added cross-directory and failure regressions.
+Independent review rejected the first candidate on dependency ownership,
+symlinked cleanup roots, and Windows path comparisons. Corrected all three and
+added dependency, unsafe-root, and native-path regression fixtures.
 
 ## Validation
 
@@ -44,7 +47,8 @@ Focused `task test:global-home` and `task test:cache` passed. Aggregate `task ch
 
 ## Blockers and Dependencies
 
-None.
+The first handoff was rejected; the revised candidate requires fresh independent
+review. Native Windows execution remains pending.
 
 ## Next Step
 

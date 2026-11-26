@@ -350,8 +350,10 @@ then updates the declaration; an injected partial failure restores the links.
 Version selection uses the installer transaction and patches only requested YAML
 pins to retain opaque publisher metadata. Cleanup derives global ownership from
 the user manifest and global development registrations regardless of working
-directory. Portable symlink removal is shared by maintenance and linking. The
-command fixtures cover cross-directory mutation, conflicts, previews, metadata,
+directory, including transitive dependencies resolved without fetching. Cleanup
+fails closed if dependency ownership cannot be resolved, refuses unsafe target
+roots, and compares namespace paths using native components. Portable symlink
+removal is shared by maintenance and linking. The command fixtures cover cross-directory mutation, conflicts, previews, metadata,
 registered development skills, and unaffected project manifests. Documentation
 explains former directory-based global manifests and downgrade/export steps.
 This is bounded candidate evidence pending exact-candidate independent review;

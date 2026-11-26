@@ -99,9 +99,20 @@ pub fn clean_symlinks(
             .unwrap_or_default()
     };
 
+    let scope_root = if global {
+        dirs::home_dir().ok_or("Cannot resolve home")?
+    } else {
+        current_dir.clone()
+    };
+    let target_groups = linker::resolve_agent_skill_targets(&agents, &current_dir, global)?;
+    // Validate every root before walking any of them, including symlinked ancestors.
+    for target_group in &target_groups {
+        validate_cleanup_root(&scope_root, &target_group.path)?;
+    }
     let mut symlinks_to_clean: Vec<SymlinkInfo> = Vec::new();
 
-    for target_group in linker::resolve_agent_skill_targets(&agents, &current_dir, global)? {
+    for target_group in target_groups {
+        validate_cleanup_root(&scope_root, &target_group.path)?;
         let base_dir = target_group.path;
         let agent = target_group.agents.join(", ");
 
@@ -115,6 +126,7 @@ pub fn clean_symlinks(
         // Recursively find all symlinks in this agent directory using walkdir
         for entry in walkdir::WalkDir::new(&base_dir)
             .min_depth(1)
+            .follow_root_links(false)
             .follow_links(false)
             .into_iter()
             .filter_map(|e| e.ok())
@@ -141,7 +153,7 @@ pub fn clean_symlinks(
 
                 let status = if is_broken {
                     SymlinkStatus::Broken
-                } else if clean_orphaned && !known_skills.contains(&skill_name) {
+                } else if clean_orphaned && !known_skills.contains(rel_path) {
                     SymlinkStatus::Orphaned
                 } else {
                     SymlinkStatus::Valid
@@ -215,11 +227,22 @@ pub fn clean_symlinks(
         }
     }
 
-    // Clean the symlinks
+    // Refuse changed parents or links before removing any candidate, and recheck
+    // each parent immediately before its mutation.
+    for info in &symlinks_to_clean {
+        crate::installer::validate_parent(&scope_root, &info.path)?;
+        if fs::read_link(&info.path)? != info.target {
+            return Err(format!("Link changed during cleanup: {}", info.path.display()).into());
+        }
+    }
     let mut cleaned = 0;
     for info in &symlinks_to_clean {
         if verbose {
             eprintln!("Removing: {}", info.path.display());
+        }
+        crate::installer::validate_parent(&scope_root, &info.path)?;
+        if fs::read_link(&info.path)? != info.target {
+            return Err(format!("Link changed during cleanup: {}", info.path.display()).into());
         }
         crate::installer::remove_symlink(&info.path)?;
         cleaned += 1;
@@ -230,35 +253,72 @@ pub fn clean_symlinks(
     Ok(())
 }
 
+fn validate_cleanup_root(
+    scope_root: &Path,
+    target_root: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    crate::installer::validate_parent(scope_root, &target_root.join(".skm-safety-check"))
+}
+
 fn collect_known_skill_names(
     project_config: Option<&SkillsConfig>,
     project_root: &Path,
     global: bool,
-) -> Result<HashSet<String>, Box<dyn std::error::Error>> {
+) -> Result<HashSet<PathBuf>, Box<dyn std::error::Error>> {
+    let mut known = collect_declared_skill_names_with(
+        project_config,
+        project_root,
+        global,
+        linker::resolve_skill_dependency_closure,
+    )?;
+    let dev_config = DevConfig::load(global)?;
+    insert_dev_skill_names(&mut known, dev_config.skills.into_keys())?;
+    Ok(known)
+}
+
+fn collect_declared_skill_names_with<F>(
+    config: Option<&SkillsConfig>,
+    root: &Path,
+    global: bool,
+    resolve: F,
+) -> Result<HashSet<PathBuf>, Box<dyn std::error::Error>>
+where
+    F: Fn(
+        &[crate::config::SkillSpec],
+        &Path,
+    ) -> Result<Vec<crate::config::SkillSpec>, Box<dyn std::error::Error>>,
+{
     let mut known = HashSet::new();
-    if let Some(config) = project_config {
-        let skills = if config.skills.iter().any(|skill| skill.is_bundle()) {
-            linker::resolve_skill_dependency_closure(&config.skills, project_root)?
+    if let Some(config) = config {
+        let skills = if global || config.skills.iter().any(|skill| skill.is_bundle()) {
+            resolve(&config.skills, root)?
         } else {
             config.skills.clone()
         };
         let mut names: Vec<String> = skills.into_iter().map(|skill| skill.name).collect();
         if config.skills.iter().any(|skill| skill.is_bundle()) {
-            names.extend(installed_bundle_member_names(config, project_root)?);
+            names.extend(installed_bundle_member_names(config, root)?);
         }
         for name in names {
             // Preserve legacy nested links as well as discoverable direct-child links.
-            known.insert(name.clone());
-            if let Some(leaf) = Path::new(&name).file_name().and_then(|name| name.to_str()) {
-                known.insert(leaf.to_string());
+            let path = linker::validated_skill_path(&name)?;
+            if let Some(leaf) = path.file_name() {
+                known.insert(PathBuf::from(leaf));
             }
+            known.insert(path);
         }
     }
-
-    let dev_config = DevConfig::load(global)?;
-    known.extend(dev_config.skills.into_keys());
-
     Ok(known)
+}
+
+fn insert_dev_skill_names(
+    known: &mut HashSet<PathBuf>,
+    names: impl IntoIterator<Item = String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    for name in names {
+        known.insert(linker::validated_skill_path(&name)?);
+    }
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -681,11 +741,10 @@ fn protected_skill_versions(
     let Ok(skill_name) = skill_dir.strip_prefix(skills_root) else {
         return protected;
     };
-    let skill_name = skill_name.to_string_lossy();
     if let Some(config) = project_config {
         for skill in &config.skills {
             if skill.path.is_some()
-                || skill.name != skill_name
+                || !linker::validated_skill_path(&skill.name).is_ok_and(|name| name == skill_name)
                 || skill.source.as_deref().unwrap_or("default") != registry
             {
                 continue;
@@ -787,6 +846,7 @@ pub fn reset(
             .collect::<Vec<_>>();
         for target in linker::resolve_agent_skill_targets(&agents, &current_dir, true)? {
             collect_reset_symlinks(
+                &dirs::home_dir().ok_or("Cannot resolve home")?,
                 &target.path,
                 &format!("Global {}", target.agents.join(", ")),
                 &mut items,
@@ -794,6 +854,7 @@ pub fn reset(
         }
         for target in linker::resolve_agent_skill_targets(&agents, &current_dir, false)? {
             collect_reset_symlinks(
+                &current_dir,
                 &target.path,
                 &format!("Project {}", target.agents.join(", ")),
                 &mut items,
@@ -888,6 +949,7 @@ pub fn reset(
 }
 
 fn collect_reset_symlinks(
+    scope_root: &Path,
     root: &Path,
     label: &str,
     items: &mut Vec<ResetItem>,
@@ -896,7 +958,14 @@ fn collect_reset_symlinks(
         return Ok(());
     }
 
-    for entry in walkdir::WalkDir::new(root).min_depth(1).follow_links(false) {
+    if validate_cleanup_root(scope_root, root).is_err() {
+        return Ok(());
+    }
+    for entry in walkdir::WalkDir::new(root)
+        .min_depth(1)
+        .follow_root_links(false)
+        .follow_links(false)
+    {
         let entry = entry?;
         let metadata = fs::symlink_metadata(entry.path())?;
         if metadata.file_type().is_symlink() {
@@ -1254,6 +1323,65 @@ mod tests {
     }
 
     #[test]
+    fn global_ownership_includes_registry_dependencies_without_platform_home() {
+        let temp = tempfile::tempdir().unwrap();
+        for (name, dependency) in [
+            ("alpha", "  skm-dependencies: 'team/beta@1.0.0'\n"),
+            ("beta", ""),
+        ] {
+            let source = temp.path().join("team").join(name);
+            fs::create_dir_all(&source).unwrap();
+            fs::write(source.join("SKILL.md"), format!("---\nname: {name}\ndescription: test\nmetadata:\n  skm-version: '1.0.0'\n{dependency}---\n")).unwrap();
+        }
+        let config: SkillsConfig = serde_yaml::from_str("name: test\nagents: [codex]\nskills:\n  - {name: team/alpha, version: '1.0.0', source: default}\n").unwrap();
+        let resolve = |skills: &[crate::config::SkillSpec], root: &Path| {
+            linker::resolve_skill_dependency_closure_with(skills, root, |skill, root| {
+                Ok(root.join(linker::validated_skill_path(&skill.name)?))
+            })
+        };
+        let known =
+            collect_declared_skill_names_with(Some(&config), temp.path(), true, resolve).unwrap();
+        assert!(known.contains(&PathBuf::from("alpha")));
+        assert!(known.contains(&PathBuf::from("beta")));
+        assert!(known.contains(&PathBuf::from("team").join("beta")));
+        fs::remove_dir_all(temp.path().join("team/beta")).unwrap();
+        assert!(
+            collect_declared_skill_names_with(Some(&config), temp.path(), true, resolve).is_err()
+        );
+    }
+
+    #[test]
+    fn unsafe_cleanup_roots_are_rejected_and_reset_does_not_follow_them() {
+        let temp = tempfile::tempdir().unwrap();
+        let external = tempfile::tempdir().unwrap();
+        let real_source = tempfile::tempdir().unwrap();
+        let root = temp.path().join("agent/skills");
+        fs::create_dir_all(root.parent().unwrap()).unwrap();
+        linker::symlink_dir(real_source.path(), &external.path().join("owned")).unwrap();
+        linker::symlink_dir(external.path(), &root).unwrap();
+        assert!(validate_cleanup_root(temp.path(), &root).is_err());
+        let mut items = Vec::new();
+        collect_reset_symlinks(temp.path(), &root, "test", &mut items).unwrap();
+        assert!(items.is_empty());
+        assert!(external.path().join("owned").is_symlink());
+    }
+
+    #[test]
+    fn namespaced_pins_use_native_path_components() {
+        let temp = tempfile::tempdir().unwrap();
+        let skills = temp.path().join("skills");
+        let skill_dir = skills.join("team").join("example");
+        let version = skill_dir.join("v1.0.0");
+        fs::create_dir_all(&version).unwrap();
+        let config: SkillsConfig = serde_yaml::from_str("name: test\nagents: []\nskills:\n  - {name: team/example, version: '1.0.0', source: default}\n").unwrap();
+        let protected = protected_skill_versions("default", &skills, &skill_dir, Some(&config));
+        assert!(protected.contains(&canonical_or_original(&version)));
+        let mut known = HashSet::new();
+        insert_dev_skill_names(&mut known, ["team/example".to_string()]).unwrap();
+        assert!(known.contains(&PathBuf::from("team").join("example")));
+    }
+
+    #[test]
     #[serial]
     fn global_orphan_cleanup_preserves_configured_skill_links() {
         let temp = temp_project();
@@ -1268,6 +1396,13 @@ mod tests {
         let _xdg_cache_guard =
             EnvVarGuard::new("XDG_CACHE_HOME", home_temp.join(".cache").to_str().unwrap());
 
+        let source = home_temp.join(".skm/local-source");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("SKILL.md"),
+            "---\nname: spec\ndescription: test\n---\n",
+        )
+        .unwrap();
         let config = SkillsConfig {
             name: "test-project".to_string(),
             version: Some("0.1.0".to_string()),
@@ -1275,8 +1410,8 @@ mod tests {
             skills: vec![crate::config::SkillSpec {
                 name: "software-development/spec".to_string(),
                 version: Some("latest".to_string()),
-                source: Some("default".to_string()),
-                path: None,
+                source: None,
+                path: Some(source.to_string_lossy().into_owned()),
                 kind: None,
             }],
             registries: None,
@@ -1290,10 +1425,6 @@ mod tests {
             .save_to_file(home_temp.join(".skm/skills.yaml"))
             .unwrap();
 
-        let source =
-            home_temp.join(".cache/skm/registries/default/skills/software-development/spec/latest");
-        fs::create_dir_all(&source).unwrap();
-        fs::write(source.join("SKILL.md"), "# Skill\n").unwrap();
         let target = home_temp.join(".claude/skills/software-development/spec");
         fs::create_dir_all(target.parent().unwrap()).unwrap();
         linker::symlink_dir(&source, &target).unwrap();
@@ -1389,7 +1520,7 @@ mod tests {
         let skills_root = home_temp.join(".claude/skills");
         linker::symlink_dir(&external, &skills_root).unwrap();
 
-        clean_symlinks(true, false, true, false, false, true, false).unwrap();
+        assert!(clean_symlinks(true, false, true, false, false, true, false).is_err());
         reset(false, false, true, false, false, None, false, true).unwrap();
 
         assert!(skills_root.is_symlink());
