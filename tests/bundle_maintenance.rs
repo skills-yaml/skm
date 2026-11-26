@@ -498,3 +498,43 @@ fn outdated_compares_selected_pin_to_latest_even_if_lock_is_latest() {
     assert!(text.contains("skill use"), "{text}");
     assert!(!text.contains("1.11.0 -> 1.9.0"), "{text}");
 }
+
+#[test]
+fn upgrading_second_bundle_keeps_lock_order_and_check_current() {
+    let fixture = Fixture::new();
+    let path = fixture.project.join("skills.yaml");
+    let mut config = fs::read_to_string(&path).unwrap();
+    config.push_str("  - {name: acme/other, kind: bundle, source: local}\n");
+    fs::write(path, config).unwrap();
+    let manifest = fixture.registry.join("skills/acme/manifest.yaml");
+    let history = |other: &str| {
+        format!("schema_version: 2\nnamespace: acme\npackages: {{alpha: 1.0.0, helper: 1.0.0}}\nbundles: {{starter: {{packages: [alpha]}}, other: {{packages: [helper]}}}}\nbundle_versions:\n  starter: {{1.0.0: {{alpha: 1.0.0}}}}\n  other: {{{other}}}\n")
+    };
+    fs::write(&manifest, history("1.0.0: {helper: 1.0.0}")).unwrap();
+    fixture.commit();
+    fixture.skm(&["cache", "refresh", "local"]);
+    fixture.skm(&["install", "--yes"]);
+    fs::write(
+        &manifest,
+        history("1.0.0: {helper: 1.0.0}, 1.1.0: {helper: 1.0.0}"),
+    )
+    .unwrap();
+    fixture.commit();
+    fixture.skm(&["cache", "refresh", "local"]);
+    fixture.skm(&["skill", "upgrade", "acme/other", "--yes"]);
+    let lock = fixture.lock();
+    assert_eq!(lock["bundles"][0]["name"], "acme/starter");
+    assert_eq!(lock["bundles"][1]["resolved_version"], "1.1.0");
+    fixture.skm(&["check"]);
+}
+
+#[test]
+fn skills_only_outdated_ignores_invalid_bundle_lock() {
+    let fixture = Fixture::new();
+    fs::write(fixture.project.join("skills.yaml"), format!("name: fixture\nregistries:\n  local: {}\nagents: [codex]\nskills:\n  - {{name: acme/alpha, version: 1.0.0, source: local}}\n", fixture.registry.display())).unwrap();
+    fs::write(fixture.project.join("skills.lock.yaml"), "invalid: [\n").unwrap();
+    let output = fixture.skm(&["skill", "outdated", "acme/alpha"]);
+    assert!(String::from_utf8(output.stdout)
+        .unwrap()
+        .contains("acme/alpha"));
+}

@@ -34,7 +34,7 @@ Implement exact published bundle releases under the amended bundle-skill-entries
 
 ## Actions
 
-Created an isolated worktree through an atomic peer claim. Amended Task1 scope, model, acceptance and gates before implementation. Implemented versioned bundle resolution, lock tracking, maintenance, documentation and deterministic fixtures; retained legacy schema-2 behavior. Resolved three review findings: named upgrade isolation, exact-pin outdated comparison independent of the lock, and duplicate history key rejection.
+Created an isolated worktree through an atomic peer claim. Amended Task1 scope, model, acceptance and gates before implementation. Implemented versioned bundle resolution, lock tracking, maintenance, documentation and deterministic fixtures; retained legacy schema-2 behavior. Resolved three review findings: named upgrade isolation, exact-pin outdated comparison independent of the lock, and duplicate history key rejection. Follow-up review fixes preserve manifest lock order for named upgrades and avoid reading bundle locks for skills-only outdated queries.
 
 ## Validation
 

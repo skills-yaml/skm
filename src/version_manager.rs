@@ -270,9 +270,11 @@ pub fn show_outdated(
                 None | Some("latest") | Some("default")
             )
     });
-    for (name, details) in bundle_changes(&aliases, project)? {
-        println!("{name}: {}", details.join(", "));
-        outdated += 1;
+    if !aliases.skills.is_empty() {
+        for (name, details) in bundle_changes(&aliases, project)? {
+            println!("{name}: {}", details.join(", "));
+            outdated += 1;
+        }
     }
     // Exact-pin availability compares the selected release itself to latest,
     // independent of whichever release happens to be installed in the lock.

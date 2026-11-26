@@ -177,6 +177,15 @@ fn resolve_named_bundle(
     );
     let mut entries = linker::resolve_entries(&requests, project)?;
     entries.extend(preserved_bundles);
+    // The lock records bundles in manifest order, including preserved entries.
+    entries.sort_by_key(|entry| match entry {
+        linker::ResolvedEntry::Bundle { spec, .. } => config
+            .skills
+            .iter()
+            .position(|skill| skill.is_bundle() && skill.name == spec.name)
+            .unwrap_or(usize::MAX),
+        linker::ResolvedEntry::Skill(_) => usize::MAX,
+    });
     Ok(entries)
 }
 
