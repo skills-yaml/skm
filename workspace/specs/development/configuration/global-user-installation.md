@@ -294,14 +294,12 @@ passes do not establish complete feature acceptance.
 
 ### Current S1 partial implementation
 
-Bootstrap creates the new layout and imports legacy settings without changing
-existing settings or cache consumers. AC1 and AC6 remain partial. Existing
-callers still read and write legacy settings, so an imported canonical copy can
-become stale before routing changes. Complete the settings routing and reconcile
-this interval before any shared-test or production delivery; do not silently
-prefer an out-of-date copy. The remaining S1 work also includes cache fallback,
-origin validation, and coordinated cache-consumer migration. The CLI must
-propagate bootstrap errors and retain the preview exemptions.
+A dormant helper creates the new layout and imports legacy settings; live startup
+and existing settings and cache consumers retain their legacy behavior. AC1 and
+AC6 remain partial. Activate bootstrap only with settings routing so that legacy
+writes cannot silently diverge from the canonical copy. Remaining S1 work also
+includes cache fallback, origin validation, and coordinated cache-consumer
+migration. The CLI must propagate bootstrap errors and retain preview exemptions.
 
 ## Validation Gates and Review
 

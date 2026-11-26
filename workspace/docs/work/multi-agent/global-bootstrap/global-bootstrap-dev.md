@@ -24,15 +24,15 @@ Implement the bootstrap and legacy-settings portion of AC1 and AC6. This is a bo
 
 ## Actions
 
-Created an isolated worktree through an atomic peer claim. Moved the global spec to development and reconciled its shared applied 0.10.0 reservation. Added silent create-if-absent bootstrap, byte-preserving legacy settings import, path and document validation, and isolated fixtures. Existing BaseConfig and cache callers remain on legacy paths.
+Created an isolated worktree through an atomic peer claim. Moved the global spec to development and reconciled its shared applied 0.10.0 reservation. Added a dormant silent create-if-absent bootstrap, byte-preserving legacy settings import, path and document validation, and isolated fixtures. Review rejected the first candidate because live startup invoked bootstrap before settings routing. Restored legacy live startup and setup behavior; new bootstrap remains dormant.
 
 ## Validation
 
-Pre-review: task check and task test, plus task test:cache, task test:updater, task workspace:check, and task versions:check. See handoff for candidate-bound review and final validation requirements.
+The first candidate passed task check and task test but independent review rejected its live startup behavior. The revised candidate passed task check and task test (166 unit and 17 integration tests, plus workspace, version, and coordination suites). Unix-gated isolated HOME fixtures cover the dormant bootstrap and legacy startup. Exact-candidate review and post-review final validation remain pending.
 
 ## Blockers and Dependencies
 
-The canonical settings copy can become stale while existing callers continue to write legacy settings. A dependent routing change must reconcile this interval and prevent silent divergence before delivery. Cache fallback and origin checks, cache consumer migration, CLI error propagation, and preview validation also remain open. AC1 and AC6 are partial.
+A dependent routing change must activate bootstrap with settings routing and prevent silent divergence between legacy and canonical settings. Cache fallback and origin checks, cache consumer migration, CLI error propagation, and preview validation also remain open. AC1 and AC6 are partial.
 
 ## Next Step
 

@@ -232,9 +232,14 @@ impl BaseConfig {
 }
 
 /// Initialize the base configuration in user's home
-#[allow(dead_code)]
-pub fn init_base_config() -> ConfigResult<()> {
-    ensure_global_env()
+pub fn init_base_config() -> Result<(), Box<dyn std::error::Error>> {
+    let config = BaseConfig::new();
+    config.save()?;
+    eprintln!(
+        "Created base configuration at: {:?}",
+        get_base_config_path()
+    );
+    Ok(())
 }
 
 /// Ensure base config exists, create if it doesn't.
@@ -310,7 +315,20 @@ pub fn update_cache(registry_name: Option<&str>) -> Result<(), Box<dyn std::erro
 
 /// Ensure base configuration exists, create with defaults if missing
 /// This is separate from first_time_setup() which also updates cache
-pub fn ensure_global_env() -> ConfigResult<()> {
+pub fn ensure_global_env() -> Result<(), Box<dyn std::error::Error>> {
+    let path = get_base_config_path().ok_or("Could not determine config directory")?;
+
+    if !path.exists() {
+        eprintln!("Initializing global SKM configuration...");
+        init_base_config()?;
+    }
+
+    Ok(())
+}
+
+/// Bootstrap canonical user-home state. Call only at the settings routing cutover.
+#[allow(dead_code)]
+pub fn bootstrap_user_home() -> ConfigResult<()> {
     let home = dirs::home_dir().ok_or("Could not determine user home directory")?;
     directory(&home, false)?;
     let config_dir = get_user_config_dir().ok_or("Could not determine user home directory")?;
@@ -398,7 +416,7 @@ pub fn is_first_time() -> bool {
     base_config_path.is_none_or(|p| !p.exists()) || registries_cache_dir.is_none_or(|p| !p.exists())
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use serial_test::serial;
@@ -456,7 +474,7 @@ mod tests {
         std::env::remove_var("SKM_CHECK_UPDATE");
 
         // Ensure we're starting fresh
-        let config_path = get_user_base_config_path().unwrap();
+        let config_path = get_base_config_path().unwrap();
         let parent = config_path.parent().unwrap();
         if parent.exists() {
             fs::remove_dir_all(parent).ok();
@@ -485,7 +503,7 @@ mod tests {
 
         // Create initial config
         ensure_global_env().unwrap();
-        let config_path = get_user_base_config_path().unwrap();
+        let config_path = get_base_config_path().unwrap();
         let original_content = fs::read_to_string(&config_path).unwrap();
 
         // Run again
@@ -505,7 +523,7 @@ mod tests {
         std::env::remove_var("SKM_CHECK_UPDATE");
 
         // Remove any existing config first
-        let config_path = get_user_base_config_path().unwrap();
+        let config_path = get_base_config_path().unwrap();
         let parent = config_path.parent().unwrap();
         if parent.exists() {
             fs::remove_dir_all(parent).ok();
@@ -540,9 +558,25 @@ mod tests {
     }
     #[test]
     #[serial]
-    fn bootstrap_creates_empty_manifest_and_cache_and_preserves_bytes() {
+    fn live_startup_uses_only_legacy_settings() {
         let _home = create_temp_config_dir();
         ensure_global_env().unwrap();
+        let legacy = get_base_config_path().unwrap();
+        assert!(legacy.is_file());
+        assert!(!get_user_config_dir().unwrap().exists());
+        let mut config = BaseConfig::load().unwrap();
+        config.check_for_updates = false;
+        config.save().unwrap();
+        ensure_global_env().unwrap();
+        assert!(!BaseConfig::load().unwrap().check_for_updates);
+        assert!(!get_user_config_dir().unwrap().exists());
+    }
+
+    #[test]
+    #[serial]
+    fn bootstrap_creates_empty_manifest_and_cache_and_preserves_bytes() {
+        let _home = create_temp_config_dir();
+        bootstrap_user_home().unwrap();
         let manifest = get_global_manifest_path().unwrap();
         assert_eq!(
             fs::read_to_string(&manifest).unwrap(),
@@ -554,7 +588,7 @@ mod tests {
         let custom = "name: Personal\nagents: [codex]\nskills: []\npublisher: retained\n";
         fs::write(&manifest, custom).unwrap();
         let settings = fs::read(get_user_base_config_path().unwrap()).unwrap();
-        ensure_global_env().unwrap();
+        bootstrap_user_home().unwrap();
         assert_eq!(fs::read_to_string(manifest).unwrap(), custom);
         assert_eq!(
             fs::read(get_user_base_config_path().unwrap()).unwrap(),
@@ -570,7 +604,7 @@ mod tests {
         fs::create_dir_all(legacy.parent().unwrap()).unwrap();
         let content = "default_registry: custom\nregistries:\n  custom: custom-url\nopaque:\n  nested: retained\n";
         fs::write(&legacy, content).unwrap();
-        ensure_global_env().unwrap();
+        bootstrap_user_home().unwrap();
         let path = get_user_base_config_path().unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), content);
         assert_eq!(fs::read_to_string(legacy).unwrap(), content);
@@ -580,11 +614,11 @@ mod tests {
     #[serial]
     fn bootstrap_new_settings_win_over_invalid_legacy() {
         let _home = create_temp_config_dir();
-        ensure_global_env().unwrap();
+        bootstrap_user_home().unwrap();
         let legacy = dirs::config_dir().unwrap().join("skm").join("config.yaml");
         fs::create_dir_all(legacy.parent().unwrap()).unwrap();
         fs::write(legacy, "invalid: [").unwrap();
-        ensure_global_env().unwrap();
+        bootstrap_user_home().unwrap();
     }
 
     #[test]
@@ -594,18 +628,18 @@ mod tests {
         let legacy = dirs::config_dir().unwrap().join("skm").join("config.yaml");
         fs::create_dir_all(legacy.parent().unwrap()).unwrap();
         fs::write(&legacy, "invalid: [").unwrap();
-        assert!(ensure_global_env().is_err());
+        assert!(bootstrap_user_home().is_err());
         assert!(!get_user_base_config_path().unwrap().exists());
         fs::write(&legacy, "registries: []\n").unwrap();
-        assert!(ensure_global_env().is_err());
+        assert!(bootstrap_user_home().is_err());
         fs::remove_file(legacy).unwrap();
         let manifest = get_global_manifest_path().unwrap();
         fs::write(&manifest, "name: [\n").unwrap();
-        assert!(ensure_global_env().is_err());
+        assert!(bootstrap_user_home().is_err());
         assert_eq!(fs::read_to_string(&manifest).unwrap(), "name: [\n");
         fs::remove_file(&manifest).unwrap();
         fs::create_dir(&manifest).unwrap();
-        assert!(ensure_global_env().is_err());
+        assert!(bootstrap_user_home().is_err());
     }
 
     #[test]
@@ -613,12 +647,12 @@ mod tests {
     fn bootstrap_concurrent_creators_publish_complete_documents() {
         let _home = create_temp_config_dir();
         let threads: Vec<_> = (0..12)
-            .map(|_| std::thread::spawn(|| ensure_global_env().map_err(|e| e.to_string())))
+            .map(|_| std::thread::spawn(|| bootstrap_user_home().map_err(|e| e.to_string())))
             .collect();
         for thread in threads {
             thread.join().unwrap().unwrap();
         }
-        ensure_global_env().unwrap();
+        bootstrap_user_home().unwrap();
         assert_eq!(
             fs::read_to_string(get_global_manifest_path().unwrap()).unwrap(),
             EMPTY_GLOBAL_MANIFEST
@@ -634,13 +668,13 @@ mod tests {
         let target = home._temp_dir.path().join("target");
         fs::create_dir(&target).unwrap();
         symlink(&target, get_user_config_dir().unwrap()).unwrap();
-        assert!(ensure_global_env().is_err());
+        assert!(bootstrap_user_home().is_err());
         fs::remove_file(get_user_config_dir().unwrap()).unwrap();
         fs::create_dir(get_user_config_dir().unwrap()).unwrap();
         let external = home._temp_dir.path().join("external");
         fs::write(&external, EMPTY_GLOBAL_MANIFEST).unwrap();
         symlink(&external, get_global_manifest_path().unwrap()).unwrap();
-        assert!(ensure_global_env().is_err());
+        assert!(bootstrap_user_home().is_err());
         assert_eq!(fs::read_to_string(external).unwrap(), EMPTY_GLOBAL_MANIFEST);
     }
 }

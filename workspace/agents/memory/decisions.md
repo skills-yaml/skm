@@ -536,7 +536,7 @@ The user requests silent startup creation of `~/.skm`, with shared cache and a
 global `skills.yaml` recording user-selected skills and agents. The user explicitly
 confirmed that plain `skm install` remains project-local and `skm install --global`
 uses the user manifest and installs for all its selected agents. The backlog
-specification `workspace/specs/backlog/configuration/global-user-installation.md`
+specification `workspace/specs/development/configuration/global-user-installation.md`
 defines the proposed scope, base-settings separation, migration safeguards and
 acceptance gates. This is planned behavior, not an implemented or released feature.
 The separate existing base settings and legacy cache must be considered before

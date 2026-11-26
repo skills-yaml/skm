@@ -14,7 +14,7 @@ global-bootstrap-dev self-claimed this task through the shared peer board.
 
 ## Dependencies
 
-Further settings routing must reconcile any stale canonical copy before delivery. Cache migration and CLI error propagation remain dependent work.
+Settings routing must activate dormant bootstrap and prevent divergence at cutover. Cache migration and CLI error propagation remain dependent work.
 
 ## Integration
 
