@@ -468,7 +468,7 @@ where
                     registries.get(source).map(|location| {
                         let local = project_root.join(location);
                         if local.join("skills").is_dir() {
-                            Some(local)
+                            Some((local, location.clone()))
                         } else {
                             None
                         }
@@ -480,22 +480,19 @@ where
     let cache =
         resolve_registry_path(source).ok_or_else(|| format!("Invalid registry name: {source}"))?;
     let cached_root = cache.is_dir().then_some(cache);
-    if let (Some(local), Some(cached)) = (&project_local_root, &cached_root) {
-        let local = fs::canonicalize(local)?;
-        if local != fs::canonicalize(cached)?
-            && !local
-                .to_str()
-                .is_some_and(|location| crate::search::cache_matches(cached, location))
-        {
+    if let (Some((_, location)), Some(cached)) = (&project_local_root, &cached_root) {
+        if !registry_cache_matches(cached, location, project_root) {
             return Err(format!("Cached registry '{source}' has a different origin").into());
         }
     }
-    let registry_root = cached_root.or(project_local_root).ok_or_else(|| {
-        format!(
-            "Could not resolve registry '{source}' for bundle '{}'",
-            bundle.name
-        )
-    })?;
+    let registry_root = cached_root
+        .or_else(|| project_local_root.map(|(local, _)| local))
+        .ok_or_else(|| {
+            format!(
+                "Could not resolve registry '{source}' for bundle '{}'",
+                bundle.name
+            )
+        })?;
     published_members(&registry_root, namespace, id, source)
 }
 

@@ -44,7 +44,8 @@ owned by the parallel maintenance task. Preliminary independent review identifie
 registry origin, plain local registry, temporary-file preview, and YAML preservation
 issues; fixes have focused regression coverage. Review also identified relative
 Git path spelling drift; the fix preserves Git-visible fetch URL comparison and
-has repeat add/install coverage. The maintenance lane was merged from its reviewed
+has bundle-first add/install/re-add/reinstall/check coverage, including a
+mismatched-origin rejection. The maintenance lane was merged from its reviewed
 internal integration revision. Combined aggregate gates and fresh review follow.
 
 ## Blockers and Dependencies

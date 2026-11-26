@@ -2237,6 +2237,7 @@ mod search_cli_tests {
         )
         .unwrap();
         std::os::unix::fs::symlink("v1.0.0", directory.parent().unwrap().join("latest")).unwrap();
+        fs::write(registry.join("skills/acme/manifest.yaml"), "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0}\nbundles: {starter: {packages: [alpha]}}\n").unwrap();
         fs::create_dir_all(environment.root.path().join("a")).unwrap();
         git(&registry, &["init", "--quiet"]);
         git(&registry, &["add", "."]);
@@ -2281,7 +2282,7 @@ mod search_cli_tests {
             add_registry_item(
                 &config_path,
                 &project,
-                "acme/alpha",
+                "acme/starter",
                 Some("local".into()),
                 None,
                 None,
@@ -2301,11 +2302,23 @@ mod search_cli_tests {
             })
         };
         install().unwrap();
+        run(Commands::Check { global: false }).unwrap();
         let before = fs::read(&config_path).unwrap();
         add().unwrap();
         install().unwrap();
+        run(Commands::Check { global: false }).unwrap();
         assert_eq!(fs::read(&config_path).unwrap(), before);
         assert!(project.join(".agents/skills/alpha").is_symlink());
+        fs::create_dir_all(project.join("different/skills")).unwrap();
+        let mut changed: serde_yaml::Value = serde_yaml::from_slice(&before).unwrap();
+        changed["registries"]["local"] = serde_yaml::Value::String("different".into());
+        fs::write(&config_path, serde_yaml::to_string(&changed).unwrap()).unwrap();
+        assert!(run(Commands::Check { global: false })
+            .unwrap_err()
+            .to_string()
+            .contains("different origin"));
+        assert!(project.join(".agents/skills/alpha").is_symlink());
+        fs::write(&config_path, &before).unwrap();
         assert!(linker::registry_cache_matches(
             &linker::resolve_registry_path("alternate").unwrap(),
             "../a/../registry with spaces",
