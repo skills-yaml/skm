@@ -294,8 +294,9 @@ passes do not establish complete feature acceptance.
 
 ### Local peer implementation and review evidence
 
-The following independently reviewed source revisions were integrated through
-native peer gates through the local combined revision `d58ebd790520af95dfc246ca8ff5115fe4143076`.
+The following independently reviewed source revisions were integrated after
+native peer gates passed. The latest local combined revision is
+`d58ebd790520af95dfc246ca8ff5115fe4143076`.
 These are local peer integrations, not a merge into the configured remote
 `development` test target. The WIP records retain the individual review fixes.
 
@@ -306,13 +307,17 @@ These are local peer integrations, not a merge into the configured remote
 | S3 install | `22c6d71` → `7b646c7` | Used platform-aware symlink removal and retained file/directory symlink type and target on rollback. |
 | S4 maintenance | `5403ad0` → `6e76f98` | Preserved dependency ownership, refused symlinked cleanup roots, compared native path components and retained global dependency pins during cache pruning. |
 
-The board records current approvals by `global-cache-consumers-review`,
-`global-scope-review`, `global-scope-refresh-review`, `global-install-review`,
-and `global-maintenance-review` for `b34779c`, `80e6e54`, `60712b1`,
-`22c6d71`, and `5403ad0` respectively. Earlier integrated work records identify
-`57ee1bf` and `65ce77a` as reviewed source revisions. `global-bootstrap-registry-review` approved exact repair `b0f6f432bb6b96e090349048fe7a18047cdd04d2` before local integration at `d58ebd7`. Approvals of individual
-slices do not substitute for review of this S5 documentation or acceptance of
-the final combined revision.
+The integrated peer records identify these source revisions as reviewed before
+their respective local integrations. At those integrations the board recorded
+approvals by `global-cache-consumers-review`, `global-scope-review`,
+`global-scope-refresh-review`, `global-install-review`, and
+`global-maintenance-review` for `b34779c`, `80e6e54`, `60712b1`, `22c6d71`,
+and `5403ad0` respectively. Earlier integrated records identify `57ee1bf` and
+`65ce77a` as reviewed. `global-bootstrap-registry-review` approved exact repair
+`b0f6f432bb6b96e090349048fe7a18047cdd04d2` before local integration at
+`d58ebd7`. These are historical review events; re-registering the spec clears
+previous board approval entries. Slice approvals do not substitute for review
+of this S5 documentation or acceptance of the final combined revision.
 
 ### Combined acceptance evidence through local revision `d58ebd7`
 

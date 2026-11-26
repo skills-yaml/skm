@@ -21,7 +21,7 @@ Reconcile AC1 evidence and catalog with the reviewed, locally integrated bootstr
 
 ## Actions
 
-Claimed at d58ebd7. Recorded exact reviewed repair, local integration, bounded independent Linux smoke and native validation; preserved the applied 0.10.0 reservation.
+Claimed at d58ebd7. Recorded exact reviewed repair, local integration, bounded independent Linux smoke and native validation; preserved the applied 0.10.0 reservation. Independent review identified that spec re-registration cleared older board approvals; revised their description as historical integration evidence.
 
 ## Validation
 
