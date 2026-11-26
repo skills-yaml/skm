@@ -179,10 +179,7 @@ pub fn resolve_skill_dependency_closure(
     project_root: &Path,
 ) -> Result<Vec<SkillSpec>, Box<dyn std::error::Error>> {
     let entries = resolve_entries(skills, project_root)?;
-    Ok(entries
-        .iter()
-        .flat_map(|entry| entry.linkable_skills())
-        .collect())
+    Ok(linkable_entries(&entries))
 }
 
 /// Resolve manifest entries, expanding `kind: bundle` entries into their
@@ -208,44 +205,57 @@ where
     for skill in skills {
         skill.validate_kind()?;
         if skill.is_bundle() {
-            let members = resolve_bundle_members_with(skill, project_root, &resolve_source)?;
+            let direct = resolve_bundle_members_with(skill, project_root, &resolve_source)?;
+            let members =
+                resolve_skill_dependency_closure_with(&direct, project_root, &resolve_source)?;
             all_specs.extend(members.iter().cloned());
             entries.push(ResolvedEntry::Bundle {
                 spec: skill.clone(),
                 members,
             });
         } else {
-            all_specs.push(skill.clone());
+            let closure = resolve_skill_dependency_closure_with(
+                std::slice::from_ref(skill),
+                project_root,
+                &resolve_source,
+            )?;
+            all_specs.extend(closure);
             entries.push(ResolvedEntry::Skill(skill.clone()));
         }
     }
-    // Resolve the full dependency closure over all concrete skills (bundle
-    // members included) to validate and normalize versions.
+    // One global pass detects incompatible overlapping requests across entries.
     let resolved = resolve_skill_dependency_closure_with(&all_specs, project_root, resolve_source)?;
-    let resolved_map: BTreeMap<String, SkillSpec> = resolved
-        .into_iter()
-        .map(|spec| (spec.name.clone(), spec))
-        .collect();
-    // Rewrite bundle member lists to include the full resolved closure
-    // (direct members + transitive dependencies), normalized and validated.
+    let resolved_map: BTreeMap<_, _> = resolved.into_iter().map(|s| (s.name.clone(), s)).collect();
+    let mut included = BTreeSet::new();
     for entry in &mut entries {
-        if let ResolvedEntry::Bundle { members, .. } = entry {
-            let direct: BTreeSet<&str> = members.iter().map(|m| m.name.as_str()).collect();
-            let mut full_members: Vec<SkillSpec> = members
-                .iter()
-                .filter_map(|m| resolved_map.get(&m.name).cloned())
-                .collect();
-            // Add transitive dependencies that aren't direct members.
-            for (name, spec) in &resolved_map {
-                if !direct.contains(name.as_str()) {
-                    full_members.push(spec.clone());
-                }
+        match entry {
+            ResolvedEntry::Skill(spec) => {
+                *spec = resolved_map[&spec.name].clone();
+                included.insert(spec.name.clone());
             }
-            full_members.sort_by(|a, b| a.name.cmp(&b.name));
-            *members = full_members;
+            ResolvedEntry::Bundle { members, .. } => {
+                included.extend(members.iter().map(|s| s.name.clone()));
+            }
+        }
+    }
+    // Preserve standalone transitive dependencies without assigning them to a bundle.
+    for (name, spec) in resolved_map {
+        if !included.contains(&name) {
+            entries.push(ResolvedEntry::Skill(spec));
         }
     }
     Ok(entries)
+}
+
+/// Flatten entries into a deterministic set of linkable skills.
+pub fn linkable_entries(entries: &[ResolvedEntry]) -> Vec<SkillSpec> {
+    entries
+        .iter()
+        .flat_map(ResolvedEntry::linkable_skills)
+        .map(|skill| (skill.name.clone(), skill))
+        .collect::<BTreeMap<_, _>>()
+        .into_values()
+        .collect()
 }
 
 /// Expand a `kind: bundle` entry into its published member SkillSpecs by
@@ -273,7 +283,17 @@ where
         )
         .into());
     }
-    let source = bundle.source.as_deref().unwrap_or("default");
+    let source = bundle
+        .source
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .ok_or("Bundle requires an explicit registry source")?;
+    if !matches!(
+        bundle.version.as_deref(),
+        None | Some("latest") | Some("default")
+    ) {
+        return Err("Schema-2 bundles have no version history; use latest or default".into());
+    }
     let (namespace, id) = bundle
         .name
         .split_once('/')
@@ -281,8 +301,8 @@ where
     if id.contains('/') {
         return Err(format!("Bundle ID must be namespace/name: {}", bundle.name).into());
     }
-    // Resolve the registry root: project-local registry paths from the manifest
-    // take priority; fall back to the cache.
+    // Match the same cached registry used for package resolution. A local
+    // registry path must agree with the cache when both are present.
     let project_local_root = {
         let config_path = project_root.join("skills.yaml");
         let config: Result<crate::config::SkillsConfig, _> =
@@ -303,76 +323,26 @@ where
             })
             .flatten()
     };
-    let registry_root = project_local_root
-        .or_else(|| resolve_registry_path(source).filter(|path| path.join("skills").is_dir()))
-        .ok_or_else(|| {
-            format!(
-                "Could not resolve registry '{source}' for bundle '{}'",
-                bundle.name
-            )
-        })?;
-    let manifest_path = registry_root
-        .join("skills")
-        .join(namespace)
-        .join("manifest.yaml");
-    if !manifest_path.is_file() {
-        return Err(format!(
-            "Registry '{source}' has no namespace manifest for '{namespace}' at {}",
-            manifest_path.display()
-        )
-        .into());
+    let cache =
+        resolve_registry_path(source).ok_or_else(|| format!("Invalid registry name: {source}"))?;
+    let cached_root = cache.is_dir().then_some(cache);
+    if let (Some(local), Some(cached)) = (&project_local_root, &cached_root) {
+        let local = fs::canonicalize(local)?;
+        if local != fs::canonicalize(cached)?
+            && !local
+                .to_str()
+                .is_some_and(|location| crate::search::cache_matches(cached, location))
+        {
+            return Err(format!("Cached registry '{source}' has a different origin").into());
+        }
     }
-    let manifest_bytes = fs::read(&manifest_path)?;
-    if manifest_bytes.len() > 256 * 1024 {
-        return Err("namespace manifest exceeds 256 KiB".into());
-    }
-    #[derive(serde::Deserialize)]
-    struct NamespaceManifest {
-        #[allow(dead_code)]
-        schema_version: u32,
-        namespace: String,
-        packages: BTreeMap<String, String>,
-        #[serde(default)]
-        bundles: BTreeMap<String, BundleMembers>,
-    }
-    #[derive(serde::Deserialize)]
-    struct BundleMembers {
-        packages: Vec<String>,
-    }
-    let manifest: NamespaceManifest = serde_yaml::from_slice(&manifest_bytes)?;
-    if manifest.namespace != namespace {
-        return Err(format!(
-            "namespace manifest mismatch: expected '{namespace}', found '{}'",
-            manifest.namespace
-        )
-        .into());
-    }
-    let members = manifest.bundles.get(id).ok_or_else(|| {
+    let registry_root = cached_root.or(project_local_root).ok_or_else(|| {
         format!(
-            "Bundle '{}' is not published by registry '{source}'",
+            "Could not resolve registry '{source}' for bundle '{}'",
             bundle.name
         )
     })?;
-    if members.packages.is_empty() {
-        return Err(format!("Bundle '{}' has no members", bundle.name).into());
-    }
-    let mut specs = Vec::new();
-    for member in &members.packages {
-        let version = manifest.packages.get(member).ok_or_else(|| {
-            format!(
-                "Bundle member '{member}' is not a published package in namespace '{namespace}'"
-            )
-        })?;
-        specs.push(SkillSpec {
-            name: format!("{namespace}/{member}"),
-            version: Some(version.clone()),
-            source: Some(source.to_string()),
-            path: None,
-            kind: None,
-        });
-    }
-    let _ = project_root;
-    Ok(specs)
+    crate::bundle::published_members(&registry_root, namespace, id, source)
 }
 
 pub(crate) fn resolve_skill_dependency_closure_with<F>(

@@ -61,8 +61,34 @@ where
     };
 
     // Resolve and validate every target before confirmation or writes.
-    let targets =
-        linker::plan_skill_unlink(&skill, project_root, &config.agents, global, force, verbose)?;
+    let targets = if skill.is_bundle() {
+        let before = linker::resolve_skill_dependency_closure(&config.skills, project_root)?;
+        let remaining: Vec<_> = config
+            .skills
+            .iter()
+            .filter(|s| s.name != skill_name)
+            .cloned()
+            .collect();
+        let retained: std::collections::BTreeSet<_> =
+            linker::resolve_skill_dependency_closure(&remaining, project_root)?
+                .into_iter()
+                .map(|s| s.name)
+                .collect();
+        let mut targets = Vec::new();
+        for member in before.iter().filter(|s| !retained.contains(&s.name)) {
+            targets.extend(linker::plan_skill_unlink(
+                member,
+                project_root,
+                &config.agents,
+                global,
+                force,
+                verbose,
+            )?);
+        }
+        targets
+    } else {
+        linker::plan_skill_unlink(&skill, project_root, &config.agents, global, force, verbose)?
+    };
 
     if dry_run {
         eprintln!("Would remove skill '{}' from skills.yaml", skill_name);

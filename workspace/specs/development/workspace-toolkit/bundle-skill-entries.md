@@ -9,7 +9,10 @@ Primary feature: `workspace-toolkit`
 Status rationale: User-directed contract change on 2026-11-10. Registry-published
 bundles should be first-class entries in `skills.yaml` `skills:` without being
 unpacked into individual member pins. Implementation is active on the current
-branch; integration into `development` is pending.
+detached peer worktree; independent review and integration into `development` are pending.
+Schema-2 manifests do not define bundle versions or history. The current
+candidate rejects exact bundle selectors; reconciling that limitation with the
+specified exact-version behavior remains an open product decision.
 
 ## Problem and Evidence
 

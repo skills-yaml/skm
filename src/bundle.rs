@@ -183,23 +183,7 @@ fn prepare(project: &Path, bundle: &str, source: &str, write_cache: bool) -> Res
     } else {
         &root
     };
-    let manifest_path = root.join("skills").join(namespace).join("manifest.yaml");
-    for path in [root.join("skills"), root.join("skills").join(namespace)] {
-        let metadata = fs::symlink_metadata(&path)?;
-        if !metadata.is_dir() || metadata.file_type().is_symlink() {
-            return Err(format!(
-                "registry namespace must be a real directory: {}",
-                path.display()
-            )
-            .into());
-        }
-    }
-    let metadata = fs::symlink_metadata(&manifest_path)?;
-    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 256 * 1024 {
-        return Err("bundle manifest must be a regular file of at most 256 KiB".into());
-    }
-    let manifest: NamespaceManifest = serde_yaml::from_slice(&fs::read(&manifest_path)?)?;
-    validate_manifest(&manifest, namespace)?;
+    let manifest = read_manifest(&root, namespace)?;
     let members = manifest
         .bundles
         .get(id)
@@ -228,16 +212,32 @@ fn prepare(project: &Path, bundle: &str, source: &str, write_cache: bool) -> Res
     let mut existing_direct: Vec<SkillSpec> = Vec::new();
     for existing in &config.skills {
         if existing.is_bundle() {
-            if let Ok(members) = linker::resolve_bundle_members_pub(existing, project) {
-                existing_direct.extend(members);
-            }
+            existing_direct.extend(linker::resolve_bundle_members_pub(existing, project)?);
         } else {
             existing_direct.push(existing.clone());
         }
     }
+    for existing in &existing_direct {
+        if let Some(member) = closure.iter().find(|member| member.name == existing.name) {
+            let alias = matches!(
+                existing.version.as_deref(),
+                None | Some("latest") | Some("default")
+            );
+            if existing.path.is_some()
+                || existing.source.as_deref().unwrap_or("default")
+                    != member.source.as_deref().unwrap_or("default")
+                || (!alias && !same_pin(existing, member))
+            {
+                return Err(format!(
+                    "Existing skill '{}' has a different source or version",
+                    existing.name
+                )
+                .into());
+            }
+        }
+    }
     let existing_expanded =
-        linker::resolve_skill_dependency_closure_with(&existing_direct, project, resolve)
-            .unwrap_or(existing_direct);
+        linker::resolve_skill_dependency_closure_with(&existing_direct, project, resolve)?;
     let mut combined = existing_expanded.clone();
     combined.extend(closure.clone());
     linker::validate_unique_skill_targets(&combined)?;
@@ -327,10 +327,18 @@ fn prepare(project: &Path, bundle: &str, source: &str, write_cache: bool) -> Res
         }
     }
     // Check whether the bundle entry already exists as a kind: bundle entry.
-    let bundle_entry_exists = config
+    let bundle_entry_exists = if let Some(existing) = config
         .skills
         .iter()
-        .any(|existing| existing.name == bundle && existing.is_bundle());
+        .find(|existing| existing.name == bundle)
+    {
+        if !existing.is_bundle() || existing.source.as_deref() != Some(source) {
+            return Err(format!("Existing entry '{bundle}' has a different kind or source").into());
+        }
+        true
+    } else {
+        false
+    };
     // If the bundle entry already exists, this is an idempotent re-add as long
     // as no member pins conflict.
     let bundle_addition = !bundle_entry_exists;
@@ -390,6 +398,50 @@ fn prepare(project: &Path, bundle: &str, source: &str, write_cache: bool) -> Res
         bundle_entry_added: bundle_addition,
         _registry_temp: registry_temp,
     })
+}
+
+fn read_manifest(root: &Path, namespace: &str) -> Result<NamespaceManifest> {
+    let manifest_path = root.join("skills").join(namespace).join("manifest.yaml");
+    for path in [root.join("skills"), root.join("skills").join(namespace)] {
+        let metadata = fs::symlink_metadata(&path)?;
+        if !metadata.is_dir() || metadata.file_type().is_symlink() {
+            return Err(format!(
+                "registry namespace must be a real directory: {}",
+                path.display()
+            )
+            .into());
+        }
+    }
+    let metadata = fs::symlink_metadata(&manifest_path)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 256 * 1024 {
+        return Err("bundle manifest must be a regular file of at most 256 KiB".into());
+    }
+    let manifest: NamespaceManifest = serde_yaml::from_slice(&fs::read(&manifest_path)?)?;
+    validate_manifest(&manifest, namespace)?;
+    Ok(manifest)
+}
+
+pub(crate) fn published_members(
+    root: &Path,
+    namespace: &str,
+    id: &str,
+    source: &str,
+) -> Result<Vec<SkillSpec>> {
+    let manifest = read_manifest(root, namespace)?;
+    let bundle = manifest.bundles.get(id).ok_or_else(|| {
+        format!("Bundle '{namespace}/{id}' is not published by registry '{source}'")
+    })?;
+    Ok(bundle
+        .packages
+        .iter()
+        .map(|member| SkillSpec {
+            name: format!("{namespace}/{member}"),
+            version: Some(manifest.packages[member].clone()),
+            source: Some(source.to_string()),
+            path: None,
+            kind: None,
+        })
+        .collect())
 }
 
 fn validate_manifest(manifest: &NamespaceManifest, namespace: &str) -> Result<()> {
@@ -1297,5 +1349,179 @@ mod tests {
             }
         }
         assert!(fixture.plan().unwrap().links.is_empty());
+    }
+    #[cfg(unix)]
+    #[test]
+    #[serial]
+    fn bundle_lifecycle_tracks_drift_and_preserves_shared_members() {
+        let fixture = Fixture::new();
+        let home = tempfile::tempdir().unwrap();
+        let _guard = HomeGuard::set(home.path());
+        let project = fixture.project.path();
+        let config_path = project.join("skills.yaml");
+        let prepared = prepare(project, "acme/starter", "local", true).unwrap();
+        apply(project, &prepared).unwrap();
+        let config = SkillsConfig::load_from_file(&config_path).unwrap();
+        crate::installer::prepare(&config, project, false, None)
+            .unwrap()
+            .apply()
+            .unwrap();
+        crate::installer::verify_lock(&config, project).unwrap();
+        let original = fs::read(&config_path).unwrap();
+        let lock: serde_yaml::Value =
+            serde_yaml::from_slice(&fs::read(project.join("skills.lock.yaml")).unwrap()).unwrap();
+        assert_eq!(
+            lock["bundles"][0]["members"].as_sequence().unwrap().len(),
+            2
+        );
+        fixture.skill("beta", "1.0.0", None);
+        fixture.manifest("schema_version: 2\nnamespace: acme\npackages:\n  alpha: 1.0.0\n  helper: 2.0.0\n  beta: 1.0.0\nbundles:\n  starter:\n    packages: [alpha, beta]\n");
+        assert!(crate::installer::verify_lock(&config, project).is_err());
+        let changes = crate::version_manager::bundle_changes(&config, project).unwrap();
+        assert!(changes[0]
+            .1
+            .iter()
+            .any(|s| s.contains("added acme/beta@1.0.0")));
+        crate::version_manager::upgrade_all(&config_path, false, false, true, false).unwrap();
+        assert_eq!(fs::read(&config_path).unwrap(), original);
+        assert!(project.join(".agents/skills/beta").is_symlink());
+        crate::installer::verify_lock(&config, project).unwrap();
+        fixture.skill("beta", "1.1.0", None);
+        fixture.manifest("schema_version: 2\nnamespace: acme\npackages:\n  alpha: 1.0.0\n  helper: 2.0.0\n  beta: 1.1.0\nbundles:\n  starter:\n    packages: [alpha, beta]\n");
+        assert!(crate::installer::verify_lock(&config, project).is_err());
+        assert!(
+            crate::version_manager::bundle_changes(&config, project).unwrap()[0]
+                .1
+                .iter()
+                .any(|s| s.contains("acme/beta: 1.0.0 -> 1.1.0"))
+        );
+        crate::version_manager::upgrade_all(&config_path, false, false, true, false).unwrap();
+        crate::installer::verify_lock(&config, project).unwrap();
+        assert!(crate::installer::prepare(&config, project, true, None).is_err());
+        let mut shared = config.clone();
+        shared.skills.push(SkillSpec {
+            name: "acme/helper".into(),
+            version: Some("2.0.0".into()),
+            source: Some("local".into()),
+            path: None,
+            kind: None,
+        });
+        shared.save_to_file(&config_path).unwrap();
+        crate::remover::remove_skill("acme/starter", project, false, true, false, false, false)
+            .unwrap();
+        assert!(project.join(".agents/skills/helper").is_symlink());
+        assert!(!project.join(".agents/skills/alpha").exists());
+        assert!(!project.join(".agents/skills/beta").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[serial]
+    fn bundles_keep_independent_closures_and_reject_invalid_manifests() {
+        let fixture = Fixture::new();
+        let home = tempfile::tempdir().unwrap();
+        let _guard = HomeGuard::set(home.path());
+        fixture.skill("beta", "1.0.0", None);
+        fixture.manifest("schema_version: 2\nnamespace: acme\npackages:\n  alpha: 1.0.0\n  helper: 2.0.0\n  beta: 1.0.0\nbundles:\n  starter:\n    packages: [alpha]\n  other:\n    packages: [beta]\n");
+        fixture.write_config("skills:\n  - {name: acme/starter, kind: bundle, source: local}\n  - {name: acme/other, kind: bundle, source: local}\n  - {name: acme/helper, version: 2.0.0, source: local}\n");
+        cached_local_registry(
+            "local",
+            &fs::canonicalize(fixture.registry.path()).unwrap(),
+            fixture.registry.path().to_str().unwrap(),
+        )
+        .unwrap();
+        let config =
+            SkillsConfig::load_from_file(fixture.project.path().join("skills.yaml")).unwrap();
+        let entries = linker::resolve_entries(&config.skills, fixture.project.path()).unwrap();
+        let members = |index| match &entries[index] {
+            linker::ResolvedEntry::Bundle { members, .. } => {
+                members.iter().map(|s| s.name.as_str()).collect::<Vec<_>>()
+            }
+            _ => panic!("expected bundle"),
+        };
+        assert_eq!(members(0), ["acme/alpha", "acme/helper"]);
+        assert_eq!(members(1), ["acme/beta"]);
+        assert_eq!(linker::linkable_entries(&entries).len(), 3);
+        let alpha = SkillSpec {
+            name: "acme/alpha".into(),
+            version: Some("1.0.0".into()),
+            source: Some("local".into()),
+            path: None,
+            kind: None,
+        };
+        let skills_only =
+            linker::resolve_skill_dependency_closure(&[alpha], fixture.project.path()).unwrap();
+        assert_eq!(
+            skills_only
+                .iter()
+                .map(|s| s.name.as_str())
+                .collect::<Vec<_>>(),
+            ["acme/alpha", "acme/helper"]
+        );
+        fixture.skill("helper", "3.0.0", None);
+        let mut conflicting = config.skills.clone();
+        conflicting[2].version = Some("3.0.0".into());
+        assert!(linker::resolve_entries(&conflicting, fixture.project.path()).is_err());
+        let mut pinned = config.skills.clone();
+        pinned[0].version = Some("1.0.0".into());
+        assert!(linker::resolve_entries(&pinned, fixture.project.path())
+            .unwrap_err()
+            .to_string()
+            .contains("no version history"));
+        fixture.manifest("schema_version: 1\nnamespace: acme\npackages: {alpha: 1.0.0}\nbundles: {starter: {packages: [alpha]}}\n");
+        assert!(
+            linker::resolve_entries(&config.skills, fixture.project.path())
+                .unwrap_err()
+                .to_string()
+                .contains("schema-2")
+        );
+        fixture.manifest("schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0}\nbundles: {starter: {packages: [alpha, alpha]}}\n");
+        assert!(
+            linker::resolve_entries(&config.skills, fixture.project.path())
+                .unwrap_err()
+                .to_string()
+                .contains("duplicate")
+        );
+    }
+    #[cfg(unix)]
+    #[test]
+    #[serial]
+    fn upgrade_removes_obsolete_links_and_rolls_back_on_failure() {
+        let fixture = Fixture::new();
+        let home = tempfile::tempdir().unwrap();
+        let _guard = HomeGuard::set(home.path());
+        let project = fixture.project.path();
+        let config_path = project.join("skills.yaml");
+        let prepared = prepare(project, "acme/starter", "local", true).unwrap();
+        apply(project, &prepared).unwrap();
+        let mut config = SkillsConfig::load_from_file(&config_path).unwrap();
+        config.skills.push(SkillSpec {
+            name: "acme/helper".into(),
+            version: Some("2.0.0".into()),
+            source: Some("local".into()),
+            path: None,
+            kind: None,
+        });
+        config.save_to_file(&config_path).unwrap();
+        crate::installer::prepare(&config, project, false, None)
+            .unwrap()
+            .apply()
+            .unwrap();
+        let old_lock = fs::read(project.join("skills.lock.yaml")).unwrap();
+        fixture.skill("beta", "1.0.0", None);
+        fixture.manifest("schema_version: 2\nnamespace: acme\npackages:\n  alpha: 1.0.0\n  helper: 2.0.0\n  beta: 1.0.0\nbundles:\n  starter:\n    packages: [beta]\n");
+        let plan = crate::installer::prepare(&config, project, false, None).unwrap();
+        assert!(plan.apply_with_failure(Some(1)).is_err());
+        assert!(project.join(".agents/skills/alpha").is_symlink());
+        assert!(!project.join(".agents/skills/beta").exists());
+        assert_eq!(
+            fs::read(project.join("skills.lock.yaml")).unwrap(),
+            old_lock
+        );
+        crate::version_manager::upgrade_all(&config_path, false, false, true, false).unwrap();
+        assert!(!project.join(".agents/skills/alpha").exists());
+        assert!(project.join(".agents/skills/beta").is_symlink());
+        assert!(project.join(".agents/skills/helper").is_symlink());
+        crate::installer::verify_lock(&config, project).unwrap();
     }
 }

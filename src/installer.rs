@@ -1,6 +1,6 @@
-use crate::config::{SkillSpec, SkillsConfig};
+use crate::config::SkillsConfig;
 use crate::linker;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -19,7 +19,7 @@ struct SkillsLock {
     outputs: Vec<LockedOutput>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct LockedBundle {
     name: String,
     version: String,
@@ -27,7 +27,7 @@ struct LockedBundle {
     members: Vec<LockedSkill>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct LockedSkill {
     name: String,
     version: String,
@@ -57,6 +57,11 @@ struct PlanAction {
     target: Option<String>,
 }
 
+struct RemoveAction {
+    path: PathBuf,
+    previous: PathBuf,
+}
+
 struct LinkAction {
     path: PathBuf,
     source: PathBuf,
@@ -67,6 +72,7 @@ struct LinkAction {
 pub struct Prepared {
     public: InstallPlan,
     links: Vec<LinkAction>,
+    removals: Vec<RemoveAction>,
     lock: Option<(PathBuf, Option<Vec<u8>>, Vec<u8>)>,
     manifest: Option<(PathBuf, Vec<u8>, Vec<u8>)>,
     project: PathBuf,
@@ -80,11 +86,11 @@ pub fn prepare(
     manifest: Option<(Vec<u8>, Vec<u8>)>,
 ) -> Result<Prepared> {
     linker::validate_agents(&config.agents)?;
+    if global && config.skills.iter().any(|skill| skill.is_bundle()) {
+        return Err("published bundles are project-only".into());
+    }
     let entries = linker::resolve_entries(&config.skills, project)?;
-    let resolved: Vec<SkillSpec> = entries
-        .iter()
-        .flat_map(|entry| entry.linkable_skills())
-        .collect();
+    let resolved = linker::linkable_entries(&entries);
     linker::validate_unique_skill_targets(&resolved)?;
     if !resolved.is_empty() {
         linker::require_skill_targets(&config.agents, project, global)?;
@@ -100,6 +106,7 @@ pub fn prepare(
         actions: Vec::new(),
     };
     let mut links = Vec::new();
+    let mut removals = Vec::new();
     let mut outputs = Vec::new();
     let mut locked_skills = Vec::new();
     let mut locked_bundles = Vec::new();
@@ -191,6 +198,83 @@ pub fn prepare(
                 return Err("skills.lock.yaml is not a skills-only lockfile".into());
             }
         }
+        // Only remove previously locked bundle members no longer required by
+        // any current entry. Derive targets and require the old registry link.
+        if let Some(bytes) = &existing {
+            let previous: serde_yaml::Value = serde_yaml::from_slice(bytes)?;
+            if let Some(old_bundles) = previous.get("bundles") {
+                let old_bundles: Vec<LockedBundle> = serde_yaml::from_value(old_bundles.clone())?;
+                let mut planned = std::collections::BTreeSet::new();
+                for old in old_bundles {
+                    if !locked_bundles
+                        .iter()
+                        .any(|current| current.name == old.name && current.source == old.source)
+                    {
+                        continue;
+                    }
+                    for member in old.members {
+                        if resolved.iter().any(|skill| skill.name == member.name) {
+                            continue;
+                        }
+                        if member.source != old.source {
+                            return Err("Invalid source for bundle member in lockfile".into());
+                        }
+                        if member.path.is_some() {
+                            return Err("Invalid local bundle member in lockfile".into());
+                        }
+                        linker::validate_exact_version(&member.version)?;
+                        let registry = linker::resolve_registry_path(&member.source)
+                            .ok_or("Invalid registry in bundle lock")?;
+                        let expected = registry
+                            .join("skills")
+                            .join(linker::validated_skill_path(&member.name)?)
+                            .join(format!("v{}", member.version.trim_start_matches('v')));
+                        for target in &targets {
+                            let path = linker::get_skill_target_path(&target.path, &member.name)?;
+                            if outputs
+                                .iter()
+                                .any(|output: &LockedOutput| root.join(&output.path) == path)
+                                || !planned.insert(path.clone())
+                            {
+                                continue;
+                            }
+                            validate_parent(&root, &path)?;
+                            let metadata = match fs::symlink_metadata(&path) {
+                                Ok(metadata) => metadata,
+                                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                                Err(error) => return Err(error.into()),
+                            };
+                            if !metadata.file_type().is_symlink() {
+                                return Err(format!(
+                                    "Refusing to remove real path: {}",
+                                    path.display()
+                                )
+                                .into());
+                            }
+                            let previous = fs::read_link(&path)?;
+                            let matches = if expected.exists() {
+                                linker::symlink_points_to(&path, &expected)?
+                            } else {
+                                previous == expected
+                            };
+                            if !matches {
+                                return Err(format!(
+                                    "Refusing to remove unexpected bundle link: {}",
+                                    path.display()
+                                )
+                                .into());
+                            }
+                            public.actions.push(PlanAction {
+                                action: "remove",
+                                path: path.display().to_string(),
+                                target: None,
+                            });
+                            removals.push(RemoveAction { path, previous });
+                        }
+                    }
+                }
+            }
+        }
         let mut desired = serde_yaml::to_value(SkillsLock {
             schema_version: 1,
             kind: "skills",
@@ -205,7 +289,7 @@ pub fn prepare(
             if let Some(metadata) = previous.as_mapping() {
                 let fields = desired.as_mapping_mut().unwrap();
                 for (key, value) in metadata {
-                    if !fields.contains_key(key) {
+                    if key.as_str() != Some("bundles") && !fields.contains_key(key) {
                         fields.insert(key.clone(), value.clone());
                     }
                 }
@@ -246,6 +330,7 @@ pub fn prepare(
     Ok(Prepared {
         public,
         links,
+        removals,
         lock,
         manifest,
         project: project.to_path_buf(),
@@ -336,7 +421,7 @@ impl Prepared {
         self.apply_with_failure(None)
     }
 
-    fn apply_with_failure(&self, fail_after_link: Option<usize>) -> Result<()> {
+    pub(crate) fn apply_with_failure(&self, fail_after_link: Option<usize>) -> Result<()> {
         if self.public.actions.is_empty() {
             return Ok(());
         }
@@ -354,10 +439,26 @@ impl Prepared {
             .prefix(".skm-install-")
             .tempdir_in(&self.project)?;
         let mut completed: Vec<&LinkAction> = Vec::new();
+        let mut removed: Vec<&RemoveAction> = Vec::new();
         let mut created_directories = Vec::new();
         let mut manifest_moved = false;
         let mut lock_moved = false;
         let result = (|| -> Result<()> {
+            for removal in &self.removals {
+                validate_parent(&self.root, &removal.path)?;
+                let metadata = fs::symlink_metadata(&removal.path)?;
+                if !metadata.file_type().is_symlink()
+                    || fs::read_link(&removal.path)? != removal.previous
+                {
+                    return Err(format!(
+                        "Bundle link changed after planning: {}",
+                        removal.path.display()
+                    )
+                    .into());
+                }
+                fs::remove_file(&removal.path)?;
+                removed.push(removal);
+            }
             for (index, link) in self.links.iter().enumerate() {
                 validate_parent(&self.root, &link.path)?;
                 if fs::canonicalize(&link.source)? != link.canonical_source {
@@ -465,6 +566,14 @@ impl Prepared {
                             link.path.display()
                         ));
                     }
+                }
+            }
+            for removal in removed.into_iter().rev() {
+                if let Err(restore) = linker::symlink_dir(&removal.previous, &removal.path) {
+                    rollback_errors.push(format!(
+                        "could not restore link {}: {restore}",
+                        removal.path.display()
+                    ));
                 }
             }
             for directory in created_directories.into_iter().rev() {
