@@ -6,14 +6,12 @@ State: development
 
 Primary feature: `workspace-toolkit`
 
-Status rationale: The bundle entry implementation and additive schema-2 exact
-release history are locally integrated and independently reviewed: source
-`ec71776` → peer integration `bf319e7`, and source `69578de` → `f9d16e6`
-(the board records `bundle-version-review` approval of `69578de`). Both are
-included in combined peer revision `6e76f98`. This local integration is not a
-remote `development` merge. Combined acceptance, final candidate review and
-shared-test delivery remain pending. The separate default registry publisher's
-history has not been updated; exact pins require published history.
+Status rationale: Bundle entries, exact release history and reviewed final
+review repairs are integrated in local peer revision `04cd30e`. This is not a
+remote `development` merge; final combined review, acceptance and shared-test
+delivery remain pending. The separate default registry publisher's history has
+not been updated; exact pins require published history. The applied shared
+0.10.0 reservation is unchanged.
 
 ## Problem and Evidence
 
@@ -243,6 +241,22 @@ first-class `kind: bundle` entries in skills.yaml, resolved at install time,
 with the lockfile tracking both bundle and members.
 
 The exact published-version decision is recorded in decisions.md and changelog.md on 2026-11-26; combined acceptance and remote delivery remain pending.
+
+## Local final-review evidence
+
+Reviewed `8e639d1252f28f76ef038882e8ccbebbe72521b8`, integrated at `4a8523e`,
+fixes stale parsed manifest snapshots in named and aggregate bundle upgrades;
+`bundle_upgrades_validate_the_parsed_manifest_before_writes` covers concurrent
+edits, previews and unchanged success. Reviewed `489d5ac816165756b944efaa881f3fb45b4826f1`,
+integrated at `bb4848f`, prevents cancellation or unchanged standalone pins
+from rewriting an existing project lock; `tests/bundle_upgrade_cancellation.rs`
+covers cancellation and successful synchronization. Reviewed
+`33e56f39040e084ad003f8900838f62e8305f1d3`, integrated at `04cd30e`, rechecks
+project bundle removal manifest, lock, link snapshots and target parents after
+confirmation; `tests/bundle_maintenance.rs` exercises concurrent changes and
+path substitutions. The respective focused bundle and aggregate gates passed;
+local peer integration runs native gates. Final combined-candidate review and
+verification remain required.
 
 ## Validation Gates
 
