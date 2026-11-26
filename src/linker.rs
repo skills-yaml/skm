@@ -1,9 +1,300 @@
 use crate::config::SkillSpec;
-use serde::Deserialize;
+use serde::de::{MapAccess, Visitor};
+use serde::{Deserialize, Deserializer};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
+
+// Root publisher metadata is opaque; installation fields retain typed parsing.
+#[derive(Debug, Deserialize)]
+struct NamespaceManifest {
+    schema_version: u32,
+    namespace: String,
+    #[serde(default)]
+    toolkit_version: Option<String>,
+    #[serde(default)]
+    source_repository: Option<String>,
+    #[serde(default)]
+    source_revision: Option<String>,
+    #[serde(default)]
+    minimum_skm_version: Option<String>,
+    #[serde(default)]
+    skm_adapter_compatibility: Option<String>,
+    packages: BTreeMap<String, String>,
+    #[serde(default)]
+    bundles: BTreeMap<String, BundleMembers>,
+    #[serde(default)]
+    bundle_versions: UniqueMap<UniqueMap<UniqueMap<String>>>,
+}
+
+// BTreeMap's ordinary deserializer accepts duplicate YAML keys. Release history
+// is an integrity boundary, so reject duplicates at every nested map level.
+#[derive(Debug)]
+struct UniqueMap<V>(BTreeMap<String, V>);
+
+impl<V> Default for UniqueMap<V> {
+    fn default() -> Self {
+        Self(BTreeMap::new())
+    }
+}
+
+impl<V> std::ops::Deref for UniqueMap<V> {
+    type Target = BTreeMap<String, V>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'de, V: Deserialize<'de>> Deserialize<'de> for UniqueMap<V> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct UniqueVisitor<V>(std::marker::PhantomData<V>);
+        impl<'de, V: Deserialize<'de>> Visitor<'de> for UniqueVisitor<V> {
+            type Value = UniqueMap<V>;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a mapping with unique keys")
+            }
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                let mut values = BTreeMap::new();
+                while let Some((key, value)) = map.next_entry::<String, V>()? {
+                    if values.insert(key.clone(), value).is_some() {
+                        return Err(serde::de::Error::custom(format!(
+                            "duplicate bundle history key: {key}"
+                        )));
+                    }
+                }
+                Ok(UniqueMap(values))
+            }
+        }
+        deserializer.deserialize_map(UniqueVisitor(std::marker::PhantomData))
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BundleMembers {
+    packages: Vec<String>,
+}
+
+pub(crate) const MAX_NAMESPACE_MANIFEST_SIZE: u64 = 8 * 1024 * 1024;
+
+fn read_manifest(
+    root: &Path,
+    namespace: &str,
+) -> Result<NamespaceManifest, Box<dyn std::error::Error>> {
+    let manifest_path = root.join("skills").join(namespace).join("manifest.yaml");
+    for path in [root.join("skills"), root.join("skills").join(namespace)] {
+        let metadata = fs::symlink_metadata(&path)?;
+        if !metadata.is_dir() || metadata.file_type().is_symlink() {
+            return Err(format!(
+                "registry namespace must be a real directory: {}",
+                path.display()
+            )
+            .into());
+        }
+    }
+    let metadata = fs::symlink_metadata(&manifest_path)?;
+    if !metadata.is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.len() > MAX_NAMESPACE_MANIFEST_SIZE
+    {
+        return Err("bundle manifest must be a regular file of at most 8 MiB".into());
+    }
+    let manifest: NamespaceManifest = serde_yaml::from_slice(&fs::read(&manifest_path)?)?;
+    validate_manifest(&manifest, namespace)?;
+    Ok(manifest)
+}
+
+pub(crate) fn published_members(
+    root: &Path,
+    namespace: &str,
+    id: &str,
+    source: &str,
+    selector: Option<&str>,
+) -> Result<(Option<String>, Vec<SkillSpec>), Box<dyn std::error::Error>> {
+    let manifest = read_manifest(root, namespace)?;
+    let bundle = manifest.bundles.get(id).ok_or_else(|| {
+        format!("Bundle '{namespace}/{id}' is not published by registry '{source}'")
+    })?;
+    let history = manifest.bundle_versions.get(id);
+    let alias = matches!(selector, None | Some("latest") | Some("default"));
+    let resolved = if alias {
+        history
+            .and_then(|history| {
+                history
+                    .keys()
+                    .max_by_key(|v| semver_parts(v).expect("validated release"))
+            })
+            .cloned()
+    } else {
+        let selected = selector.expect("exact selector");
+        validate_bundle_release(selected)?;
+        let history = history.ok_or_else(|| format!("Bundle '{namespace}/{id}' has no published version history; use latest or default or ask the publisher to provide bundle_versions"))?;
+        if !history.contains_key(selected) {
+            return Err(
+                format!("Bundle '{namespace}/{id}' has no published release {selected}").into(),
+            );
+        }
+        Some(selected.to_string())
+    };
+    let members: BTreeMap<String, String> = match &resolved {
+        Some(version) => history.expect("resolved history")[version].0.clone(),
+        None => bundle
+            .packages
+            .iter()
+            .map(|member| (member.clone(), manifest.packages[member].clone()))
+            .collect(),
+    };
+    Ok((
+        resolved,
+        members
+            .into_iter()
+            .map(|(member, version)| SkillSpec {
+                name: format!("{namespace}/{member}"),
+                version: Some(version),
+                source: Some(source.to_string()),
+                path: None,
+                kind: None,
+            })
+            .collect(),
+    ))
+}
+
+fn validate_bundle_release(version: &str) -> Result<(), Box<dyn std::error::Error>> {
+    validate_exact_version(version)?;
+    if version.starts_with('v') {
+        return Err(format!(
+            "Bundle release must be MAJOR.MINOR.PATCH without a v prefix: {version}"
+        )
+        .into());
+    }
+    semver_parts(version)?;
+    Ok(())
+}
+
+fn validate_manifest(
+    manifest: &NamespaceManifest,
+    namespace: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if manifest.schema_version != 2 || manifest.namespace != namespace {
+        return Err("bundle requires a schema-2 manifest matching its namespace".into());
+    }
+    if manifest.packages.is_empty() || manifest.bundles.is_empty() {
+        return Err("bundle manifest must publish packages and bundles".into());
+    }
+    for (name, version) in &manifest.packages {
+        valid_id(name)?;
+        validate_skill_name(&format!("{namespace}/{name}"))?;
+        validate_exact_version(version)?;
+    }
+    for (id, bundle) in &manifest.bundles {
+        valid_id(id)?;
+        if bundle.packages.is_empty() {
+            return Err(format!("Bundle '{id}' is empty").into());
+        }
+        let members: BTreeSet<_> = bundle.packages.iter().collect();
+        if members.len() != bundle.packages.len()
+            || bundle
+                .packages
+                .iter()
+                .any(|name| !manifest.packages.contains_key(name))
+        {
+            return Err(format!("Bundle '{id}' has duplicate or unknown members").into());
+        }
+    }
+    for (id, history) in &manifest.bundle_versions.0 {
+        valid_id(id)?;
+        let bundle = manifest
+            .bundles
+            .get(id)
+            .ok_or_else(|| format!("Bundle history '{id}' has no current bundle"))?;
+        if history.is_empty() {
+            return Err(format!("Bundle history '{id}' is empty").into());
+        }
+        for (release, members) in &history.0 {
+            validate_bundle_release(release)?;
+            if members.is_empty() {
+                return Err(format!("Bundle '{id}' release {release} is empty").into());
+            }
+            for (member, version) in &members.0 {
+                valid_id(member)?;
+                validate_skill_name(&format!("{namespace}/{member}"))?;
+                validate_exact_version(version)?;
+            }
+        }
+        let latest = history
+            .keys()
+            .max_by_key(|v| semver_parts(v).expect("validated release"))
+            .expect("nonempty history");
+        let projection: BTreeMap<_, _> = bundle
+            .packages
+            .iter()
+            .map(|name| (name.clone(), manifest.packages[name].clone()))
+            .collect();
+        if history[latest].0 != projection {
+            return Err(format!(
+                "Bundle '{id}' latest release {latest} disagrees with bundles/packages projection"
+            )
+            .into());
+        }
+    }
+    if let Some(version) = &manifest.toolkit_version {
+        validate_exact_version(version)?;
+    }
+    if let Some(minimum) = &manifest.minimum_skm_version {
+        validate_exact_version(minimum)?;
+        if semver_parts(minimum)? > semver_parts(env!("CARGO_PKG_VERSION"))? {
+            return Err(format!("Bundle requires SKM {minimum} or newer").into());
+        }
+    }
+    if let Some(adapter) = &manifest.skm_adapter_compatibility {
+        if adapter != "2.x" {
+            return Err(format!("unsupported SKM adapter compatibility: {adapter}").into());
+        }
+    }
+    if manifest
+        .source_repository
+        .as_ref()
+        .is_some_and(|source| source.trim().is_empty())
+    {
+        return Err("source_repository cannot be empty".into());
+    }
+    if let Some(revision) = &manifest.source_revision {
+        if revision.len() != 40
+            || !revision
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(
+                "source_revision must be a 40-character lowercase hexadecimal commit".into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn semver_parts(version: &str) -> Result<(u64, u64, u64), Box<dyn std::error::Error>> {
+    let mut parts = version.strip_prefix('v').unwrap_or(version).split('.');
+    Ok((
+        parts.next().ok_or("missing major version")?.parse()?,
+        parts.next().ok_or("missing minor version")?.parse()?,
+        parts.next().ok_or("missing patch version")?.parse()?,
+    ))
+}
+
+fn valid_id(id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    if id.is_empty()
+        || id.starts_with('-')
+        || id.ends_with('-')
+        || id.contains("--")
+        || !id
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    {
+        return Err(format!("Invalid bundle or package ID: {id}").into());
+    }
+    Ok(())
+}
 
 const VERSION_METADATA_KEY: &str = "skm-version";
 const DEPENDENCIES_METADATA_KEY: &str = "skm-dependencies";
@@ -52,6 +343,28 @@ pub struct UnlinkResult {
 pub struct AgentSkillTarget {
     pub path: PathBuf,
     pub agents: Vec<String>,
+}
+
+/// A resolved manifest entry. Bundle entries carry their expanded members so
+/// the lockfile can record both the bundle declaration and its resolution.
+#[derive(Debug, Clone)]
+pub enum ResolvedEntry {
+    Skill(SkillSpec),
+    Bundle {
+        spec: SkillSpec,
+        members: Vec<SkillSpec>,
+        resolved_version: Option<String>,
+    },
+}
+
+impl ResolvedEntry {
+    /// Flatten to the concrete skill specs that need linking.
+    pub fn linkable_skills(&self) -> Vec<SkillSpec> {
+        match self {
+            ResolvedEntry::Skill(spec) => vec![spec.clone()],
+            ResolvedEntry::Bundle { members, .. } => members.clone(),
+        }
+    }
 }
 
 pub const SUPPORTED_AGENTS: &[&str] = &[
@@ -157,7 +470,140 @@ pub fn resolve_skill_dependency_closure(
     skills: &[SkillSpec],
     project_root: &Path,
 ) -> Result<Vec<SkillSpec>, Box<dyn std::error::Error>> {
-    resolve_skill_dependency_closure_with(skills, project_root, resolve_skill_source_dir)
+    let entries = resolve_entries(skills, project_root)?;
+    Ok(linkable_entries(&entries))
+}
+
+/// Resolve manifest entries, expanding `kind: bundle` entries into their
+/// published members plus transitive dependencies. Returns one ResolvedEntry
+/// per manifest entry; bundle entries carry their resolved members.
+pub fn resolve_entries(
+    skills: &[SkillSpec],
+    project_root: &Path,
+) -> Result<Vec<ResolvedEntry>, Box<dyn std::error::Error>> {
+    resolve_entries_with(skills, project_root, resolve_skill_source_dir)
+}
+
+pub(crate) fn resolve_entries_with<F>(
+    skills: &[SkillSpec],
+    project_root: &Path,
+    resolve_source: F,
+) -> Result<Vec<ResolvedEntry>, Box<dyn std::error::Error>>
+where
+    F: Fn(&SkillSpec, &Path) -> Result<PathBuf, Box<dyn std::error::Error>> + Clone,
+{
+    let mut entries = Vec::new();
+    let mut all_specs = Vec::new();
+    for skill in skills {
+        skill.validate_kind()?;
+        if skill.is_bundle() {
+            let (resolved_version, direct) =
+                resolve_bundle_members_with(skill, project_root, &resolve_source)?;
+            let members =
+                resolve_skill_dependency_closure_with(&direct, project_root, &resolve_source)?;
+            all_specs.extend(members.iter().cloned());
+            entries.push(ResolvedEntry::Bundle {
+                spec: skill.clone(),
+                members,
+                resolved_version,
+            });
+        } else {
+            let closure = resolve_skill_dependency_closure_with(
+                std::slice::from_ref(skill),
+                project_root,
+                &resolve_source,
+            )?;
+            all_specs.extend(closure);
+            entries.push(ResolvedEntry::Skill(skill.clone()));
+        }
+    }
+    // One global pass detects incompatible overlapping requests across entries.
+    let resolved = resolve_skill_dependency_closure_with(&all_specs, project_root, resolve_source)?;
+    let resolved_map: BTreeMap<_, _> = resolved.into_iter().map(|s| (s.name.clone(), s)).collect();
+    let mut included = BTreeSet::new();
+    for entry in &mut entries {
+        match entry {
+            ResolvedEntry::Skill(spec) => {
+                *spec = resolved_map[&spec.name].clone();
+                included.insert(spec.name.clone());
+            }
+            ResolvedEntry::Bundle { members, .. } => {
+                included.extend(members.iter().map(|s| s.name.clone()));
+            }
+        }
+    }
+    // Preserve standalone transitive dependencies without assigning them to a bundle.
+    for (name, spec) in resolved_map {
+        if !included.contains(&name) {
+            entries.push(ResolvedEntry::Skill(spec));
+        }
+    }
+    Ok(entries)
+}
+
+/// Flatten entries into a deterministic set of linkable skills.
+pub fn linkable_entries(entries: &[ResolvedEntry]) -> Vec<SkillSpec> {
+    entries
+        .iter()
+        .flat_map(ResolvedEntry::linkable_skills)
+        .map(|skill| (skill.name.clone(), skill))
+        .collect::<BTreeMap<_, _>>()
+        .into_values()
+        .collect()
+}
+
+/// Expand a `kind: bundle` entry into its published member SkillSpecs by
+/// reading the registry namespace manifest.
+fn resolve_bundle_members_with<F>(
+    bundle: &SkillSpec,
+    project_root: &Path,
+    _resolve_source: F,
+) -> Result<(Option<String>, Vec<SkillSpec>), Box<dyn std::error::Error>>
+where
+    F: Fn(&SkillSpec, &Path) -> Result<PathBuf, Box<dyn std::error::Error>>,
+{
+    validate_skill_name(&bundle.name)?;
+    if bundle.path.is_some() {
+        return Err(format!(
+            "Bundle '{}' cannot use a local path; bundles are registry-only",
+            bundle.name
+        )
+        .into());
+    }
+    let source = bundle
+        .source
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .ok_or("Bundle requires an explicit registry source")?;
+    let (namespace, id) = bundle
+        .name
+        .split_once('/')
+        .ok_or_else(|| format!("Bundle ID must be namespace/name: {}", bundle.name))?;
+    if id.contains('/') {
+        return Err(format!("Bundle ID must be namespace/name: {}", bundle.name).into());
+    }
+    let mut registry_root = effective_registry_path(source, project_root)?;
+    if !registry_root.is_dir() {
+        let location = effective_registry_location(source, project_root)?;
+        let local = project_root.join(location);
+        if local.is_dir() {
+            registry_root = local;
+        }
+    }
+    if !registry_root.is_dir() {
+        return Err(format!(
+            "Could not resolve registry '{source}' for bundle '{}'",
+            bundle.name
+        )
+        .into());
+    }
+    published_members(
+        &registry_root,
+        namespace,
+        id,
+        source,
+        bundle.version.as_deref(),
+    )
 }
 
 pub(crate) fn resolve_skill_dependency_closure_with<F>(
@@ -235,6 +681,7 @@ where
             version: Some(dependency_version),
             source: normalized.source.clone(),
             path: None,
+            kind: None,
         };
         resolve_skill_dependency(
             &dependency,
@@ -315,6 +762,7 @@ fn normalize_published_skill(
         version: Some(version),
         source: requested.source.clone(),
         path: requested.path.clone(),
+        kind: None,
     })
 }
 
@@ -387,14 +835,223 @@ pub fn resolve_registry_path(name: &str) -> Option<PathBuf> {
     if !is_safe_registry_name(name) {
         return None;
     }
+    canonical_registry_path(name)
+}
 
-    let home = dirs::home_dir()?;
+/// Destination for canonical cache writes.
+pub(crate) fn canonical_registry_path(name: &str) -> Option<PathBuf> {
+    if !is_safe_registry_name(name) {
+        return None;
+    }
     Some(
-        home.join(".cache")
-            .join("skm")
+        crate::config_manager::get_user_cache_dir()?
             .join("registries")
             .join(name),
     )
+}
+
+pub(crate) fn is_git_repository(path: &Path) -> bool {
+    path.join(".git").exists() || (path.join("HEAD").is_file() && path.join("objects").is_dir())
+}
+
+/// Check the effective Git fetch origin without creating temporary files or fetching.
+pub(crate) fn registry_cache_matches(cache: &Path, location: &str, project: &Path) -> bool {
+    let local = project.join(location);
+    let canonical_local = fs::canonicalize(&local).ok();
+    if canonical_local
+        .as_ref()
+        .is_some_and(|local| fs::canonicalize(cache).ok().as_ref() == Some(local))
+    {
+        return true;
+    }
+    if !cache.is_dir() || !is_git_repository(cache) {
+        return false;
+    }
+    let origin = std::process::Command::new("git")
+        .arg("-C")
+        .arg(cache)
+        .args(["remote", "get-url", "origin"])
+        .output();
+    let remotes = std::process::Command::new("git")
+        .arg("-C")
+        .arg(cache)
+        .arg("remote")
+        .output();
+    let (Ok(origin), Ok(remotes)) = (origin, remotes) else {
+        return false;
+    };
+    if !origin.status.success() || !remotes.status.success() {
+        return false;
+    }
+    let names = String::from_utf8_lossy(&remotes.stdout);
+    let mut name = "skm-url-validation".to_owned();
+    while names.lines().any(|line| line == name) {
+        name.push('-');
+    }
+    // Ask Git to resolve the literal first so repository-local URL rewrites
+    // retain their normal semantics, even for a bare name without a colon.
+    let effective_url = |value: &str| {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(cache)
+            .arg("-c")
+            .arg(format!("remote.{name}.url={value}"))
+            .args(["ls-remote", "--get-url", "--", &name])
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| output.stdout)
+    };
+    let Some(literal) = effective_url(location) else {
+        return false;
+    };
+    if literal == origin.stdout {
+        return true;
+    }
+    let mut unrewritten = location.as_bytes().to_vec();
+    unrewritten.push(b'\n');
+    // Do not bypass a rewrite that resolved to a different source. For an
+    // unrewritten local path Git stores an absolute clone URL, retaining `..`
+    // components even after the original directory has disappeared.
+    if literal != unrewritten
+        || !(canonical_local.is_some() || (!location.contains("://") && !location.contains(':')))
+    {
+        return false;
+    }
+    let root = if project.is_absolute() {
+        project.to_path_buf()
+    } else if let Ok(current) = std::env::current_dir() {
+        current.join(project)
+    } else {
+        return false;
+    };
+    let Some(local_spelling) = root.join(location).to_str().map(str::to_owned) else {
+        return false;
+    };
+    effective_url(&local_spelling).is_some_and(|expected| expected == origin.stdout)
+}
+
+/// Select and validate an existing cache before consuming it. Missing caches
+/// resolve to the canonical destination for a caller that will populate it.
+pub(crate) fn validated_registry_path(
+    name: &str,
+    location: &str,
+    project: &Path,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let canonical =
+        canonical_registry_path(name).ok_or_else(|| format!("Invalid registry name: {name}"))?;
+    let home = dirs::home_dir().ok_or("Could not determine user home directory")?;
+    let mut candidates = vec![
+        canonical.clone(),
+        home.join(".cache/skm/registries").join(name),
+    ];
+    if let Some(cache) = dirs::cache_dir() {
+        let legacy = cache.join("skm/registries").join(name);
+        if !candidates.contains(&legacy) {
+            candidates.push(legacy);
+        }
+    }
+    for cache in candidates {
+        match fs::symlink_metadata(&cache) {
+            Ok(_) if !registry_cache_matches(&cache, location, project) => {
+                return Err(format!("Cached registry '{name}' at {} has a different or missing origin; choose a distinct registry alias", cache.display()).into());
+            }
+            Ok(_) => return Ok(cache),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(
+                    format!("Cannot inspect registry cache {}: {error}", cache.display()).into(),
+                )
+            }
+        }
+    }
+    Ok(canonical)
+}
+
+/// Resolve an effective registry from a manifest directory and validate its cache.
+/// Explicit callers can use `validated_registry_path` with a selected URL directly.
+pub(crate) fn effective_registry_path(
+    name: &str,
+    manifest_root: &Path,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let url = effective_registry_location(name, manifest_root)?;
+    validated_registry_path(name, &url, manifest_root)
+}
+
+fn effective_registry_location(
+    name: &str,
+    manifest_root: &Path,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let manifest = manifest_root.join("skills.yaml");
+    let override_url = if manifest.exists() {
+        crate::config::SkillsConfig::load_from_file(&manifest)?
+            .registries
+            .and_then(|registries| registries.get(name).cloned())
+    } else {
+        None
+    };
+    let url = match override_url {
+        Some(url) => url,
+        None => crate::config_manager::BaseConfig::load()?
+            .registries
+            .get(name)
+            .cloned()
+            .ok_or_else(|| format!("Registry '{name}' is not configured"))?,
+    };
+    Ok(url)
+}
+
+/// Recognize a locked exact pin in the selected cache or a validated retained
+/// cache. This is for ownership-sensitive removal only, not health checks.
+pub(crate) fn locked_registry_link_matches(
+    link: &Path,
+    skill: &SkillSpec,
+    project: &Path,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let name = skill
+        .source
+        .as_deref()
+        .ok_or("Locked registry skill has no source")?;
+    let version = skill
+        .version
+        .as_deref()
+        .ok_or("Locked registry skill has no version")?;
+    validate_exact_version(version)?;
+    let location = effective_registry_location(name, project)?;
+    let selected = validated_registry_path(name, &location, project)?;
+    let home = dirs::home_dir().ok_or("Could not determine user home directory")?;
+    let mut roots = vec![selected, home.join(".cache/skm/registries").join(name)];
+    if let Some(cache) = dirs::cache_dir() {
+        let legacy = cache.join("skm/registries").join(name);
+        if !roots.contains(&legacy) {
+            roots.push(legacy);
+        }
+    }
+    for root in roots {
+        let expected = root
+            .join("skills")
+            .join(validated_skill_path(&skill.name)?)
+            .join(format!("v{}", version.trim_start_matches('v')));
+        if !symlink_matches_expected(link, &expected)? {
+            continue;
+        }
+        if !registry_cache_matches(&root, &location, project) {
+            return Err(format!("Cached registry '{name}' at {} has a different or missing origin; choose a distinct registry alias", root.display()).into());
+        }
+        if expected.exists() {
+            resolve_registry_skill_source_dir(skill, &root)?;
+        }
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+pub(crate) fn validate_registry_cache_origin(
+    name: &str,
+    location: &str,
+    project: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    validated_registry_path(name, location, project).map(|_| ())
 }
 
 pub fn validate_agents(agents: &[String]) -> Result<(), Box<dyn std::error::Error>> {
@@ -426,8 +1083,7 @@ pub fn resolve_skill_source_dir(
         Ok(project_root.join(local_path))
     } else {
         let registry_name = skill.source.as_deref().unwrap_or("default");
-        let reg_path = resolve_registry_path(registry_name)
-            .ok_or_else(|| format!("Could not resolve path for registry: {}", registry_name))?;
+        let reg_path = effective_registry_path(registry_name, project_root)?;
 
         resolve_registry_skill_source_dir(skill, &reg_path)
     }
@@ -530,6 +1186,7 @@ pub(crate) fn parse_registry_lock_target(
         version: Some(version.to_string()),
         source: Some(source.to_string()),
         path: None,
+        kind: None,
     })
 }
 
@@ -602,6 +1259,18 @@ pub fn validate_unique_skill_targets(
         }
     }
     Ok(())
+}
+
+/// Validate directly linkable configured entries; bundles have no own output.
+pub fn validate_configured_skill_targets(
+    skills: &[SkillSpec],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let concrete: Vec<_> = skills
+        .iter()
+        .filter(|skill| !skill.is_bundle())
+        .cloned()
+        .collect();
+    validate_unique_skill_targets(&concrete)
 }
 
 pub fn require_skill_targets(
@@ -731,7 +1400,7 @@ pub fn link_skill(
                     continue;
                 }
 
-                fs::remove_file(&skill_target)?;
+                crate::installer::remove_symlink(&skill_target)?;
             }
             Ok(_) => {
                 return Err(format!(
@@ -759,8 +1428,72 @@ pub fn plan_skill_unlink(
     force: bool,
     verbose: bool,
 ) -> Result<Vec<UnlinkTarget>, Box<dyn std::error::Error>> {
-    validate_agents(agents)?;
     let expected_source = resolve_skill_source_dir(skill, project_root)?;
+    plan_skill_unlink_expected(
+        skill,
+        project_root,
+        agents,
+        global,
+        force,
+        verbose,
+        &expected_source,
+        false,
+    )
+}
+
+/// Plan against the installed pin even if its registry version disappeared.
+pub(crate) fn plan_locked_skill_unlink(
+    skill: &SkillSpec,
+    project_root: &Path,
+    agents: &[String],
+    force: bool,
+    verbose: bool,
+) -> Result<Vec<UnlinkTarget>, Box<dyn std::error::Error>> {
+    let expected = if let Some(path) = &skill.path {
+        project_root.join(path)
+    } else {
+        let source = skill
+            .source
+            .as_deref()
+            .ok_or("Locked registry skill has no source")?;
+        let version = skill
+            .version
+            .as_deref()
+            .ok_or("Locked registry skill has no version")?;
+        if matches!(version, "latest" | "default") {
+            resolve_skill_source_dir(skill, project_root)?
+        } else {
+            validate_exact_version(version)?;
+            effective_registry_path(source, project_root)?
+                .join("skills")
+                .join(validated_skill_path(&skill.name)?)
+                .join(format!("v{}", version.trim_start_matches('v')))
+        }
+    };
+    plan_skill_unlink_expected(
+        skill,
+        project_root,
+        agents,
+        false,
+        force,
+        verbose,
+        &expected,
+        true,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn plan_skill_unlink_expected(
+    skill: &SkillSpec,
+    project_root: &Path,
+    agents: &[String],
+    global: bool,
+    force: bool,
+    verbose: bool,
+    expected_source: &Path,
+    locked: bool,
+) -> Result<Vec<UnlinkTarget>, Box<dyn std::error::Error>> {
+    validate_agents(agents)?;
     let mut targets = Vec::new();
 
     for target in resolve_agent_skill_targets(agents, project_root, global)? {
@@ -771,7 +1504,17 @@ pub fn plan_skill_unlink(
 
         match fs::symlink_metadata(&skill_path) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
-                if !force && !symlink_matches_expected(&skill_path, &expected_source)? {
+                let matches = if force {
+                    true
+                } else if locked
+                    && skill.path.is_none()
+                    && !matches!(skill.version.as_deref(), None | Some("latest" | "default"))
+                {
+                    locked_registry_link_matches(&skill_path, skill, project_root)?
+                } else {
+                    symlink_matches_expected(&skill_path, expected_source)?
+                };
+                if !force && !matches {
                     return Err(format!(
                         "Refusing to remove unexpected symlink for agent '{}': {} does not point to {}. Use --force to override this safety check.",
                         agent,
@@ -849,6 +1592,9 @@ pub fn apply_skill_unlink(targets: &[UnlinkTarget]) -> UnlinkResult {
                 ))
             }
             Ok(_) if target.kind == UnlinkTargetKind::Directory => fs::remove_dir_all(&target.path),
+            Ok(_) if target.kind == UnlinkTargetKind::Symlink => {
+                crate::installer::remove_symlink(&target.path)
+            }
             Ok(_) => fs::remove_file(&target.path),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error),
@@ -961,6 +1707,7 @@ mod tests {
             version: Some("latest".to_string()),
             source: None,
             path: Some(format!("source/{}", name)),
+            kind: None,
         }
     }
 
@@ -1017,6 +1764,7 @@ mod tests {
             version: Some("0.1.0".to_string()),
             source: Some("default".to_string()),
             path: None,
+            kind: None,
         }];
 
         let resolved = resolve_skill_dependency_closure_with(
@@ -1053,6 +1801,7 @@ mod tests {
             version: Some("1.0.0".into()),
             source: Some("default".into()),
             path: None,
+            kind: None,
         }];
         let error = resolve_skill_dependency_closure_with(
             &requested,
@@ -1074,6 +1823,7 @@ mod tests {
             version: Some("latest".to_string()),
             source: None,
             path: None,
+            kind: None,
         }];
 
         let resolved = resolve_skill_dependency_closure_with(&requested, &project, move |_, _| {
@@ -1106,6 +1856,7 @@ mod tests {
             version: Some("0.1.0".to_string()),
             source: None,
             path: None,
+            kind: None,
         }];
 
         let error = resolve_skill_dependency_closure_with(
@@ -1131,12 +1882,14 @@ mod tests {
                 version: Some("1.0.0".to_string()),
                 source: None,
                 path: None,
+                kind: None,
             },
             SkillSpec {
                 name: "workspace/shared".to_string(),
                 version: Some("2.0.0".to_string()),
                 source: None,
                 path: None,
+                kind: None,
             },
         ];
 
@@ -1168,6 +1921,7 @@ mod tests {
             version: Some("0.1.0".to_string()),
             source: None,
             path: None,
+            kind: None,
         }];
         let error = resolve_skill_dependency_closure_with(
             &requested,
@@ -1188,6 +1942,7 @@ mod tests {
             version: Some("0.1.0".to_string()),
             source: None,
             path: Some("local".to_string()),
+            kind: None,
         }];
         let error =
             resolve_skill_dependency_closure_with(&local, &project, registry_resolver(&registry))
@@ -1309,6 +2064,7 @@ mod tests {
                 version: None,
                 source: None,
                 path: None,
+                kind: None,
             })
             .collect::<Vec<_>>();
         assert!(validate_unique_skill_targets(&skills)
@@ -1518,5 +2274,143 @@ mod tests {
         assert!(!last.is_symlink());
 
         fs::remove_dir_all(project).unwrap();
+    }
+
+    #[test]
+    fn versioned_bundle_history_rejects_duplicate_keys_at_every_depth() {
+        let prefix = "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0}\nbundles: {starter: {packages: [alpha]}}\nbundle_versions:\n";
+        for history in [
+            "  starter: {1.0.0: {alpha: 1.0.0}}\n  starter: {1.0.0: {alpha: 1.0.0}}\n",
+            "  starter:\n    1.0.0: {alpha: 1.0.0}\n    1.0.0: {alpha: 1.0.0}\n",
+            "  starter:\n    1.0.0: {alpha: 1.0.0, alpha: 1.0.0}\n",
+        ] {
+            assert!(
+                serde_yaml::from_str::<NamespaceManifest>(&format!("{prefix}{history}")).is_err(),
+                "accepted {history}"
+            );
+        }
+    }
+
+    #[test]
+    fn versioned_bundle_history_rejects_invalid_releases_and_projections() {
+        let prefix = "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0}\nbundles: {starter: {packages: [alpha]}}\nbundle_versions:\n";
+        for history in [
+            "  starter: {}\n",
+            "  missing: {1.0.0: {alpha: 1.0.0}}\n",
+            "  starter: {1.0: {alpha: 1.0.0}}\n",
+            "  starter: {v1.0.0: {alpha: 1.0.0}}\n",
+            "  starter: {1.0.0: {}}\n",
+            "  starter: {1.0.0: {alpha: 2.0.0}}\n",
+            "  starter: {1.0.0: {../bad: 1.0.0}}\n",
+            "  starter: {1.0.0: {alpha: latest}}\n",
+        ] {
+            let manifest: NamespaceManifest =
+                serde_yaml::from_str(&format!("{prefix}{history}")).unwrap();
+            assert!(
+                validate_manifest(&manifest, "acme").is_err(),
+                "accepted {history}"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    #[serial_test::serial]
+    fn resolve_entries_expands_bundle_entries_to_members() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("project");
+        let registry = root.path().join("registry");
+        fs::create_dir_all(&project).unwrap();
+        fs::create_dir_all(registry.join("skills/acme/alpha/v1.0.0")).unwrap();
+        fs::create_dir_all(registry.join("skills/acme/helper/v2.0.0")).unwrap();
+        fs::write(
+            registry.join("skills/acme/alpha/v1.0.0/SKILL.md"),
+            "---\nname: alpha\nmetadata:\n  skm-version: \"1.0.0\"\n  skm-dependencies: \"acme/helper@2.0.0\"\n---\n# Alpha\n",
+        )
+        .unwrap();
+        fs::write(
+            registry.join("skills/acme/helper/v2.0.0/SKILL.md"),
+            "---\nname: helper\nmetadata:\n  skm-version: \"2.0.0\"\n---\n# Helper\n",
+        )
+        .unwrap();
+        fs::write(
+            registry.join("skills/acme/manifest.yaml"),
+            "schema_version: 2\nnamespace: acme\npackages:\n  alpha: 1.0.0\n  helper: 2.0.0\nbundles:\n  starter:\n    packages: [alpha]\n",
+        )
+        .unwrap();
+        fs::write(
+            project.join("skills.yaml"),
+            format!(
+                "name: test\nagents: [codex]\nregistries:\n  local: {}\nskills: []\n",
+                registry.display()
+            ),
+        )
+        .unwrap();
+
+        let bundle = SkillSpec {
+            name: "acme/starter".into(),
+            version: Some("latest".into()),
+            source: Some("local".into()),
+            path: None,
+            kind: Some("bundle".into()),
+        };
+
+        // Use a custom resolver that resolves through the project-local registry.
+        let reg = registry.clone();
+        let resolve = move |skill: &SkillSpec,
+                            _project_root: &Path|
+              -> Result<PathBuf, Box<dyn std::error::Error>> {
+            resolve_registry_skill_source_dir(skill, &reg)
+        };
+        let entries = resolve_entries_with(&[bundle], &project, resolve).unwrap();
+        assert_eq!(entries.len(), 1);
+        match &entries[0] {
+            ResolvedEntry::Bundle { spec, members, .. } => {
+                assert_eq!(spec.name, "acme/starter");
+                let member_names: Vec<&str> = members.iter().map(|m| m.name.as_str()).collect();
+                assert!(member_names.contains(&"acme/alpha"));
+                assert!(member_names.contains(&"acme/helper"));
+            }
+            _ => panic!("expected bundle entry"),
+        }
+        let all: Vec<String> = entries
+            .iter()
+            .flat_map(|e| e.linkable_skills())
+            .map(|s| s.name)
+            .collect();
+        assert!(all.contains(&"acme/alpha".to_string()));
+        assert!(all.contains(&"acme/helper".to_string()));
+    }
+
+    #[test]
+    fn resolve_entries_rejects_invalid_kind() {
+        let root = tempfile::tempdir().unwrap();
+        let bad = SkillSpec {
+            name: "acme/alpha".into(),
+            version: None,
+            source: None,
+            path: None,
+            kind: Some("widget".into()),
+        };
+        let err = resolve_entries(&[bad], root.path())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("Invalid skill kind 'widget'"));
+    }
+
+    #[test]
+    fn resolve_entries_rejects_bundle_with_local_path() {
+        let root = tempfile::tempdir().unwrap();
+        let bundle = SkillSpec {
+            name: "acme/starter".into(),
+            version: None,
+            source: Some("default".into()),
+            path: Some("./local".into()),
+            kind: Some("bundle".into()),
+        };
+        let err = resolve_entries(&[bundle], root.path())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("cannot use a local path"));
     }
 }

@@ -1,4 +1,3 @@
-mod bundle;
 mod cleaner;
 mod config;
 mod config_editor;
@@ -45,7 +44,7 @@ enum Commands {
         /// Compatibility alias for the complete interactive prompt flow
         #[arg(long, hide = true)]
         advanced: bool,
-        /// Prepare for global installation; skills.yaml stays in the current directory
+        /// Edit the user-wide skills manifest in ~/.skm
         #[arg(short, long)]
         global: bool,
         /// Use non-interactive mode with default values
@@ -92,13 +91,13 @@ enum Commands {
         /// Path to a local skill directory (for local offline skills)
         #[arg(long)]
         path: Option<String>,
-        /// Link skills globally instead of project-local
+        /// Select the global installation scope (bundles require project scope)
         #[arg(short, long)]
         global: bool,
-        /// Preview a bundle without writing
+        /// Preview the manifest entry without writing
         #[arg(long, conflicts_with = "yes")]
         dry_run: bool,
-        /// Emit a bundle plan as JSON without writing
+        /// Emit the planned manifest entry as JSON without writing
         #[arg(long, conflicts_with = "yes")]
         json: bool,
         /// Apply without prompting for confirmation
@@ -262,6 +261,9 @@ enum SkillCommands {
     },
     /// Show configured skills with newer cached versions
     Outdated {
+        /// Inspect the user-wide skills manifest
+        #[arg(short, long)]
+        global: bool,
         /// Skill to inspect (all configured skills when omitted)
         skill_name: Option<String>,
         /// Refresh relevant registries before comparing versions
@@ -642,24 +644,71 @@ fn main() {
     let cli = parse_cli_with_help_notice(args, updater::maybe_print_startup_notice)
         .unwrap_or_else(|error| error.exit());
 
-    // A skills-only install preview must not initialize machine-local state.
-    let install_preview = matches!(
+    // Preview and identity operations must leave user state untouched.
+    let read_only_startup = matches!(
         &cli.command,
-        Commands::Install { dry_run: true, .. } | Commands::Install { json: true, .. }
+        Commands::Install { dry_run: true, .. }
+            | Commands::Install { json: true, .. }
+            | Commands::Add { dry_run: true, .. }
+            | Commands::Add { json: true, .. }
+            | Commands::Remove { dry_run: true, .. }
+            | Commands::Cache(
+                CacheCommands::Prune { dry_run: true, .. }
+                    | CacheCommands::Clear { dry_run: true, .. }
+            )
+            | Commands::Clean(
+                CleanCommands::Symlinks { dry_run: true, .. }
+                    | CleanCommands::Reset { dry_run: true, .. }
+            )
+            | Commands::Config(
+                ConfigCommands::Set { dry_run: true, .. }
+                    | ConfigCommands::Unset { dry_run: true, .. }
+                    | ConfigCommands::Reset { dry_run: true, .. }
+            )
+            | Commands::Registry(RegistryCommands::Remove { dry_run: true, .. })
+            | Commands::Skill(
+                SkillCommands::Use { dry_run: true, .. }
+                    | SkillCommands::Upgrade { dry_run: true, .. }
+            )
+            | Commands::SelfUpdate(SelfCommands::Version)
     );
-    if !install_preview {
+    let recovery = matches!(
+        &cli.command,
+        Commands::Config(ConfigCommands::Reset { global: true, .. })
+            | Commands::Config(ConfigCommands::Reset {
+                global: false,
+                project: false,
+                ..
+            })
+            | Commands::Clean(
+                CleanCommands::Reset { config: true, .. } | CleanCommands::Reset { all: true, .. }
+            )
+    );
+    // Settings resets prepare the rest of the user state after confirmation,
+    // without reading malformed settings. Cache resets leave the cache removed.
+    let prepare_settings_reset = recovery
+        && !read_only_startup
+        && !matches!(
+            &cli.command,
+            Commands::Clean(CleanCommands::Reset { cache: true, .. })
+                | Commands::Clean(CleanCommands::Reset { all: true, .. })
+        );
+    if !read_only_startup && !recovery {
         if let Err(e) = ensure_global_env() {
-            eprintln!("Warning: Failed to initialize global configuration: {}", e);
-            eprintln!("SKM may not function correctly. Run 'skm setup' to manually configure.");
+            eprintln!("Error: cannot initialize SKM user state: {e}");
+            std::process::exit(1);
         }
     }
 
     // Managed releases check their own channel in the background of normal commands.
-    if !install_preview {
+    if !read_only_startup {
         updater::maybe_print_startup_notice();
     }
 
-    if let Err(e) = run(cli.command) {
+    let reset_guard = prepare_settings_reset.then(config_manager::SettingsResetGuard::new);
+    let result = run(cli.command);
+    drop(reset_guard);
+    if let Err(e) = result {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     }
@@ -693,6 +742,44 @@ where
     }
 }
 
+struct ManifestScope {
+    root: std::path::PathBuf,
+    path: std::path::PathBuf,
+}
+
+impl ManifestScope {
+    fn select(global: bool, current_dir: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+        let path = if global {
+            config_manager::check_global_manifest_parent()?;
+            config_manager::get_global_manifest_path()
+                .ok_or("Could not determine user home directory")?
+        } else {
+            current_dir.join("skills.yaml")
+        };
+        let root = path
+            .parent()
+            .ok_or("Manifest has no parent directory")?
+            .to_path_buf();
+        // On Unix Git records local origins against the physical working
+        // directory. Normalize the root only, preserving registry URL suffixes.
+        // Missing roots are valid for previews before bootstrap.
+        #[cfg(unix)]
+        if global {
+            match std::fs::canonicalize(&root) {
+                Ok(root) => {
+                    return Ok(Self {
+                        path: root.join("skills.yaml"),
+                        root,
+                    })
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        Ok(Self { root, path })
+    }
+}
+
 fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
     let current_dir = env::current_dir()?;
     let config_path = current_dir.join("skills.yaml");
@@ -708,14 +795,18 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             profile,
             ..
         } => {
-            let mut document =
-                wizard::Document::load(&config_path, name.as_deref(), non_interactive)?;
-
             if global && toolkit_manifest.is_some() {
                 return Err(
                     "toolkit initialization is project-scoped; --global is not supported".into(),
                 );
             }
+            let scope = ManifestScope::select(global, &current_dir)?;
+            let mut document = wizard::Document::load_for_scope(
+                &scope.path,
+                name.as_deref(),
+                non_interactive,
+                global,
+            )?;
             if let Some(manifest) = toolkit_manifest {
                 document.value["toolkit"] = serde_yaml::to_value(config::ToolkitSelection {
                     manifest,
@@ -748,11 +839,13 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("\nNext steps:");
             if global {
                 eprintln!("  Run: skm install --global");
+                eprintln!("  Run: skm list --global");
+                eprintln!("  Run: skm check --global");
             } else {
                 eprintln!("  Run: skm install");
+                eprintln!("  Run: skm list");
+                eprintln!("  Run: skm check");
             }
-            eprintln!("  Run: skm list");
-            eprintln!("  Run: skm check");
         }
         Commands::Install {
             global,
@@ -760,15 +853,23 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             json,
             yes,
         } => {
-            let config = load_config(&config_path)?;
+            let scope = ManifestScope::select(global, &current_dir)?;
+            // Parse the same bytes that the installer later checks for staleness.
+            load_config_for_scope(&scope.path, global)?;
+            let manifest = std::fs::read(&scope.path)?;
+            let config: SkillsConfig = serde_yaml::from_slice(&manifest)?;
             validate_config(&config)?;
+            validate_manifest_scope(&config, global)?;
 
             if config.toolkit.is_none() && !config.skills.is_empty() {
-                linker::require_skill_targets(&config.agents, &current_dir, global)?;
+                linker::require_skill_targets(&config.agents, &scope.root, global)?;
             }
 
-            if !dry_run && !json && config.skills.iter().any(|skill| skill.path.is_none()) {
-                ensure_registries_cached(&config)?;
+            if config.skills.iter().any(|skill| skill.path.is_none()) {
+                validate_effective_registry_caches(&config, &scope.root)?;
+                if !dry_run && !json {
+                    ensure_registries_cached(&config, &scope.root)?;
+                }
             }
 
             if config.toolkit.is_some() {
@@ -784,11 +885,16 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 }
                 toolkit::install(
                     &config,
-                    &current_dir,
+                    &scope.root,
                     toolkit::InstallOptions { dry_run, json },
                 )?;
             } else {
-                let plan = installer::prepare(&config, &current_dir, global, None)?;
+                let plan = installer::prepare(
+                    &config,
+                    &scope.root,
+                    global,
+                    Some((manifest.clone(), manifest)),
+                )?;
                 plan.print(json)?;
                 if !dry_run && !json {
                     plan.apply()?;
@@ -806,10 +912,27 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             json,
             yes,
         } => {
-            let original = std::fs::read(&config_path).ok();
+            let scope = ManifestScope::select(global, &current_dir)?;
+            let path = match (global, path) {
+                (true, Some(path)) => {
+                    let path = Path::new(&path);
+                    let absolute = if path.is_absolute() {
+                        path.to_path_buf()
+                    } else {
+                        current_dir.join(path)
+                    };
+                    Some(
+                        absolute
+                            .to_str()
+                            .ok_or("Local path is not valid UTF-8")?
+                            .to_owned(),
+                    )
+                }
+                (_, path) => path,
+            };
             add_registry_item(
-                &config_path,
-                &current_dir,
+                &scope.path,
+                &scope.root,
                 &name,
                 source,
                 kind,
@@ -819,9 +942,6 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 json,
                 yes,
             )?;
-            if !global && !dry_run && !json && std::fs::read(&config_path).ok() != original {
-                installer::sync_existing_lock(&config_path, &current_dir)?;
-            }
         }
         Commands::Search {
             query,
@@ -862,37 +982,66 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             dry_run,
             verbose,
         } => {
-            let original = std::fs::read(&config_path).ok();
+            let scope = ManifestScope::select(global, &current_dir)?;
+            if global {
+                validate_manifest_scope(&load_config_for_scope(&scope.path, global)?, true)?;
+            }
+            let config_path = &scope.path;
+            let original = std::fs::read(config_path).ok();
+            let had_bundle = original
+                .as_deref()
+                .and_then(|bytes| serde_yaml::from_slice::<SkillsConfig>(bytes).ok())
+                .is_some_and(|config| config.skills.iter().any(|skill| skill.is_bundle()));
             remover::remove_skill(
                 &skill_name,
-                &current_dir,
+                &scope.root,
                 global,
                 yes,
                 force,
                 dry_run,
                 verbose,
             )?;
-            if !global && !dry_run && std::fs::read(&config_path).ok() != original {
-                installer::sync_existing_lock(&config_path, &current_dir)?;
+            if !global && !dry_run && !had_bundle && std::fs::read(config_path).ok() != original {
+                installer::sync_existing_lock(config_path, &current_dir)?;
             }
         }
         Commands::List { global } => {
-            let config = load_config(&config_path)?;
+            let scope = ManifestScope::select(global, &current_dir)?;
+            let config = load_config_for_scope(&scope.path, global)?;
             validate_config(&config)?;
+            validate_manifest_scope(&config, global)?;
             if config.toolkit.is_none() && !config.skills.is_empty() {
-                linker::require_skill_targets(&config.agents, &current_dir, global)?;
+                linker::require_skill_targets(&config.agents, &scope.root, global)?;
             }
-            eprintln!("Listing skills for project '{}':", config.name);
+            eprintln!(
+                "Listing skills for {} '{}':",
+                if global { "global manifest" } else { "project" },
+                config.name
+            );
 
-            let resolved = linker::resolve_skill_dependency_closure(&config.skills, &current_dir)?;
+            let entries = linker::resolve_entries(&config.skills, &scope.root)?;
+            // Print bundle entries first with their member count.
+            for entry in &entries {
+                if let linker::ResolvedEntry::Bundle { spec, members, .. } = entry {
+                    println!(
+                        " - {} (bundle, {} members, version: {}, source: {})",
+                        spec.name,
+                        members.len(),
+                        spec.version.as_deref().unwrap_or("latest"),
+                        spec.source.as_deref().unwrap_or("default")
+                    );
+                }
+            }
+            let resolved = linker::resolve_skill_dependency_closure(&config.skills, &scope.root)?;
+            linker::validate_unique_skill_targets(&resolved)?;
             for skill in &resolved {
                 let mut status = "OK".to_string();
                 let mut linked_targets = Vec::new();
                 let mut bad_targets = Vec::new();
-                let source_dir = linker::resolve_skill_source_dir(skill, &current_dir)?;
+                let source_dir = linker::resolve_skill_source_dir(skill, &scope.root)?;
                 let source_exists = source_dir.exists();
                 let targets =
-                    linker::resolve_agent_skill_targets(&config.agents, &current_dir, global)?;
+                    linker::resolve_agent_skill_targets(&config.agents, &scope.root, global)?;
 
                 for target in &targets {
                     let path = linker::get_skill_target_path(&target.path, &skill.name)?;
@@ -927,76 +1076,12 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             if config.toolkit.is_some() {
-                toolkit::list(&current_dir)?;
+                toolkit::list(&scope.root)?;
             }
         }
         Commands::Check { global } => {
-            let config = load_config(&config_path)?;
-            validate_config(&config)?;
-            if config.toolkit.is_none() && !config.skills.is_empty() {
-                linker::require_skill_targets(&config.agents, &current_dir, global)?;
-            }
-            let mut all_ok = true;
-
-            let resolved = linker::resolve_skill_dependency_closure(&config.skills, &current_dir)?;
-            for skill in &resolved {
-                // Verify source path
-                let source_dir = linker::resolve_skill_source_dir(skill, &current_dir)?;
-
-                if !source_dir.exists() {
-                    eprintln!(
-                        "[FAIL] Skill '{}' source directory not found: {:?}",
-                        skill.name, source_dir
-                    );
-                    all_ok = false;
-                    continue;
-                }
-
-                if !source_dir.join("SKILL.md").exists() {
-                    eprintln!("[FAIL] Skill '{}' missing SKILL.md", skill.name);
-                    all_ok = false;
-                    continue;
-                }
-
-                // Verify links
-                for target in
-                    linker::resolve_agent_skill_targets(&config.agents, &current_dir, global)?
-                {
-                    let path = linker::get_skill_target_path(&target.path, &skill.name)?;
-                    let agents = target.agents.join(", ");
-                    if !path.is_symlink() {
-                        eprintln!(
-                            "[FAIL] Missing symlink at '{}' for agents [{}] to skill '{}'",
-                            path.display(),
-                            agents,
-                            skill.name
-                        );
-                        all_ok = false;
-                        continue;
-                    }
-
-                    if !linker::symlink_points_to(&path, &source_dir)? {
-                        eprintln!(
-                            "[FAIL] Link at '{}' for agents [{}] to skill '{}' points at the wrong target",
-                            path.display(),
-                            agents,
-                            skill.name
-                        );
-                        all_ok = false;
-                    }
-                }
-            }
-
-            if all_ok && config.toolkit.is_some() {
-                toolkit::check(&config, &current_dir)?;
-            } else if all_ok {
-                if !global {
-                    installer::verify_lock(&config, &current_dir)?;
-                }
-                eprintln!("[SUCCESS] All skills validated and correctly linked.");
-            } else {
-                return Err("Validation checks failed. Some skills or links are missing.".into());
-            }
+            let scope = ManifestScope::select(global, &current_dir)?;
+            check_skills(&scope.path, &scope.root, global)?;
         }
         Commands::SelfUpdate(command) => match command {
             SelfCommands::Version => version::show_version(),
@@ -1218,27 +1303,26 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             yes,
             dry_run,
         }) => {
-            let original = std::fs::read(&config_path).ok();
+            let scope = ManifestScope::select(global, &current_dir)?;
+            if global {
+                validate_manifest_scope(&load_config_for_scope(&scope.path, global)?, true)?;
+            }
+            let config_path = &scope.path;
             let (skill_name, version) = SkillSpec::parse_with_version(&skill_version)?;
             let version = version.unwrap_or_else(|| "latest".to_string());
-            version_manager::use_version(
-                &skill_name,
-                &version,
-                &config_path,
-                global,
-                yes,
-                dry_run,
-            )?;
-            if !global && !dry_run && std::fs::read(&config_path).ok() != original {
-                installer::sync_existing_lock(&config_path, &current_dir)?;
-            }
+            version_manager::use_version(&skill_name, &version, config_path, global, yes, dry_run)?;
         }
         Commands::Skill(SkillCommands::Outdated {
+            global,
             skill_name,
             refresh,
             pre,
         }) => {
-            version_manager::show_outdated(&config_path, skill_name.as_deref(), refresh, pre)?;
+            let scope = ManifestScope::select(global, &current_dir)?;
+            if global {
+                validate_manifest_scope(&load_config_for_scope(&scope.path, global)?, true)?;
+            }
+            version_manager::show_outdated(&scope.path, skill_name.as_deref(), refresh, pre)?;
         }
         Commands::Skill(SkillCommands::Upgrade {
             skill_name,
@@ -1248,26 +1332,54 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             dry_run,
             pre,
         }) => {
+            let scope = ManifestScope::select(global, &current_dir)?;
+            if global {
+                validate_manifest_scope(&load_config_for_scope(&scope.path, global)?, true)?;
+            }
+            let config_path = &scope.path;
             if all {
-                version_manager::upgrade_all(&config_path, global, pre, yes, dry_run)?;
+                version_manager::upgrade_all(config_path, global, pre, yes, dry_run)?;
             } else if let Some(skill_name) = skill_name {
-                let original = std::fs::read(&config_path).ok();
                 version_manager::update_to_latest(
                     &skill_name,
-                    &config_path,
+                    config_path,
                     global,
                     pre,
                     yes,
                     dry_run,
                 )?;
-                if !global && !dry_run && std::fs::read(&config_path).ok() != original {
-                    installer::sync_existing_lock(&config_path, &current_dir)?;
-                }
             }
         }
     }
 
     Ok(())
+}
+
+fn validate_manifest_scope(
+    config: &SkillsConfig,
+    global: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if global
+        && (config.toolkit.is_some()
+            || !config.bundles.is_empty()
+            || !config.profiles.is_empty()
+            || config.skills.iter().any(SkillSpec::is_bundle))
+    {
+        return Err("Toolkits and published bundles are project-only".into());
+    }
+    Ok(())
+}
+
+fn load_config_for_scope(
+    path: &Path,
+    global: bool,
+) -> Result<SkillsConfig, Box<dyn std::error::Error>> {
+    if global
+        && matches!(std::fs::symlink_metadata(path), Err(ref error) if error.kind() == std::io::ErrorKind::NotFound)
+    {
+        return Err("skills.yaml file not found. Run 'skm init --global' to create one.".into());
+    }
+    load_config(path)
 }
 
 fn load_config(path: &Path) -> Result<SkillsConfig, Box<dyn std::error::Error>> {
@@ -1287,13 +1399,101 @@ fn load_config(path: &Path) -> Result<SkillsConfig, Box<dyn std::error::Error>> 
     SkillsConfig::load_from_file(path)
 }
 
+fn check_skills(
+    config_path: &Path,
+    current_dir: &Path,
+    global: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let config = load_config_for_scope(config_path, global)?;
+    validate_config(&config)?;
+    validate_manifest_scope(&config, global)?;
+    if config.toolkit.is_none() && !config.skills.is_empty() {
+        linker::require_skill_targets(&config.agents, current_dir, global)?;
+    }
+    let mut all_ok = true;
+
+    let resolved = linker::resolve_skill_dependency_closure(&config.skills, current_dir)?;
+    linker::validate_unique_skill_targets(&resolved)?;
+    for skill in &resolved {
+        // Verify source path
+        let source_dir = linker::resolve_skill_source_dir(skill, current_dir)?;
+
+        if !source_dir.exists() {
+            eprintln!(
+                "[FAIL] Skill '{}' source directory not found: {:?}",
+                skill.name, source_dir
+            );
+            all_ok = false;
+            continue;
+        }
+
+        if !source_dir.join("SKILL.md").exists() {
+            eprintln!("[FAIL] Skill '{}' missing SKILL.md", skill.name);
+            all_ok = false;
+            continue;
+        }
+
+        // Verify links
+        for target in linker::resolve_agent_skill_targets(&config.agents, current_dir, global)? {
+            let path = linker::get_skill_target_path(&target.path, &skill.name)?;
+            if global {
+                let home = dirs::home_dir().ok_or("Could not determine home directory")?;
+                installer::validate_parent(&home, &path)?;
+            }
+            let agents = target.agents.join(", ");
+            if !path.is_symlink() {
+                eprintln!(
+                    "[FAIL] Missing symlink at '{}' for agents [{}] to skill '{}'",
+                    path.display(),
+                    agents,
+                    skill.name
+                );
+                all_ok = false;
+                continue;
+            }
+
+            if !linker::symlink_points_to(&path, &source_dir)? {
+                eprintln!(
+                    "[FAIL] Link at '{}' for agents [{}] to skill '{}' points at the wrong target; run `skm install{}` to reconcile it",
+                    path.display(),
+                    agents,
+                    skill.name,
+                    if global { " --global" } else { "" }
+                );
+                all_ok = false;
+            }
+        }
+    }
+
+    if all_ok && config.toolkit.is_some() {
+        toolkit::check(&config, current_dir)?;
+    } else if all_ok {
+        if !global {
+            installer::verify_lock(&config, current_dir)?;
+        }
+        eprintln!("[SUCCESS] All skills validated and correctly linked.");
+    } else {
+        return Err("Validation checks failed. Some skills or links are missing.".into());
+    }
+
+    Ok(())
+}
+
 fn validate_config(config: &SkillsConfig) -> Result<(), Box<dyn std::error::Error>> {
     linker::validate_agents(&config.agents)?;
 
     for skill in &config.skills {
         linker::validate_skill_name(&skill.name)?;
+        skill.validate_kind()?;
+        if skill.is_bundle() && skill.path.is_some() {
+            return Err(format!(
+                "Skill '{}' is kind bundle and cannot use a local path",
+                skill.name
+            )
+            .into());
+        }
     }
-    linker::validate_unique_skill_targets(&config.skills)?;
+    linker::validate_configured_skill_targets(&config.skills)?;
 
     Ok(())
 }
@@ -1312,223 +1512,209 @@ fn add_registry_item(
     yes: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     linker::validate_skill_name(name)?;
-    let source = if path.is_none() {
-        Some(source.unwrap_or(config_manager::BaseConfig::load()?.default_registry))
-    } else {
-        source
-    };
-    let bundle_options = dry_run || json;
     if kind == Some(AddKind::Bundle) && path.is_some() {
         return Err("--path applies only to local skills".into());
     }
     if kind == Some(AddKind::Bundle) && global {
         return Err("published bundles can only be added to a project".into());
     }
-    if path.is_none() && kind != Some(AddKind::Skill) {
+    let config = load_config_for_scope(config_path, global)?;
+    validate_manifest_scope(&config, global)?;
+    let source = if path.is_none() {
+        Some(source.unwrap_or(config_manager::BaseConfig::load()?.default_registry))
+    } else {
+        source
+    };
+    let mut is_bundle = false;
+    if path.is_none() {
         let registry = source.as_deref().unwrap_or("default");
-        if kind == Some(AddKind::Bundle) {
-            return bundle::add(project_root, name, registry, dry_run, json, yes);
+        let (discovery, root, _temporary) =
+            search::discover_for_add(&config, project_root, registry, dry_run || json)?;
+        let skill_exists = discovery.entries.iter().any(|entry| entry.name == name);
+        let bundle_exists = discovery.bundles.iter().any(|bundle| bundle.id == name);
+        if kind.is_none() && skill_exists && bundle_exists {
+            return Err(format!("'{name}' is both a skill and a bundle in registry '{registry}'; add --kind skill or --kind bundle").into());
         }
-        let config = load_config(config_path)?;
-        let discovery = search::discover(Some(&config), project_root, Some(registry))?;
-        let skill_exists = discovery
-            .entries
-            .iter()
-            .any(|entry| entry.name == name && entry.registry == registry);
-        let bundle_exists = discovery
-            .bundles
-            .iter()
-            .any(|bundle| bundle.id == name && bundle.registry == registry);
-        if skill_exists && bundle_exists {
-            return Err(format!(
-                "'{name}' is both a skill and a bundle in registry '{registry}'; add --kind skill or --kind bundle"
-            )
-            .into());
-        }
-        if bundle_exists {
+        is_bundle = kind == Some(AddKind::Bundle) || (kind.is_none() && bundle_exists);
+        if is_bundle {
             if global {
                 return Err("published bundles can only be added to a project".into());
             }
-            return bundle::add(project_root, name, registry, dry_run, json, yes);
+            let (namespace, id) = name
+                .split_once('/')
+                .ok_or("Bundle ID must be namespace/name")?;
+            if id.contains('/') {
+                return Err("Bundle ID must be namespace/name".into());
+            }
+            linker::published_members(&root, namespace, id, registry, None)?;
+        } else if !skill_exists {
+            return Err(format!("Skill '{name}' is not published by registry '{registry}'").into());
         }
     }
-    if bundle_options {
-        return Err("--dry-run and --json apply only to published bundles".into());
-    }
-    add_skill(
-        config_path,
-        project_root,
-        SkillSpec {
-            name: name.to_string(),
-            version: Some("latest".to_string()),
-            source,
-            path,
-        },
-        global,
-        yes,
-    )
-}
-
-fn add_skill(
-    config_path: &Path,
-    project_root: &Path,
-    new_skill: SkillSpec,
-    global: bool,
-    yes: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+    let entry = SkillSpec {
+        name: name.to_string(),
+        version: Some("latest".into()),
+        source,
+        path,
+        kind: is_bundle.then(|| "bundle".to_string()),
+    };
     add_skill_with_confirmation(
         config_path,
-        project_root,
-        new_skill,
+        entry,
         global,
+        dry_run,
+        json,
         yes,
         confirmation::confirm,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn add_skill_with_confirmation<F>(
     config_path: &Path,
-    project_root: &Path,
     new_skill: SkillSpec,
     global: bool,
+    dry_run: bool,
+    json: bool,
     yes: bool,
     confirm: F,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
     F: FnOnce(&str) -> Result<bool, Box<dyn std::error::Error>>,
 {
+    let config = load_config_for_scope(config_path, global)?;
+    validate_manifest_scope(&config, global)?;
     let original = std::fs::read(config_path)?;
-    let mut config = load_config(config_path)?;
+    let mut config = load_config_for_scope(config_path, global)?;
+    if std::fs::read(config_path)? != original {
+        return Err("skills.yaml changed after add planning; retry".into());
+    }
+    validate_manifest_scope(&config, global)?;
     validate_config(&config)?;
     linker::validate_skill_name(&new_skill.name)?;
-    if config
+    new_skill.validate_kind()?;
+    let existing = config
         .skills
         .iter()
-        .any(|skill| skill.name == new_skill.name)
-    {
-        return Err(format!("Skill '{}' already exists in skills.yaml", new_skill.name).into());
-    }
-
-    let skill_name = new_skill.name.clone();
-    config.skills.push(new_skill.clone());
-    linker::require_skill_targets(&config.agents, project_root, global)?;
-    linker::validate_unique_skill_targets(&config.skills)?;
-    if config.skills.iter().any(|skill| skill.path.is_none()) {
-        ensure_registries_cached(&config)?;
-    }
-    let requested =
-        linker::resolve_skill_dependency_closure(std::slice::from_ref(&new_skill), project_root)?;
-    let resolved = linker::resolve_skill_dependency_closure(&config.skills, project_root)?;
-    linker::validate_unique_skill_targets(&resolved)?;
-    let link_changes = plan_skill_link_changes(&resolved, project_root, &config.agents, global)?;
-    eprintln!(
-        "{}",
-        skill_add_summary(&new_skill, &requested, &resolved, link_changes, global)
-    );
-    if !yes {
-        let question = format!(
-            "Install {} skill{} and create or repair {link_changes} link{}?",
-            resolved.len(),
-            if resolved.len() == 1 { "" } else { "s" },
-            if link_changes == 1 { "" } else { "s" }
-        );
-        if !confirm(&question)? {
-            eprintln!("Add cancelled.");
-            return Ok(());
+        .find(|skill| skill.name == new_skill.name);
+    let already_present = if let Some(skill) = existing {
+        if skill.is_bundle() == new_skill.is_bundle()
+            && skill.source == new_skill.source
+            && skill.path == new_skill.path
+        {
+            true
+        } else {
+            return Err(format!(
+                "Entry '{}' already exists in skills.yaml with a different kind or source",
+                new_skill.name
+            )
+            .into());
         }
+    } else {
+        false
+    };
+    if !already_present {
+        config.skills.push(new_skill.clone());
+        linker::validate_configured_skill_targets(&config.skills)?;
+    }
+    if json {
+        println!(
+            "{}",
+            format_add_preview(&new_skill, global, already_present)?
+        );
+    } else if already_present {
+        eprintln!("'{}' is already present in skills.yaml", new_skill.name);
+    } else {
+        eprintln!(
+            "Add {} '{}' to skills.yaml ({} scope); run skm install{} afterwards.",
+            if new_skill.is_bundle() {
+                "bundle"
+            } else {
+                "skill"
+            },
+            new_skill.name,
+            if global { "global" } else { "project" },
+            if global { " --global" } else { "" }
+        );
+    }
+    if dry_run || json || already_present {
+        return Ok(());
+    }
+    if !yes && !confirm("Add this entry to skills.yaml?")? {
+        eprintln!("Add cancelled.");
+        return Ok(());
     }
     if std::fs::read(config_path)? != original {
         return Err("skills.yaml changed after add planning; retry".into());
     }
-    config.save_to_file(config_path)?;
-    eprintln!("Added skill '{}' to skills.yaml", skill_name);
-    for skill in &resolved {
-        linker::link_skill(skill, project_root, &config.agents, global)?;
+    let mut document: serde_yaml::Value = serde_yaml::from_slice(&original)?;
+    let entries = document
+        .as_mapping_mut()
+        .ok_or("skills.yaml must be a YAML mapping")?
+        .entry(serde_yaml::Value::String("skills".into()))
+        .or_insert_with(|| serde_yaml::Value::Sequence(Vec::new()));
+    entries
+        .as_sequence_mut()
+        .ok_or("skills must be a YAML sequence")?
+        .push(serde_yaml::to_value(&new_skill)?);
+    let updated = serde_yaml::to_string(&document)?;
+    use std::io::Write;
+    let mut staged =
+        tempfile::NamedTempFile::new_in(config_path.parent().unwrap_or(Path::new(".")))?;
+    staged
+        .as_file()
+        .set_permissions(std::fs::metadata(config_path)?.permissions())?;
+    staged.write_all(updated.as_bytes())?;
+    staged.as_file().sync_all()?;
+    if std::fs::read(config_path)? != original {
+        return Err("skills.yaml changed after add planning; retry".into());
+    }
+    staged.persist(config_path)?;
+    eprintln!(
+        "Added '{}' to skills.yaml; run skm install{} to link it.",
+        new_skill.name,
+        if global { " --global" } else { "" }
+    );
+    Ok(())
+}
+
+fn format_add_preview(
+    entry: &SkillSpec,
+    global: bool,
+    already_present: bool,
+) -> Result<String, serde_json::Error> {
+    serde_json::to_string_pretty(&serde_json::json!({
+        "entry": entry, "scope": if global { "global" } else { "project" },
+        "already_present": already_present
+    }))
+}
+
+fn validate_effective_registry_caches(
+    config: &SkillsConfig,
+    project: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut registries = config_manager::BaseConfig::load()?.registries;
+    if let Some(overrides) = &config.registries {
+        registries.extend(overrides.clone());
+    }
+    for name in config
+        .skills
+        .iter()
+        .filter(|skill| skill.path.is_none())
+        .map(|skill| skill.source.as_deref().unwrap_or("default"))
+    {
+        let location = registries
+            .get(name)
+            .ok_or_else(|| format!("Registry '{name}' is not configured"))?;
+        linker::validate_registry_cache_origin(name, location, project)?;
     }
     Ok(())
 }
 
-fn skill_add_summary(
-    requested: &SkillSpec,
-    requested_closure: &[SkillSpec],
-    resolved: &[SkillSpec],
-    link_changes: usize,
-    global: bool,
-) -> String {
-    let requested_names: std::collections::BTreeSet<_> = requested_closure
-        .iter()
-        .map(|skill| skill.name.as_str())
-        .collect();
-    let source = match &requested.path {
-        Some(path) => format!("local path: {path}"),
-        None => format!(
-            "registry: {}",
-            requested.source.as_deref().unwrap_or("default")
-        ),
-    };
-    let mut lines = vec![
-        format!("Skill: {}", requested.name),
-        format!("Scope: {}", if global { "global" } else { "project" }),
-        format!(
-            "skills.yaml entry: {}@{} ({source})",
-            requested.name,
-            requested.version.as_deref().unwrap_or("latest")
-        ),
-        "Resolved skills to link:".to_string(),
-    ];
-    for skill in resolved {
-        let role = if skill.name == requested.name {
-            "requested"
-        } else if requested_names.contains(skill.name.as_str()) {
-            "dependency"
-        } else {
-            "already configured"
-        };
-        lines.push(format!(
-            "  {}@{} ({role})",
-            skill.name,
-            skill.version.as_deref().unwrap_or("latest")
-        ));
-    }
-    lines.push(format!("Agent links to create or repair: {link_changes}"));
-    lines.join("\n")
-}
-
-fn plan_skill_link_changes(
-    skills: &[SkillSpec],
-    project_root: &Path,
-    agents: &[String],
-    global: bool,
-) -> Result<usize, Box<dyn std::error::Error>> {
-    let targets = linker::resolve_agent_skill_targets(agents, project_root, global)?;
-    let mut changes = 0;
-    for skill in skills {
-        let source = linker::resolve_skill_source_dir(skill, project_root)?;
-        for target in &targets {
-            linker::validate_skill_target_parent(&target.path, &skill.name)?;
-            let path = linker::get_skill_target_path(&target.path, &skill.name)?;
-            match std::fs::symlink_metadata(&path) {
-                Ok(metadata) if metadata.file_type().is_symlink() => {
-                    if !linker::symlink_points_to(&path, &source)? {
-                        changes += 1;
-                    }
-                }
-                Ok(_) => {
-                    return Err(format!(
-                        "Refusing to replace existing non-symlink path: {}",
-                        path.display()
-                    )
-                    .into());
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => changes += 1,
-                Err(error) => return Err(error.into()),
-            }
-        }
-    }
-    Ok(changes)
-}
-
-fn ensure_registries_cached(config: &SkillsConfig) -> Result<(), Box<dyn std::error::Error>> {
+fn ensure_registries_cached(
+    config: &SkillsConfig,
+    project: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
     // First, try to use the base config registries
     let base_config = config_manager::ensure_base_config()?;
 
@@ -1542,24 +1728,35 @@ fn ensure_registries_cached(config: &SkillsConfig) -> Result<(), Box<dyn std::er
         }
     }
 
-    for (name, url) in &all_registries {
-        let path = linker::resolve_registry_path(name)
-            .ok_or_else(|| format!("Could not resolve path for registry: {}", name))?;
-
-        if path.exists() {
+    // Validate every existing candidate before any clone or symlink is written.
+    let paths = all_registries
+        .iter()
+        .map(|(name, url)| {
+            linker::validated_registry_path(name, url, project).map(|path| (name, url, path))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    for (name, url, selected) in paths {
+        if std::fs::symlink_metadata(&selected).is_ok() {
             continue;
         }
-
-        // Get parent directory to clone into
+        let path = linker::canonical_registry_path(name)
+            .ok_or_else(|| format!("Invalid registry name: {name}"))?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-
+        let local = project.join(url);
+        if local.is_dir() && !crate::linker::is_git_repository(&local) {
+            linker::symlink_dir(&std::fs::canonicalize(local)?, &path)?;
+            continue;
+        }
         eprintln!("Cloning registry '{}' from '{}'...", name, url);
         let output = std::process::Command::new("git")
-            .args(["clone", url, path.to_str().unwrap()])
+            .arg("clone")
+            .current_dir(project)
+            .arg("--")
+            .arg(url)
+            .arg(&path)
             .output()?;
-
         if !output.status.success() {
             let err = String::from_utf8_lossy(&output.stderr);
             return Err(format!("Failed to clone registry '{}': {}", name, err).into());
@@ -1779,8 +1976,6 @@ mod init_tests {
             assert!(init(&args).is_err());
             assert!(!project.path().exists());
         }
-        init(&["--non-interactive", "--global", "--name", "global-config"]).unwrap();
-        assert!(project.path().exists());
     }
 
     #[test]
@@ -1885,45 +2080,6 @@ mod search_cli_tests {
                 env::remove_var("XDG_CONFIG_HOME");
             }
         }
-    }
-
-    #[test]
-    fn single_skill_plan_distinguishes_configured_skills_and_dependencies() {
-        let requested = SkillSpec {
-            name: "acme/alpha".into(),
-            version: Some("latest".into()),
-            source: Some("company".into()),
-            path: None,
-        };
-        let resolved_request = SkillSpec {
-            version: Some("1.0.0".into()),
-            ..requested.clone()
-        };
-        let dependency = SkillSpec {
-            name: "acme/helper".into(),
-            version: Some("2.0.0".into()),
-            source: Some("company".into()),
-            path: None,
-        };
-        let existing = SkillSpec {
-            name: "acme/other".into(),
-            version: Some("3.0.0".into()),
-            source: Some("company".into()),
-            path: None,
-        };
-        let summary = skill_add_summary(
-            &requested,
-            &[resolved_request.clone(), dependency.clone()],
-            &[resolved_request, dependency, existing],
-            2,
-            false,
-        );
-        assert!(summary.contains("Scope: project"));
-        assert!(summary.contains("skills.yaml entry: acme/alpha@latest (registry: company)"));
-        assert!(summary.contains("acme/alpha@1.0.0 (requested)"));
-        assert!(summary.contains("acme/helper@2.0.0 (dependency)"));
-        assert!(summary.contains("acme/other@3.0.0 (already configured)"));
-        assert!(summary.contains("Agent links to create or repair: 2"));
     }
 
     fn git(repository: &Path, args: &[&str]) {
@@ -2076,6 +2232,33 @@ mod search_cli_tests {
             yes,
         };
 
+        run(Commands::Add {
+            name: "acme/starter".into(),
+            source: Some("local".into()),
+            kind: None,
+            path: None,
+            global: true,
+            dry_run: true,
+            json: false,
+            yes: false,
+        })
+        .unwrap_err();
+        assert_eq!(fs::read(&config_path).unwrap(), before);
+        run(add("acme/beta", true, false)).unwrap();
+        assert_eq!(fs::read(&config_path).unwrap(), before);
+        run(Commands::Add {
+            name: "acme/beta".into(),
+            source: Some("local".into()),
+            kind: None,
+            path: None,
+            global: false,
+            dry_run: false,
+            json: true,
+            yes: false,
+        })
+        .unwrap();
+        assert_eq!(fs::read(&config_path).unwrap(), before);
+        assert!(!linker::resolve_registry_path("local").unwrap().exists());
         run(add("acme/starter", true, false)).unwrap();
         assert_eq!(fs::read(&config_path).unwrap(), before);
         assert!(!environment.project().join(".agents/skills/alpha").exists());
@@ -2085,12 +2268,13 @@ mod search_cli_tests {
             .contains("--yes"));
         run(add("acme/starter", false, true)).unwrap();
         let after_bundle = fs::read(&config_path).unwrap();
+        let config = SkillsConfig::load_from_file(&config_path).unwrap();
+        assert_eq!(config.skills.len(), 1);
+        assert!(config.skills[0].is_bundle());
+        assert_eq!(config.skills[0].source.as_deref(), Some("local"));
         run(add("acme/starter", false, true)).unwrap();
         assert_eq!(fs::read(&config_path).unwrap(), after_bundle);
-        assert!(environment
-            .project()
-            .join(".agents/skills/alpha")
-            .is_symlink());
+        assert!(!environment.project().join(".agents/skills/alpha").exists());
 
         assert!(run(add("acme/beta", false, false))
             .unwrap_err()
@@ -2099,29 +2283,380 @@ mod search_cli_tests {
         run(add("acme/beta", false, true)).unwrap();
         let config = SkillsConfig::load_from_file(&config_path).unwrap();
         assert_eq!(config.skills.len(), 2);
-        assert!(environment
-            .project()
-            .join(".agents/skills/beta")
-            .is_symlink());
-        assert!(run(add("acme/beta", true, false))
+        assert!(!config.skills[1].is_bundle());
+        assert!(!environment.project().join(".agents/skills/beta").exists());
+        run(add("acme/beta", true, false)).unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn bundle_validation_and_uncached_preview_leave_no_writes() {
+        let environment = Environment::new();
+        let registry = environment.registry();
+        let namespace = registry.join("skills/acme");
+        fs::create_dir_all(&namespace).unwrap();
+        let manifest = namespace.join("manifest.yaml");
+        let config_path = environment.project().join("skills.yaml");
+        let mut config = SkillsConfig {
+            name: "validation".into(),
+            version: None,
+            registries: Some(HashMap::from([(
+                "local".into(),
+                registry.to_string_lossy().into_owned(),
+            )])),
+            agents: vec!["codex".into()],
+            skills: Vec::new(),
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            metadata: Default::default(),
+        };
+        config.save_to_file(&config_path).unwrap();
+        let before = fs::read(&config_path).unwrap();
+        for contents in [
+            "schema_version: 1\nnamespace: acme\npackages: {alpha: 1.0.0}\nbundles: {starter: {packages: [alpha]}}\n",
+            "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0}\nbundles: {starter: {packages: [alpha, alpha]}}\n",
+            "schema_version: 2\nnamespace: acme\nskm_adapter_compatibility: 99.x\npackages: {alpha: 1.0.0}\nbundles: {starter: {packages: [alpha]}}\n",
+        ] {
+            fs::write(&manifest, contents).unwrap();
+            assert!(add_registry_item(&config_path, &environment.project(), "acme/starter", Some("local".into()), Some(AddKind::Bundle), None, false, true, false, false).is_err());
+            assert_eq!(fs::read(&config_path).unwrap(), before);
+        }
+        config.registries = Some(HashMap::from([(
+            "remote".into(),
+            "https://example.invalid/repo.git".into(),
+        )]));
+        config.save_to_file(&config_path).unwrap();
+        let before_remote = fs::read(&config_path).unwrap();
+        let error = add_registry_item(
+            &config_path,
+            &environment.project(),
+            "acme/starter",
+            Some("remote".into()),
+            None,
+            None,
+            false,
+            true,
+            false,
+            false,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("skm cache refresh remote"));
+        assert_eq!(fs::read(&config_path).unwrap(), before_remote);
+        assert!(!linker::resolve_registry_path("remote").unwrap().exists());
+        assert!(!environment.project().join(".agents").exists());
+    }
+
+    #[test]
+    #[serial]
+    fn plain_local_registry_add_then_install_uses_same_source() {
+        let environment = Environment::new();
+        let project = environment.project();
+        let registry = project.join("registry");
+        let skill = registry.join("skills/acme/alpha/v1.0.0");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(
+            skill.join("SKILL.md"),
+            "---\nname: alpha\nmetadata:\n  skm-version: 1.0.0\n---\n# Alpha\n",
+        )
+        .unwrap();
+        std::os::unix::fs::symlink("v1.0.0", skill.parent().unwrap().join("latest")).unwrap();
+        fs::write(registry.join("skills/acme/manifest.yaml"), "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0}\nbundles: {starter: {packages: [alpha]}}\n").unwrap();
+        let registries = HashMap::from([("local".into(), "registry".into())]);
+        BaseConfig {
+            default_registry: "local".into(),
+            registries: registries.clone(),
+            check_for_updates: false,
+        }
+        .save()
+        .unwrap();
+        let config_path = project.join("skills.yaml");
+        fs::write(&config_path, "name: fixture\nregistries: {local: registry}\nagents: [codex]\nskills:\n  - name: old\n    path: old\n    publisher_hint: keep-me\n").unwrap();
+        let old = project.join("old");
+        fs::create_dir(&old).unwrap();
+        fs::write(old.join("SKILL.md"), "---\nname: old\n---\n# Old\n").unwrap();
+        add_registry_item(
+            &config_path,
+            &project,
+            "acme/starter",
+            Some("local".into()),
+            None,
+            None,
+            false,
+            false,
+            false,
+            true,
+        )
+        .unwrap();
+        let doc: serde_yaml::Value =
+            serde_yaml::from_slice(&fs::read(&config_path).unwrap()).unwrap();
+        assert_eq!(doc["skills"][0]["publisher_hint"].as_str(), Some("keep-me"));
+        assert!(!project.join(".agents/skills/alpha").exists());
+        run(Commands::Install {
+            global: false,
+            dry_run: false,
+            json: false,
+            yes: true,
+        })
+        .unwrap();
+        assert!(project.join(".agents/skills/alpha").is_symlink());
+        assert_eq!(
+            fs::canonicalize(linker::resolve_registry_path("local").unwrap()).unwrap(),
+            fs::canonicalize(registry).unwrap()
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn relative_git_registry_paths_survive_repeated_add_and_install() {
+        let environment = Environment::new();
+        let project = environment.project();
+        let registry = environment.root.path().join("registry with spaces");
+        let directory = registry.join("skills/acme/alpha/v1.0.0");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(
+            directory.join("SKILL.md"),
+            "---\nname: alpha\nmetadata:\n  skm-version: 1.0.0\n---\n# Alpha\n",
+        )
+        .unwrap();
+        std::os::unix::fs::symlink("v1.0.0", directory.parent().unwrap().join("latest")).unwrap();
+        fs::write(registry.join("skills/acme/manifest.yaml"), "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0}\nbundles: {starter: {packages: [alpha]}}\n").unwrap();
+        fs::create_dir_all(environment.root.path().join("a")).unwrap();
+        git(&registry, &["init", "--quiet"]);
+        git(&registry, &["add", "."]);
+        git(
+            &registry,
+            &[
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-qm",
+                "fixture",
+            ],
+        );
+        let registries = HashMap::from([
+            ("local".into(), "../registry with spaces".into()),
+            ("alternate".into(), "../a/../registry with spaces".into()),
+        ]);
+        BaseConfig {
+            default_registry: "local".into(),
+            registries: registries.clone(),
+            check_for_updates: false,
+        }
+        .save()
+        .unwrap();
+        let config_path = project.join("skills.yaml");
+        SkillsConfig {
+            name: "relative".into(),
+            version: None,
+            registries: Some(registries),
+            agents: vec!["codex".into()],
+            skills: Vec::new(),
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            metadata: Default::default(),
+        }
+        .save_to_file(&config_path)
+        .unwrap();
+        let add = || {
+            add_registry_item(
+                &config_path,
+                &project,
+                "acme/starter",
+                Some("local".into()),
+                None,
+                None,
+                false,
+                false,
+                false,
+                true,
+            )
+        };
+        add().unwrap();
+        let install = || {
+            run(Commands::Install {
+                global: false,
+                dry_run: false,
+                json: false,
+                yes: true,
+            })
+        };
+        install().unwrap();
+        run(Commands::Check { global: false }).unwrap();
+        let before = fs::read(&config_path).unwrap();
+        add().unwrap();
+        install().unwrap();
+        run(Commands::Check { global: false }).unwrap();
+        assert_eq!(fs::read(&config_path).unwrap(), before);
+        assert!(project.join(".agents/skills/alpha").is_symlink());
+        fs::create_dir_all(project.join("different/skills")).unwrap();
+        let mut changed: serde_yaml::Value = serde_yaml::from_slice(&before).unwrap();
+        changed["registries"]["local"] = serde_yaml::Value::String("different".into());
+        fs::write(&config_path, serde_yaml::to_string(&changed).unwrap()).unwrap();
+        assert!(run(Commands::Check { global: false })
             .unwrap_err()
             .to_string()
-            .contains("only to published bundles"));
+            .contains("different or missing origin"));
+        assert!(project.join(".agents/skills/alpha").is_symlink());
+        fs::write(&config_path, &before).unwrap();
+        assert!(linker::registry_cache_matches(
+            &linker::resolve_registry_path("alternate").unwrap(),
+            "../a/../registry with spaces",
+            &project
+        ));
+    }
+
+    #[test]
+    #[serial]
+    fn conflicting_cached_origins_are_rejected_and_cached_preview_needs_no_tmpdir() {
+        let environment = Environment::new();
+        let project = environment.project();
+        let a = environment.registry();
+        let b = project.join("other");
+        for root in [&a, &b] {
+            let skill = root.join("skills/acme/alpha/1.0.0");
+            fs::create_dir_all(&skill).unwrap();
+            fs::write(skill.join("SKILL.md"), "---\nname: alpha\n---\n# Alpha\n").unwrap();
+            fs::write(root.join("skills/acme/manifest.yaml"), "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0}\nbundles: {starter: {packages: [alpha]}}\n").unwrap();
+            git(root, &["init", "--quiet"]);
+            git(root, &["add", "."]);
+            git(
+                root,
+                &[
+                    "-c",
+                    "user.name=Fixture",
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "commit",
+                    "-qm",
+                    "fixture",
+                ],
+            );
+        }
+        let cache = linker::resolve_registry_path("local").unwrap();
+        fs::create_dir_all(cache.parent().unwrap()).unwrap();
+        let cloned = Command::new("git")
+            .args(["clone", "--quiet"])
+            .arg(&a)
+            .arg(&cache)
+            .status()
+            .unwrap();
+        assert!(cloned.success());
+        let config_path = project.join("skills.yaml");
+        let mut config = SkillsConfig {
+            name: "origin".into(),
+            version: None,
+            registries: Some(HashMap::from([("local".into(), "other".into())])),
+            agents: vec!["codex".into()],
+            skills: Vec::new(),
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            metadata: Default::default(),
+        };
+        BaseConfig {
+            default_registry: "local".into(),
+            registries: HashMap::from([("local".into(), a.to_string_lossy().into_owned())]),
+            check_for_updates: false,
+        }
+        .save()
+        .unwrap();
+        config.save_to_file(&config_path).unwrap();
+        let before = fs::read(&config_path).unwrap();
+        let add = || {
+            add_registry_item(
+                &config_path,
+                &project,
+                "acme/starter",
+                Some("local".into()),
+                None,
+                None,
+                false,
+                false,
+                true,
+                false,
+            )
+        };
+        assert!(add()
+            .unwrap_err()
+            .to_string()
+            .contains("different or missing origin"));
+        config
+            .registries
+            .as_mut()
+            .unwrap()
+            .insert("local".into(), format!("file://{}", b.display()));
+        config.save_to_file(&config_path).unwrap();
+        assert!(add()
+            .unwrap_err()
+            .to_string()
+            .contains("different or missing origin"));
+        let origin = format!("file://{}", a.display());
+        git(&cache, &["remote", "set-url", "origin", &origin]);
+        config
+            .registries
+            .as_mut()
+            .unwrap()
+            .insert("local".into(), origin);
+        config.save_to_file(&config_path).unwrap();
+        let preview_before = fs::read(&config_path).unwrap();
+        let tmpdir = env::var_os("TMPDIR");
+        env::set_var("TMPDIR", project.join("missing-temp-dir"));
+        let result = add();
+        if let Some(value) = tmpdir {
+            env::set_var("TMPDIR", value);
+        } else {
+            env::remove_var("TMPDIR");
+        }
+        result.unwrap();
+        assert!(!project.join("missing-temp-dir").exists());
+        assert_ne!(preview_before, before);
+        assert_eq!(fs::read(&config_path).unwrap(), preview_before);
+        assert!(!project.join(".agents").exists());
+        config.skills.push(SkillSpec {
+            name: "acme/alpha".into(),
+            version: Some("latest".into()),
+            source: Some("local".into()),
+            path: None,
+            kind: None,
+        });
+        config
+            .registries
+            .as_mut()
+            .unwrap()
+            .insert("local".into(), "other".into());
+        assert!(validate_effective_registry_caches(&config, &project)
+            .unwrap_err()
+            .to_string()
+            .contains("different or missing origin"));
+    }
+
+    #[test]
+    fn skill_json_preview_contains_planned_entry() {
+        let entry = SkillSpec {
+            name: "acme/alpha".into(),
+            version: Some("latest".into()),
+            source: Some("local".into()),
+            path: None,
+            kind: None,
+        };
+        let result = format_add_preview(&entry, false, false).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["entry"]["name"], "acme/alpha");
+        assert_eq!(json["entry"]["source"], "local");
+        assert_eq!(json["entry"]["version"], "latest");
+        assert_eq!(json["scope"], "project");
+        assert_eq!(json["already_present"], false);
     }
 
     #[test]
     #[serial]
     fn single_skill_confirmation_precedes_project_writes() {
         let environment = Environment::new();
-        let project = environment.project();
-        let source = project.join("local-skill");
-        fs::create_dir_all(&source).unwrap();
-        fs::write(
-            source.join("SKILL.md"),
-            "---\nname: alpha\nmetadata:\n  skm-version: 1.0.0\n---\n# Alpha\n",
-        )
-        .unwrap();
-        let config_path = project.join("skills.yaml");
+        let config_path = environment.project().join("skills.yaml");
         SkillsConfig {
             name: "confirmation".into(),
             version: None,
@@ -2140,47 +2675,45 @@ mod search_cli_tests {
             version: Some("latest".into()),
             source: None,
             path: Some("local-skill".into()),
+            kind: None,
         };
         let before = fs::read(&config_path).unwrap();
-        let target = project.join(".agents/skills/alpha");
-
         add_skill_with_confirmation(
             &config_path,
-            &project,
             requested.clone(),
             false,
             false,
+            false,
+            false,
             |question| {
-                assert_eq!(question, "Install 1 skill and create or repair 1 link?");
+                assert_eq!(question, "Add this entry to skills.yaml?");
                 Ok(false)
             },
         )
         .unwrap();
         assert_eq!(fs::read(&config_path).unwrap(), before);
-        assert!(!target.exists());
-
-        let error = add_skill(&config_path, &project, requested.clone(), false, false).unwrap_err();
-        assert!(error.to_string().contains("--yes"));
-        assert_eq!(fs::read(&config_path).unwrap(), before);
-        assert!(!target.exists());
-
-        fs::create_dir_all(target.parent().unwrap()).unwrap();
-        fs::write(&target, "unmanaged").unwrap();
-        let error = add_skill_with_confirmation(
+        add_skill_with_confirmation(
             &config_path,
-            &project,
+            requested.clone(),
+            false,
+            true,
+            false,
+            false,
+            |_| panic!("preview prompted"),
+        )
+        .unwrap();
+        add_skill_with_confirmation(
+            &config_path,
             requested.clone(),
             false,
             false,
-            |_| panic!("a link collision must fail before confirmation"),
+            true,
+            false,
+            |_| panic!("JSON prompted"),
         )
-        .unwrap_err();
-        assert!(error.to_string().contains("non-symlink path"));
+        .unwrap();
         assert_eq!(fs::read(&config_path).unwrap(), before);
-        assert_eq!(fs::read(&target).unwrap(), b"unmanaged");
-        fs::remove_file(&target).unwrap();
-
-        add_skill_with_confirmation(&config_path, &project, requested, false, false, |_| {
+        add_skill_with_confirmation(&config_path, requested, false, false, false, false, |_| {
             Ok(true)
         })
         .unwrap();
@@ -2191,7 +2724,7 @@ mod search_cli_tests {
                 .len(),
             1
         );
-        assert!(target.is_symlink());
+        assert!(!environment.project().join(".agents").exists());
     }
 
     #[test]
@@ -2323,6 +2856,7 @@ mod search_cli_tests {
                 version: None,
                 source: None,
                 path: Some("fixture".into()),
+                kind: None,
             }],
             toolkit: None,
             bundles: Vec::new(),

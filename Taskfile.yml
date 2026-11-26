@@ -77,6 +77,12 @@ tasks:
     cmds:
       - cargo build --locked --release {{if .TARGET}}--target {{.TARGET}}{{end}}
 
+  test:global-home:
+    desc: Test global home bootstrap and legacy cache migration
+    cmds:
+      - cargo test --bin skm config_manager::tests -- --test-threads=1
+      - cargo test --test global_home -- --test-threads=1
+
   test:updater:
     desc: Run self-update unit and command tests
     cmds:
@@ -95,9 +101,11 @@ tasks:
       - cargo test --bin skm toolkit::tests -- --test-threads=1
 
   test:bundle:
-    desc: Test bundle manifest, dependency, and transactional installation contracts
+    desc: Test bundle resolution and unified add contracts
     cmds:
-      - cargo test --bin skm bundle::tests -- --test-threads=1
+      - cargo test --bin skm linker::tests -- --test-threads=1
+      - cargo test --bin skm search_cli_tests -- --test-threads=1
+      - cargo test --test bundle_maintenance -- --test-threads=1
 
   test:registry-format:
     desc: Test registry discovery and publisher-neutral configuration interfaces

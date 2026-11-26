@@ -8,7 +8,7 @@ skill directories, so a project can declare the skills it needs once and keep
 all sixteen supported agent clients in sync. Project-local `skm install`
 writes a deterministic `skills.lock.yaml` after linking succeeds.
 
-[Install](#install) | [Release Channels](#release-channels) | [Quick Start](#quick-start) | [Commands](#commands) | [Configuration](#configuration) | [Toolkits](#toolkits)
+[Install](#install) | [Release Channels](#release-channels) | [Quick Start](#quick-start) | [Commands](#commands) | [Configuration](#configuration) | [Installation scopes](workspace/docs/installation-scopes.md) | [Toolkits](#toolkits)
 
 ## Install
 
@@ -176,8 +176,9 @@ skm init --non-interactive --name my-project
 Non-interactive initialization refuses to replace an existing manifest.
 The older `--interactive` and `--advanced` flags remain accepted but are
 hidden from help; interactive prompts are already the default.
-`--global` prepares for global installation; `skills.yaml` remains in the
-current directory.
+`--global` edits the user manifest at `~/.skm/skills.yaml`. Select the
+agents that should receive global skills; `~/.skm/config.yaml` contains base
+settings, not the global skill selection.
 
 Search configured project and inherited global registries for skills and
 published bundles by name:
@@ -209,36 +210,56 @@ Add a selected skill with:
 skm add software-development/spec --registry default --kind skill
 ```
 
-`skm add` shows the planned configuration, resolved skills, and agent link
-changes, then asks for confirmation. The prompt defaults to No. Pass
-`--yes` to apply without a prompt, including from a script; a non-interactive
-add without `--yes` fails before changing the project. This applies to both
-single skills and published bundles.
+`skm add` previews the manifest entry and asks for confirmation. The prompt
+defaults to No; pass `--yes` for non-interactive use. It writes the entry only;
+run `skm install --yes` afterwards to link skills and update the lockfile.
+Existing scripts that expect `add --yes` to link must append that install command.
+Run `skm install` before `skm check` after adding an entry.
 
-Search commands include `--kind skill` or `--kind bundle` so they remain
-unambiguous if a registry publishes both with the same ID. For a unique ID,
-`skm add` chooses the item automatically.
+The item kind is detected automatically. When a skill and bundle share an ID,
+select `--kind skill` or `--kind bundle` explicitly. Published bundles cannot be
+added with `--global`. Re-adding an existing entry with the same kind and source
+is a no-op.
 
 Use `--json` for machine-readable search results, including result kinds,
 dependencies, collections, and bundle members, and `--limit <number>` to bound
-the combined result list. Search is read-only; use `skm add` to install a skill
-or every member of a published bundle. Preview or add a bundle with:
+the combined result list. Search is read-only. Preview or add a bundle with:
 
 ```sh
-skm add skills-yaml/authoring-toolkit --registry default --kind bundle --dry-run
-skm add skills-yaml/authoring-toolkit --registry default --kind bundle
-skm add skills-yaml/authoring-toolkit --registry default --kind bundle --yes
+skm add skills-yaml/authoring-toolkit --registry default --dry-run
+skm add skills-yaml/authoring-toolkit --registry default --json
+skm add skills-yaml/authoring-toolkit --registry default --yes
+skm install --yes
 ```
 
-For bundles, `--dry-run` and `--json` preview without asking or changing the
-project; `--json` emits a structured plan. These preview flags do not apply to
-single skills. Bundle add requires a project `skills.yaml` with an effective
-agent target. It expands the bundle and its exact same-registry dependencies
-into ordinary pinned `skills`
-entries, then links them as one rollback-protected project change. Repeating
-the same command succeeds without changing the project. Conflicting pins and
-real-file targets stop the whole operation. A published schema-2 bundle is
-required.
+`--dry-run` and `--json` preview skill or bundle entries without writing. A
+preview of an uncached remote registry requires `skm cache refresh <registry>`
+first; normal add can inspect that remote without a persistent cache. Bundle
+manifests must satisfy the published schema-2 contract.
+
+A bundle entry in `skills.yaml` stays as one declarative entry — members are
+resolved at install time, not unpacked:
+
+```yaml
+skills:
+  - name: workspace/all-workspace-skills
+    kind: bundle
+    version: latest
+    source: default
+```
+
+`skm install` resolves the bundle to its members and writes both the bundle
+and its resolved members into `skills.lock.yaml`. `skm check` detects when the
+published bundle changes members or a member's published version changes.
+`skm skill outdated` reports these changes and `skm skill upgrade --all`
+updates the lock and links, removing obsolete members that no other entry needs.
+When publishers provide bundle release history, `latest` and `default` select the
+newest numeric release. Pin a published release with
+`skm skill use workspace/all-workspace-skills@1.2.0 --yes`; this updates the
+manifest, links and lock together. `outdated` reports newer releases, while
+`upgrade` keeps exact bundle pins unchanged; use `skill use` to change one.
+Legacy bundles without history support aliases but cannot resolve exact pins.
+See [registry formats](workspace/docs/registry-format.md) for publisher details.
 
 Install the skills declared in `skills.yaml` into project-local agent folders:
 
@@ -278,7 +299,14 @@ Validate the manifest, sources, `SKILL.md` files, and symlink targets:
 skm check
 ```
 
-Use `--global` with `install`, `list`, or `check` to work against user-level agent directories instead of project-local directories.
+Use `--global` with skill commands to select the user manifest and user-level agent directories from any working directory.
+
+## Project-local or global?
+
+Use project-local skills for repository-specific, team-reviewed workflows. Use
+global skills for a user's baseline tools across projects. Both can coexist;
+`--global` selects `~/.skm/skills.yaml` and the selected agents’ user-level destinations. See [installation scopes](workspace/docs/installation-scopes.md) for
+examples, tradeoffs, duplicate-name behavior, and daily update commands.
 
 ## Commands
 
@@ -296,7 +324,7 @@ skm cache prune <registry>|--all [--keep <number>] [--dry-run] [--yes]
 skm cache clear <registry>|--all [--dry-run] [--yes]
 skm skill versions <skill-name> [--registry <registry>] [--json] [--stable-only] [--pre] [--limit <limit>]
 skm skill use <skill-name>@<version> [--global] [--yes] [--dry-run]
-skm skill outdated [skill-name] [--refresh] [--pre]
+skm skill outdated [skill-name] [--global] [--refresh] [--pre]
 skm skill upgrade <skill-name>|--all [--global] [--yes] [--dry-run] [--pre]
 skm self version
 skm self check [--channel prod|development]
@@ -316,10 +344,9 @@ skm clean symlinks|reset ...
   are described in [Toolkits](#toolkits).
 - `install`: resolves configured skills once, preflights every target,
   transactionally links each one, and writes the project lockfile last.
-- `add`: adds and links one skill, or expands a published registry bundle and
-  exact dependencies into project skill pins. Both paths show a plan and prompt
-  unless `--yes` is set. `--dry-run` and `--json` preview bundles without
-  applying; bundle application remains transactional.
+- `add`: writes a skill or published bundle entry to `skills.yaml`, prompting
+  unless `--yes` is set. `--dry-run` and `--json` preview either kind without
+  writing. Run `install` to resolve and link entries.
 - `search`: searches configured registries for skills and published bundles in
   one result list, shows a matching `skm add` command for each, and lists
   browse-only namespace collections without changing project state.
@@ -375,6 +402,21 @@ skills:
 ```
 
 Each skill source directory must contain a `SKILL.md` file.
+
+A published registry bundle can be declared as a single `kind: bundle` entry
+without unpacking its members:
+
+```yaml
+skills:
+  - name: workspace/all-workspace-skills
+    kind: bundle
+    version: latest
+    source: default
+```
+
+`kind` is optional and defaults to `skill`. `kind: bundle` entries are
+registry-only (no `path`), require an explicit registry `source`, and are
+resolved to their published members at install time. The lockfile records both the bundle and its resolved members.
 
 ### Registry skill dependencies
 

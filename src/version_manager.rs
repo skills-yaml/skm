@@ -86,8 +86,15 @@ pub fn list_skill_versions(
     skill_name: &str,
     registry_name: &str,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    let registry_path = linker::resolve_registry_path(registry_name)
-        .ok_or_else(|| format!("Could not resolve path for registry: {}", registry_name))?;
+    list_skill_versions_at(skill_name, registry_name, &std::env::current_dir()?)
+}
+
+fn list_skill_versions_at(
+    skill_name: &str,
+    registry_name: &str,
+    manifest_root: &Path,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let registry_path = linker::effective_registry_path(registry_name, manifest_root)?;
 
     let skill_path = registry_path
         .join("skills")
@@ -131,6 +138,91 @@ fn newest_published_version(versions: &[String], include_pre: bool) -> Option<&s
         .next()
 }
 
+type BundleChanges = Vec<(String, Vec<String>)>;
+
+/// Compare resolved bundle members with the installed lock, including transitive dependencies.
+pub(crate) fn bundle_changes(
+    config: &SkillsConfig,
+    project: &Path,
+) -> Result<BundleChanges, Box<dyn std::error::Error>> {
+    let lock_path = project.join("skills.lock.yaml");
+    let lock: serde_yaml::Value = match fs::read(&lock_path) {
+        Ok(bytes) => serde_yaml::from_slice(&bytes)?,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => serde_yaml::Value::Null,
+        Err(error) => return Err(error.into()),
+    };
+    let locked = lock.get("bundles").and_then(|v| v.as_sequence());
+    let mut changes = Vec::new();
+    for entry in linker::resolve_entries(&config.skills, project)? {
+        if let linker::ResolvedEntry::Bundle {
+            spec,
+            members,
+            resolved_version,
+        } = entry
+        {
+            let old = locked.and_then(|entries| {
+                entries
+                    .iter()
+                    .find(|v| v.get("name").and_then(|v| v.as_str()) == Some(&spec.name))
+            });
+            let old_members: std::collections::BTreeMap<String, String> = old
+                .and_then(|v| v.get("members"))
+                .and_then(|v| v.as_sequence())
+                .into_iter()
+                .flatten()
+                .filter_map(|v| {
+                    Some((
+                        v.get("name")?.as_str()?.to_string(),
+                        v.get("version")?.as_str()?.to_string(),
+                    ))
+                })
+                .collect();
+            let new_members: std::collections::BTreeMap<String, String> = members
+                .iter()
+                .map(|s| {
+                    (
+                        s.name.clone(),
+                        s.version.clone().unwrap_or_else(|| "latest".into()),
+                    )
+                })
+                .collect();
+            let mut details = Vec::new();
+            if let Some(old) = old {
+                let previous = old.get("resolved_version").and_then(|v| v.as_str());
+                if previous != resolved_version.as_deref() {
+                    details.push(format!(
+                        "release: {} -> {}",
+                        previous.unwrap_or("unversioned"),
+                        resolved_version.as_deref().unwrap_or("unversioned")
+                    ));
+                }
+            }
+            if old.is_none() {
+                details.push("not recorded in lockfile".to_string());
+            }
+            for (name, version) in &new_members {
+                match old_members.get(name) {
+                    None => details.push(format!("added {name}@{version}")),
+                    Some(old) if old != version => {
+                        details.push(format!("{name}: {old} -> {version}"))
+                    }
+                    _ => {}
+                }
+            }
+            for name in old_members
+                .keys()
+                .filter(|name| !new_members.contains_key(*name))
+            {
+                details.push(format!("removed {name}"));
+            }
+            if !details.is_empty() {
+                changes.push((spec.name, details));
+            }
+        }
+    }
+    Ok(changes)
+}
+
 /// Report newer versions for pinned registry skills without changing the manifest.
 pub fn show_outdated(
     config_path: &Path,
@@ -146,6 +238,7 @@ pub fn show_outdated(
         }
     }
 
+    let project = config_path.parent().unwrap_or_else(|| Path::new("."));
     let base = if refresh {
         Some(BaseConfig::load()?)
     } else {
@@ -153,11 +246,117 @@ pub fn show_outdated(
     };
     let mut refreshed = HashSet::new();
     let mut outdated = 0;
+    if refresh {
+        for skill in config
+            .skills
+            .iter()
+            .filter(|s| s.is_bundle() && skill_name.is_none_or(|name| name == s.name))
+        {
+            let source = skill
+                .source
+                .as_deref()
+                .ok_or("Bundle requires an explicit registry source")?;
+            if refreshed.insert(source.to_string()) {
+                let url = config
+                    .registries
+                    .as_ref()
+                    .and_then(|registries| registries.get(source))
+                    .or_else(|| base.as_ref().and_then(|base| base.registries.get(source)))
+                    .ok_or_else(|| format!("Registry '{source}' not found in configuration"))?;
+                registry::refresh_from_url_at(source, url, project)?;
+            }
+        }
+    }
+    // Alias drift compares the installed lock to current registry state.
+    let mut aliases = config.clone();
+    aliases.skills.retain(|s| {
+        s.is_bundle()
+            && skill_name.is_none_or(|name| name == s.name)
+            && matches!(
+                s.version.as_deref(),
+                None | Some("latest") | Some("default")
+            )
+    });
+    if !aliases.skills.is_empty() {
+        for (name, details) in bundle_changes(&aliases, project)? {
+            println!("{name}: {}", details.join(", "));
+            outdated += 1;
+        }
+    }
+    // Exact-pin availability compares the selected release itself to latest,
+    // independent of whichever release happens to be installed in the lock.
+    for skill in config
+        .skills
+        .iter()
+        .filter(|s| s.is_bundle() && skill_name.is_none_or(|name| name == s.name))
+    {
+        let selected = match skill.version.as_deref() {
+            None | Some("latest") | Some("default") => continue,
+            Some(version) => version,
+        };
+        let current = linker::resolve_entries(std::slice::from_ref(skill), project)?;
+        let mut newest = skill.clone();
+        newest.version = Some("latest".into());
+        let newest = linker::resolve_entries(&[newest], project)?;
+        let bundle =
+            |entries: Vec<linker::ResolvedEntry>| -> Result<_, Box<dyn std::error::Error>> {
+                entries
+                    .into_iter()
+                    .find_map(|entry| match entry {
+                        linker::ResolvedEntry::Bundle {
+                            members,
+                            resolved_version,
+                            ..
+                        } => Some((members, resolved_version)),
+                        _ => None,
+                    })
+                    .ok_or_else(|| "Bundle resolution missing".into())
+            };
+        let (old_members, _) = bundle(current)?;
+        let (new_members, latest_version) = bundle(newest)?;
+        let Some(latest_version) = latest_version else {
+            continue;
+        };
+        if compare_versions(&latest_version, selected) != Ordering::Greater {
+            continue;
+        }
+        let old: std::collections::BTreeMap<_, _> = old_members
+            .into_iter()
+            .map(|s| (s.name, s.version.unwrap_or_else(|| "latest".into())))
+            .collect();
+        let new: std::collections::BTreeMap<_, _> = new_members
+            .into_iter()
+            .map(|s| (s.name, s.version.unwrap_or_else(|| "latest".into())))
+            .collect();
+        let mut details = Vec::new();
+        for (name, version) in &new {
+            match old.get(name) {
+                None => details.push(format!("added {name}@{version}")),
+                Some(previous) if previous != version => {
+                    details.push(format!("{name}: {previous} -> {version}"))
+                }
+                _ => {}
+            }
+        }
+        for name in old.keys().filter(|name| !new.contains_key(*name)) {
+            details.push(format!("removed {name}"));
+        }
+        let changes = if details.is_empty() {
+            String::new()
+        } else {
+            format!("; {}", details.join(", "))
+        };
+        println!("{}: newer release {selected} -> {latest_version}{changes} (use 'skm skill use {}@<version>' to change the pin)", skill.name, skill.name);
+        outdated += 1;
+    }
     for skill in config
         .skills
         .iter()
         .filter(|skill| skill_name.is_none_or(|name| skill.name == name))
     {
+        if skill.is_bundle() {
+            continue;
+        }
         if skill.path.is_some() {
             println!("{}: local skill (no registry version)", skill.name);
             continue;
@@ -175,9 +374,9 @@ pub fn show_outdated(
                 .and_then(|registries| registries.get(source))
                 .or_else(|| base.as_ref().and_then(|base| base.registries.get(source)))
                 .ok_or_else(|| format!("Registry '{source}' not found in configuration"))?;
-            registry::refresh_from_url(source, url)?;
+            registry::refresh_from_url_at(source, url, project)?;
         }
-        let versions = list_skill_versions(&skill.name, source)?;
+        let versions = list_skill_versions_at(&skill.name, source, project)?;
         match newest_published_version(&versions, include_pre) {
             Some(latest) if compare_versions(latest, current) == Ordering::Greater => {
                 println!("{}: {} -> {} ({})", skill.name, current, latest, source);
@@ -259,6 +458,32 @@ pub fn list_versions_cmd(
     Ok(())
 }
 
+// Patch only the requested pins so publisher fields on entries survive edits.
+fn updated_manifest(
+    original: &[u8],
+    changes: &[(String, String)],
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let mut document: serde_yaml::Value = serde_yaml::from_slice(original)?;
+    let entries = document
+        .get_mut("skills")
+        .and_then(|v| v.as_sequence_mut())
+        .ok_or("skills must be a YAML sequence")?;
+    for (name, version) in changes {
+        let entry = entries
+            .iter_mut()
+            .find(|entry| entry.get("name").and_then(|v| v.as_str()) == Some(name))
+            .ok_or("Skill disappeared from manifest")?;
+        entry
+            .as_mapping_mut()
+            .ok_or("Skill must be a mapping")?
+            .insert(
+                serde_yaml::Value::String("version".into()),
+                serde_yaml::Value::String(version.clone()),
+            );
+    }
+    Ok(serde_yaml::to_string(&document)?.into_bytes())
+}
+
 /// Update a skill to a specific version
 pub fn use_version(
     skill_name: &str,
@@ -268,7 +493,8 @@ pub fn use_version(
     yes: bool,
     dry_run: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut config = SkillsConfig::load_from_file(config_path)?;
+    let original = fs::read(config_path)?;
+    let mut config: SkillsConfig = serde_yaml::from_slice(&original)?;
 
     // Find and update the skill
     let skill_index = config
@@ -277,12 +503,40 @@ pub fn use_version(
         .position(|s| s.name == skill_name)
         .ok_or_else(|| format!("Skill '{}' not found in configuration", skill_name))?;
 
+    if config.skills[skill_index].is_bundle() {
+        if global {
+            return Err("published bundles are project-only".into());
+        }
+        config.skills[skill_index].version = Some(version.to_string());
+        let project = config_path.parent().unwrap_or_else(|| Path::new("."));
+        let updated = serde_yaml::to_string(&config)?.into_bytes();
+        let plan = installer::prepare(&config, project, false, Some((original, updated)))?;
+        plan.print(false)?;
+        if dry_run {
+            return Ok(());
+        }
+        if !yes {
+            print!("Update bundle selection? [y/N] ");
+            io::stdout().flush()?;
+            let mut answer = String::new();
+            io::stdin().read_line(&mut answer)?;
+            if !matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
+                return Ok(());
+            }
+        }
+        return plan.apply();
+    }
+
     // Verify version exists in the registry
     let registry = config.skills[skill_index]
         .source
         .as_deref()
         .unwrap_or("default");
-    let available_versions = list_skill_versions(skill_name, registry)?;
+    let available_versions = list_skill_versions_at(
+        skill_name,
+        registry,
+        config_path.parent().unwrap_or_else(|| Path::new(".")),
+    )?;
     if !available_versions.contains(&version.to_string()) && version != "latest" {
         return Err(format!(
             "Version '{}' not found for skill '{}' in registry '{}'. Available versions: {}",
@@ -298,6 +552,28 @@ pub fn use_version(
         .version
         .as_deref()
         .unwrap_or("latest");
+
+    if global {
+        config.skills[skill_index].version = Some(version.to_string());
+        let updated =
+            updated_manifest(&original, &[(skill_name.to_string(), version.to_string())])?;
+        let project = config_path.parent().unwrap_or_else(|| Path::new("."));
+        let plan = installer::prepare(&config, project, true, Some((original, updated)))?;
+        plan.print(false)?;
+        if dry_run {
+            return Ok(());
+        }
+        if !yes {
+            print!("Update skill selection? [y/N] ");
+            io::stdout().flush()?;
+            let mut response = String::new();
+            io::stdin().read_line(&mut response)?;
+            if !matches!(response.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
+                return Ok(());
+            }
+        }
+        return plan.apply();
+    }
 
     if dry_run {
         println!(
@@ -343,6 +619,7 @@ pub fn use_version(
     );
 
     // Save updated configuration
+    let pin_changed = config.skills[skill_index].version.as_deref() != Some(version);
     config.skills[skill_index].version = Some(version.to_string());
     config.save_to_file(config_path)?;
 
@@ -354,6 +631,10 @@ pub fn use_version(
         &config.agents,
         global,
     )?;
+
+    if pin_changed {
+        installer::sync_existing_lock(config_path, project_root)?;
+    }
 
     println!("Done. Skill now using {}", version);
 
@@ -370,7 +651,11 @@ pub fn update_to_latest(
     dry_run: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Get current config
-    let config = SkillsConfig::load_from_file(config_path)?;
+    let original = fs::read(config_path)?;
+    let config: SkillsConfig = serde_yaml::from_slice(&original)?;
+    for skill in &config.skills {
+        skill.validate_kind()?;
+    }
 
     // Find the skill
     let skill = config
@@ -379,10 +664,25 @@ pub fn update_to_latest(
         .find(|s| s.name == skill_name)
         .ok_or_else(|| format!("Skill '{}' not found in configuration", skill_name))?;
 
+    if skill.is_bundle() {
+        return upgrade_bundles(
+            &config,
+            skill_name,
+            config_path,
+            global,
+            yes,
+            dry_run,
+            original,
+        );
+    }
     let registry = skill.source.as_deref().unwrap_or("default");
 
     // List versions and find latest
-    let versions = list_skill_versions(skill_name, registry)?;
+    let versions = list_skill_versions_at(
+        skill_name,
+        registry,
+        config_path.parent().unwrap_or_else(|| Path::new(".")),
+    )?;
     let latest = newest_published_version(&versions, pre)
         .ok_or_else(|| format!("No versions found for skill '{}'", skill_name))?;
 
@@ -404,6 +704,63 @@ pub fn update_to_latest(
     use_version(skill_name, latest, config_path, global, yes, dry_run)
 }
 
+fn print_bundle_pin_guidance(config: &SkillsConfig) {
+    for skill in config.skills.iter().filter(|s| s.is_bundle()) {
+        if !matches!(
+            skill.version.as_deref(),
+            None | Some("latest") | Some("default")
+        ) {
+            println!(
+                "{}: exact bundle pin preserved; use 'skm skill use {}@<version>' to change it",
+                skill.name, skill.name
+            );
+        }
+    }
+}
+
+fn upgrade_bundles(
+    config: &SkillsConfig,
+    selected_name: &str,
+    config_path: &Path,
+    global: bool,
+    yes: bool,
+    dry_run: bool,
+    original: Vec<u8>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if global {
+        return Err("published bundles are project-only".into());
+    }
+    let project = config_path.parent().unwrap_or_else(|| Path::new("."));
+    let mut selected = config.clone();
+    selected
+        .skills
+        .retain(|skill| skill.is_bundle() && skill.name == selected_name);
+    print_bundle_pin_guidance(&selected);
+    let changes = bundle_changes(&selected, project)?;
+    if changes.is_empty() {
+        println!("Bundles are current.");
+        return Ok(());
+    }
+    for (name, details) in &changes {
+        println!("{name}: {}", details.join(", "));
+    }
+    let plan = installer::prepare_named_bundle(config, project, selected_name, original)?;
+    plan.print(false)?;
+    if dry_run {
+        return Ok(());
+    }
+    if !yes {
+        print!("Upgrade bundles? [y/N] ");
+        io::stdout().flush()?;
+        let mut answer = String::new();
+        io::stdin().read_line(&mut answer)?;
+        if !matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
+            return Ok(());
+        }
+    }
+    plan.apply()
+}
+
 /// Upgrade all exact registry pins from the local cache as one transaction.
 pub fn upgrade_all(
     config_path: &Path,
@@ -420,6 +777,9 @@ pub fn upgrade_all(
     let mut config: SkillsConfig = serde_yaml::from_slice(&original)?;
     let mut changes = Vec::new();
     for skill in &mut config.skills {
+        if skill.is_bundle() {
+            continue;
+        }
         if skill.path.is_some() {
             continue;
         }
@@ -428,7 +788,11 @@ pub fn upgrade_all(
             continue;
         }
         let source = skill.source.as_deref().unwrap_or("default");
-        let versions = list_skill_versions(&skill.name, source)?;
+        let versions = list_skill_versions_at(
+            &skill.name,
+            source,
+            config_path.parent().unwrap_or_else(|| Path::new(".")),
+        )?;
         if let Some(newest) = newest_published_version(&versions, pre) {
             if compare_versions(newest, current) == Ordering::Greater {
                 changes.push((skill.name.clone(), current.to_string(), newest.to_string()));
@@ -436,13 +800,35 @@ pub fn upgrade_all(
             }
         }
     }
-    if changes.is_empty() {
+    let project = config_path.parent().unwrap_or_else(|| Path::new("."));
+    print_bundle_pin_guidance(&config);
+    let bundle_drift = if config.skills.iter().any(|s| s.is_bundle()) {
+        bundle_changes(&config, project)?
+    } else {
+        Vec::new()
+    };
+    if changes.is_empty() && bundle_drift.is_empty() {
         println!("All pinned registry skills are current in the local cache.");
         return Ok(());
     }
-    let project = config_path.parent().unwrap_or_else(|| Path::new("."));
-    let updated = serde_yaml::to_string(&config)?.into_bytes();
+    if global && !bundle_drift.is_empty() {
+        return Err("published bundles are project-only".into());
+    }
+    let updated = if changes.is_empty() {
+        original.clone()
+    } else {
+        updated_manifest(
+            &original,
+            &changes
+                .iter()
+                .map(|(name, _, new)| (name.clone(), new.clone()))
+                .collect::<Vec<_>>(),
+        )?
+    };
     let plan = installer::prepare(&config, project, global, Some((original, updated)))?;
+    for (name, details) in &bundle_drift {
+        println!("  {name}: {}", details.join(", "));
+    }
     println!("Skill upgrades:");
     for (name, old, new) in &changes {
         println!("  {name}: {old} -> {new}");
@@ -545,6 +931,17 @@ mod tests {
         fs::write(skill_reg_path.join("v1.1.0").join("SKILL.md"), "# v1.1.0").unwrap();
         fs::write(skill_reg_path.join("latest").join("SKILL.md"), "# latest").unwrap();
 
+        BaseConfig {
+            default_registry: "default".into(),
+            registries: std::collections::HashMap::from([(
+                "default".into(),
+                registry_path.to_string_lossy().into_owned(),
+            )]),
+            check_for_updates: false,
+        }
+        .save()
+        .unwrap();
+
         // 1. Test list_skill_versions
         let versions = list_skill_versions("test-skill", "default").unwrap();
         assert_eq!(versions, vec!["latest", "v1.1.0", "v1.0.0"]);
@@ -561,6 +958,7 @@ mod tests {
                 version: Some("v1.0.0".to_string()),
                 source: Some("default".to_string()),
                 path: None,
+                kind: None,
             }],
             toolkit: None,
             bundles: Vec::new(),

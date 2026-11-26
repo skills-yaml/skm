@@ -15,9 +15,21 @@ pub struct Document {
 }
 
 impl Document {
+    #[cfg(test)]
     pub fn load(path: &Path, name: Option<&str>, non_interactive: bool) -> Result<Self> {
+        Self::load_for_scope(path, name, non_interactive, false)
+    }
+
+    pub fn load_for_scope(
+        path: &Path,
+        name: Option<&str>,
+        non_interactive: bool,
+        global: bool,
+    ) -> Result<Self> {
         let original = read_manifest(path)?;
-        if non_interactive && original.is_some() {
+        let bootstrap =
+            global && original.as_deref() == Some(crate::config_manager::EMPTY_GLOBAL_MANIFEST);
+        if non_interactive && original.is_some() && !bootstrap {
             return Err("skills.yaml already exists; run 'skm init' to review and edit it".into());
         }
         let initial = if let Some(content) = &original {
@@ -99,6 +111,9 @@ impl Document {
             if skill.path.as_ref().is_some_and(|p| p.trim().is_empty()) {
                 return Err(format!("Local path for '{}' cannot be empty", skill.name).into());
             }
+        }
+        if global && config.skills.iter().any(|skill| skill.is_bundle()) {
+            return Err("published bundles are project-only".into());
         }
         if let Some(toolkit) = &config.toolkit {
             if global {

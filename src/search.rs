@@ -1,7 +1,7 @@
 use crate::config::SkillsConfig;
 use crate::config_manager::BaseConfig;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs;
 use std::io::{Read, Seek};
@@ -88,7 +88,7 @@ impl SearchItem<'_> {
         }
     }
 
-    fn display(&self) -> SearchMatch<'_> {
+    fn display(&self, ambiguous: bool) -> SearchMatch<'_> {
         match self {
             Self::Skill(entry) => SearchMatch {
                 name: &entry.name,
@@ -106,10 +106,10 @@ impl SearchItem<'_> {
                 apply_command: None,
             },
             Self::Bundle(bundle) => {
-                let command = format!(
-                    "skm add {} --source {} --kind bundle",
-                    bundle.id, bundle.registry
-                );
+                let mut command = format!("skm add {} --source {}", bundle.id, bundle.registry);
+                if ambiguous {
+                    command.push_str(" --kind bundle");
+                }
                 SearchMatch {
                     name: &bundle.id,
                     kind: "bundle",
@@ -119,8 +119,8 @@ impl SearchItem<'_> {
                     dependencies: &[],
                     members: Some(bundle.members),
                     packages: Some(&bundle.packages),
-                    add_command: format!("{command} --dry-run"),
-                    apply_command: Some(format!("{command} --yes")),
+                    add_command: command.clone(),
+                    apply_command: Some(format!("{command} --yes && skm install --yes")),
                 }
             }
         }
@@ -168,6 +168,69 @@ pub fn discover(
     discover_with_refresh(config, project, registry, false)
 }
 
+/// Inspect the effective registry for add, without modifying persistent caches.
+/// A preview cannot clone an uncached remote because it must not write at all.
+pub fn discover_for_add(
+    config: &SkillsConfig,
+    project: &Path,
+    registry: &str,
+    preview: bool,
+) -> Result<(Discovery, std::path::PathBuf, Option<tempfile::TempDir>), String> {
+    let base = BaseConfig::load().map_err(|error| error.to_string())?;
+    let location = config
+        .registries
+        .as_ref()
+        .and_then(|r| r.get(registry))
+        .or_else(|| base.registries.get(registry))
+        .ok_or_else(|| format!("Registry '{registry}' is not configured"))?;
+    let cache = crate::linker::validated_registry_path(registry, location, project)
+        .map_err(|error| error.to_string())?;
+    let local = project.join(location);
+    let mut temporary = None;
+    let root = if local.exists() {
+        local
+    } else if crate::linker::registry_cache_matches(&cache, location, project) {
+        cache
+    } else if preview {
+        return Err(format!(
+            "Registry '{registry}' is not cached; run skm cache refresh {registry} first"
+        ));
+    } else {
+        if !is_git_url(location) {
+            return Err("Local registry path does not exist, or URL scheme is unsupported".into());
+        }
+        let dir = tempfile::tempdir()
+            .map_err(|_| "Cannot create temporary registry storage".to_string())?;
+        let root = dir.path().join("registry");
+        let mut clone = Command::new("git");
+        clone
+            .args([
+                "-c",
+                "protocol.ext.allow=never",
+                "clone",
+                "--depth",
+                "1",
+                "--",
+                location,
+            ])
+            .arg(&root);
+        run_git(clone, Duration::from_secs(30))?;
+        temporary = Some(dir);
+        root
+    };
+    let contents = scan_local(registry, &root)?;
+    Ok((
+        Discovery {
+            entries: contents.entries,
+            bundles: contents.bundles,
+            collections: contents.collections,
+            warnings: Vec::new(),
+        },
+        root,
+        temporary,
+    ))
+}
+
 pub fn discover_with_refresh(
     config: Option<&SkillsConfig>,
     project: &Path,
@@ -197,6 +260,12 @@ fn discover_locations(
         registries.insert(registry.to_owned(), location);
     }
 
+    // Cache-origin conflicts are errors, even when a local source or a remote
+    // scan could otherwise hide the conflicting entry.
+    for (name, location) in &registries {
+        crate::linker::validated_registry_path(name, location, project)
+            .map_err(|error| error.to_string())?;
+    }
     let mut discovery = Discovery::default();
     for (name, location) in registries {
         match load_registry(&name, &location, project, refresh) {
@@ -226,9 +295,8 @@ fn load_registry(
     project: &Path,
     refresh: bool,
 ) -> Result<RegistryContents, String> {
-    if crate::linker::resolve_registry_path(name).is_none() {
-        return Err("Invalid registry name".into());
-    }
+    let cache = crate::linker::validated_registry_path(name, location, project)
+        .map_err(|error| error.to_string())?;
     if location.trim().is_empty() {
         return Err("Registry URL or local path is empty".into());
     }
@@ -240,12 +308,8 @@ fn load_registry(
     if !is_git_url(location) {
         return Err("Local registry path does not exist, or URL scheme is unsupported".into());
     }
-    if !refresh {
-        if let Some(cache) = crate::linker::resolve_registry_path(name) {
-            if cache_matches(&cache, location) {
-                return scan_local(name, &cache);
-            }
-        }
+    if !refresh && cache.exists() {
+        return scan_local(name, &cache);
     }
     scan_remote(name, location)
 }
@@ -433,7 +497,12 @@ fn groups_from_reader(
     namespace: &str,
 ) -> (Vec<Collection>, Vec<Bundle>) {
     let mut bytes = Vec::new();
-    if reader.take(64 * 1024).read_to_end(&mut bytes).is_err() {
+    if reader
+        .take(crate::linker::MAX_NAMESPACE_MANIFEST_SIZE + 1)
+        .read_to_end(&mut bytes)
+        .is_err()
+        || bytes.len() as u64 > crate::linker::MAX_NAMESPACE_MANIFEST_SIZE
+    {
         return (Vec::new(), Vec::new());
     }
     let Ok(manifest) = serde_yaml::from_slice::<NamespaceManifest>(&bytes) else {
@@ -577,21 +646,6 @@ pub(crate) fn is_git_url(location: &str) -> bool {
         .any(|prefix| location.starts_with(prefix))
 }
 
-pub(crate) fn cache_matches(cache: &Path, location: &str) -> bool {
-    if !regular_directory(cache) || !regular_directory(&cache.join(".git")) {
-        return false;
-    }
-    let mut command = Command::new("git");
-    command
-        .arg("config")
-        .arg("--file")
-        .arg(cache.join(".git/config"))
-        .args(["--get", "remote.origin.url"]);
-    run_git(command, Duration::from_secs(2))
-        .ok()
-        .is_some_and(|bytes| String::from_utf8_lossy(&bytes).trim() == location)
-}
-
 pub(crate) fn run_git(mut command: Command, timeout: Duration) -> Result<Vec<u8>, String> {
     let mut output =
         tempfile::tempfile().map_err(|_| "Cannot create temporary Git output".to_owned())?;
@@ -680,11 +734,7 @@ pub fn print_results(
     if limit == 0 {
         return Err("--limit must be greater than zero".into());
     }
-    let visible: Vec<_> = matches
-        .iter()
-        .take(limit)
-        .map(SearchItem::display)
-        .collect();
+    let visible = display_matches(matches, limit);
     if json {
         println!(
             "{}",
@@ -723,6 +773,21 @@ pub fn print_results(
         }
     }
     Ok(())
+}
+
+fn display_matches<'a>(matches: &'a [SearchItem<'a>], limit: usize) -> Vec<SearchMatch<'a>> {
+    let skills: BTreeSet<_> = matches
+        .iter()
+        .filter_map(|item| match item {
+            SearchItem::Skill(entry) => Some((entry.name.as_str(), entry.registry.as_str())),
+            SearchItem::Bundle(_) => None,
+        })
+        .collect();
+    matches
+        .iter()
+        .take(limit)
+        .map(|item| item.display(skills.contains(&(item.name(), item.registry()))))
+        .collect()
 }
 
 fn format_text_results(entries: &[SearchMatch<'_>]) -> String {
@@ -765,6 +830,7 @@ fn format_text_results(entries: &[SearchMatch<'_>]) -> String {
         };
         let mut details = wrap_search_text(&summary, description_width);
         details.push(format!("Registry: {}", entry.registry));
+        details.push(format!("Add: {}", entry.add_command));
         if !entry.dependencies.is_empty() {
             details.extend(wrap_search_text(
                 &format!("Dependencies: {}", entry.dependencies.join(", ")),
@@ -818,7 +884,7 @@ mod tests {
     }
 
     #[test]
-    fn text_results_show_two_columns_without_add_instructions() {
+    fn text_results_show_two_columns_and_add_instructions() {
         let skill = Entry {
             name: "software/spec".into(),
             registry: "default".into(),
@@ -834,7 +900,7 @@ mod tests {
         };
         let skill_item = SearchItem::Skill(&skill);
         let bundle_item = SearchItem::Bundle(&bundle);
-        let displayed = [skill_item.display(), bundle_item.display()];
+        let displayed = [skill_item.display(false), bundle_item.display(false)];
 
         let output = format_text_results(&displayed);
         let lines: Vec<_> = output.lines().collect();
@@ -849,15 +915,22 @@ mod tests {
         assert_eq!(&lines[3][description_column..], "Registry: default");
         assert_eq!(
             &lines[4][description_column..],
+            "Add: skm add software/spec --source default --kind skill"
+        );
+        assert_eq!(
+            &lines[5][description_column..],
             "Dependencies: software/review@2.0.0"
         );
-        assert!(lines[6].starts_with("software/starter (bundle)"));
+        assert!(lines[7].starts_with("software/starter (bundle)"));
         assert_eq!(
-            &lines[6][description_column..],
+            &lines[7][description_column..],
             "Includes 2 skills: software/spec, software/review."
         );
-        assert_eq!(&lines[7][description_column..], "Registry: company");
-        assert!(!output.contains("skm add"));
+        assert_eq!(&lines[8][description_column..], "Registry: company");
+        assert_eq!(
+            &lines[9][description_column..],
+            "Add: skm add software/starter --source company"
+        );
         assert!(!output.contains("Preview:"));
     }
 
@@ -876,7 +949,7 @@ mod tests {
         };
         let skill_item = SearchItem::Skill(&missing);
         let bundle_item = SearchItem::Bundle(&bundle);
-        let output = format_text_results(&[skill_item.display(), bundle_item.display()]);
+        let output = format_text_results(&[skill_item.display(false), bundle_item.display(false)]);
         assert!(output.contains("Description unavailable."));
         assert!(output.contains("Includes 3 skills: software/first-long-skill,"));
         assert!(output.contains("software/third-long-skill."));
@@ -928,6 +1001,44 @@ mod tests {
     }
 
     #[test]
+    fn bundle_suggestions_only_disambiguate_same_registry_collisions() {
+        let entries = [entry("software/starter", "company")];
+        let bundles = [
+            Bundle {
+                id: "software/starter".into(),
+                registry: "company".into(),
+                members: 1,
+                packages: vec!["software/starter".into()],
+            },
+            Bundle {
+                id: "software/starter".into(),
+                registry: "default".into(),
+                members: 1,
+                packages: vec!["software/starter".into()],
+            },
+        ];
+        let matches = matching_items(&entries, &bundles, "starter").unwrap();
+        let visible = display_matches(&matches, 2);
+        assert_eq!(
+            visible[0].add_command,
+            "skm add software/starter --source company --kind bundle"
+        );
+        assert_eq!(
+            visible[1].add_command,
+            "skm add software/starter --source company --kind skill"
+        );
+        let all = display_matches(&matches, usize::MAX);
+        assert_eq!(
+            all[2].add_command,
+            "skm add software/starter --source default"
+        );
+        assert_eq!(
+            all[2].apply_command.as_deref(),
+            Some("skm add software/starter --source default --yes && skm install --yes")
+        );
+    }
+
+    #[test]
     fn git_tree_ignores_symlinks_and_unsafe_or_unversioned_paths() {
         let tree = b"100644 blob a\tskills/dev/spec/v2.0.0/SKILL.md\0\
                      120000 blob b\tskills/link/v1.0.0/SKILL.md\0\
@@ -959,7 +1070,7 @@ mod tests {
             packages: vec!["software/review".into()],
         }];
         let matches = matching_items(&entries, &bundles, "software").unwrap();
-        let visible = matches.iter().map(SearchItem::display).collect();
+        let visible = display_matches(&matches, usize::MAX);
         let warnings = ["other: unavailable".into()];
         let json = serde_json::to_value(SearchOutput {
             query: "software",
@@ -983,11 +1094,11 @@ mod tests {
         assert_eq!(json["matches"][2]["members"], 1);
         assert_eq!(
             json["matches"][2]["add_command"],
-            "skm add software/starter --source company --kind bundle --dry-run"
+            "skm add software/starter --source company"
         );
         assert_eq!(
             json["matches"][2]["apply_command"],
-            "skm add software/starter --source company --kind bundle --yes"
+            "skm add software/starter --source company --yes && skm install --yes"
         );
         assert_eq!(json["bundles"].as_array().unwrap().len(), 1);
         assert!(json["matches"][0]["dependencies"]

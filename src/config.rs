@@ -13,6 +13,45 @@ pub struct SkillSpec {
     pub source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    /// Entry kind: "skill" (default, omitted) or "bundle".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+}
+
+impl SkillSpec {
+    /// Returns true when this entry is a registry-published bundle.
+    pub fn is_bundle(&self) -> bool {
+        self.kind.as_deref() == Some("bundle")
+    }
+
+    /// Validates the kind field value. Returns an error for unsupported kinds.
+    pub fn validate_kind(&self) -> Result<(), Box<dyn std::error::Error>> {
+        match self.kind.as_deref() {
+            None | Some("skill") => Ok(()),
+            Some("bundle") => {
+                if self.path.is_some() {
+                    return Err(format!("Bundle '{}' cannot use a local path", self.name).into());
+                }
+                if self.source.as_deref().is_none_or(str::is_empty) {
+                    return Err(format!(
+                        "Bundle '{}' requires an explicit registry source",
+                        self.name
+                    )
+                    .into());
+                }
+                crate::linker::validate_skill_name(&self.name)?;
+                if self.name.split('/').count() != 2 {
+                    return Err(format!("Bundle ID must be namespace/name: {}", self.name).into());
+                }
+                Ok(())
+            }
+            Some(other) => Err(format!(
+                "Invalid skill kind '{other}' for '{}'; expected 'skill' or 'bundle'",
+                self.name
+            )
+            .into()),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -64,6 +103,9 @@ impl SkillsConfig {
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
         let config: SkillsConfig = serde_yaml::from_str(&contents)?;
+        for skill in &config.skills {
+            skill.validate_kind()?;
+        }
         Ok(config)
     }
 
@@ -96,6 +138,7 @@ impl SkillsConfig {
                 version: Some("latest".to_string()),
                 source: Some("default".to_string()),
                 path: None,
+                kind: None,
             }],
             toolkit: None,
             bundles: Vec::new(),
@@ -125,5 +168,63 @@ mod tests {
         let reloaded = SkillsConfig::load_from_file(path).unwrap();
         assert_eq!(reloaded.metadata, config.metadata);
         assert_eq!(reloaded.name, "example");
+    }
+
+    #[test]
+    fn skill_kind_defaults_to_none_and_validates() {
+        // Omitted kind parses as None (backward compatible).
+        let raw =
+            "name: example\nskills:\n  - name: acme/alpha\n    version: 1.0.0\n    source: local\n";
+        let config: SkillsConfig = serde_yaml::from_str(raw).unwrap();
+        assert_eq!(config.skills[0].kind, None);
+        assert!(!config.skills[0].is_bundle());
+        assert!(config.skills[0].validate_kind().is_ok());
+
+        // kind: skill is valid and not a bundle.
+        let raw = "name: example\nskills:\n  - name: acme/alpha\n    kind: skill\n";
+        let config: SkillsConfig = serde_yaml::from_str(raw).unwrap();
+        assert_eq!(config.skills[0].kind.as_deref(), Some("skill"));
+        assert!(!config.skills[0].is_bundle());
+        assert!(config.skills[0].validate_kind().is_ok());
+
+        // kind: bundle is valid and recognized.
+        let raw =
+            "name: example\nskills:\n  - name: acme/starter\n    kind: bundle\n    source: local\n";
+        let config: SkillsConfig = serde_yaml::from_str(raw).unwrap();
+        assert!(config.skills[0].is_bundle());
+        assert!(config.skills[0].validate_kind().is_ok());
+
+        // Invalid kind is rejected.
+        let raw = "name: example\nskills:\n  - name: acme/alpha\n    kind: widget\n";
+        let config: SkillsConfig = serde_yaml::from_str(raw).unwrap();
+        let err = config.skills[0].validate_kind().unwrap_err().to_string();
+        assert!(err.contains("Invalid skill kind 'widget'"));
+    }
+
+    #[test]
+    fn bundle_entry_round_trips_through_yaml() {
+        let raw = "name: example\nskills:\n  - name: workspace/all-workspace-skills\n    kind: bundle\n    version: latest\n    source: default\n";
+        let config: SkillsConfig = serde_yaml::from_str(raw).unwrap();
+        assert!(config.skills[0].is_bundle());
+        let project = tempfile::tempdir().unwrap();
+        let path = project.path().join("skills.yaml");
+        config.save_to_file(&path).unwrap();
+        let reloaded = SkillsConfig::load_from_file(&path).unwrap();
+        assert!(reloaded.skills[0].is_bundle());
+        assert_eq!(reloaded.skills[0].name, "workspace/all-workspace-skills");
+    }
+    #[test]
+    fn load_rejects_invalid_bundle_entries() {
+        let project = tempfile::tempdir().unwrap();
+        let path = project.path().join("skills.yaml");
+        for entry in [
+            "{name: acme/x, kind: widget}",
+            "{name: acme/x, kind: bundle}",
+            "{name: x, kind: bundle, source: default}",
+            "{name: acme/x, kind: bundle, source: default, path: .}",
+        ] {
+            std::fs::write(&path, format!("name: example\nskills: [{entry}]\n")).unwrap();
+            assert!(SkillsConfig::load_from_file(&path).is_err(), "{entry}");
+        }
     }
 }

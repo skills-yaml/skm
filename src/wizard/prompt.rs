@@ -506,6 +506,7 @@ fn toggle_entry(entry: &Entry, document: &mut Value) -> std::result::Result<(), 
                 version: Some(entry.version.clone()),
                 source: Some(entry.registry.clone()),
                 path: None,
+                kind: None,
             })
             .map_err(|error| error.to_string())?,
         );
@@ -839,6 +840,28 @@ mod tests {
         let mut output = Vec::new();
         let saved = run_prompts(document, false, &mut input, &mut output).unwrap();
         (saved, String::from_utf8(output).unwrap())
+    }
+
+    #[test]
+    fn global_prompt_saves_agents_and_cancel_preserves_metadata() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("skills.yaml");
+        fs::write(
+            &path,
+            "name: User\nagents: []\nskills: []\nextension: keep\n",
+        )
+        .unwrap();
+        let original = fs::read(&path).unwrap();
+        let mut document = Document::load_for_scope(&path, None, false, true).unwrap();
+        let mut input = Cursor::new("changed\n:q\n".as_bytes());
+        assert!(!run_prompts(&mut document, true, &mut input, &mut Vec::new()).unwrap());
+        assert_eq!(fs::read(&path).unwrap(), original);
+        let mut document = Document::load_for_scope(&path, None, false, true).unwrap();
+        let mut input = Cursor::new("\n\ncodex, goose\n\n\n\n\n".as_bytes());
+        assert!(run_prompts(&mut document, true, &mut input, &mut Vec::new()).unwrap());
+        let value: Value = serde_yaml::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(value["agents"].as_sequence().unwrap().len(), 2);
+        assert_eq!(value["extension"].as_str(), Some("keep"));
     }
 
     #[test]
