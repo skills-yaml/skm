@@ -267,6 +267,10 @@ fn cache_transition_retains_legacy_sources_and_rejects_conflicts() {
     let link = fixture.project.join(".agents/skills/alpha");
     assert!(fs::read_link(&link).unwrap().starts_with(&os_cache));
     fixture.skm(&["check"]);
+    let status = fixture.skm(&["cache", "status", "local"]);
+    let status = String::from_utf8(status.stdout).unwrap();
+    assert!(status.contains(&os_cache.display().to_string()));
+    assert!(status.contains("Cached: Yes"));
     fs::create_dir_all(historical.parent().unwrap()).unwrap();
     git(
         fixture.root.path(),
@@ -303,6 +307,9 @@ fn cache_transition_retains_legacy_sources_and_rejects_conflicts() {
         .output()
         .unwrap();
     assert!(!check.status.success());
+    let error = String::from_utf8(check.stderr).unwrap();
+    assert!(error.contains("wrong target"));
+    assert!(error.contains("skm install"));
     fixture.skm(&["install", "--yes"]);
     fixture.skm(&["check"]);
     assert!(fs::read_link(&link).unwrap().starts_with(&canonical));
@@ -347,11 +354,20 @@ fn cache_transition_retains_legacy_sources_and_rejects_conflicts() {
             "{args:?}: {}",
             String::from_utf8_lossy(&output.stderr)
         );
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("choose a distinct registry alias")
+        );
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("cache clear"));
         assert_eq!(fs::read(&manifest_path).unwrap(), before);
         assert_eq!(fs::read_link(&link).unwrap(), previous_link);
     }
     assert!(historical.is_dir() && os_cache.is_dir());
     assert!(!fixture.project.join(".skm-dev.yaml").exists());
+    fixture.skm(&["cache", "clear", "local", "--yes"]);
+    assert!(!canonical.exists());
+    assert!(historical.is_dir() && os_cache.is_dir());
+    assert_eq!(fs::read(&manifest_path).unwrap(), before);
+    assert_eq!(fs::read_link(&link).unwrap(), previous_link);
 }
 
 #[test]
@@ -370,4 +386,52 @@ fn cache_cleanup_never_prunes_a_local_registry_source() {
     fixture.skm(&["cache", "clear", "local", "--yes"]);
     assert!(!cache.exists());
     assert!(version.join("SKILL.md").exists());
+}
+
+#[test]
+fn relative_git_origin_remains_valid_after_source_disappears() {
+    let fixture = Fixture::new();
+    let source = fixture.root.path().join("registry with spaces");
+    fs::create_dir(&source).unwrap();
+    registry_with_skill(&source, "alpha");
+    let location = "../registry with spaces";
+    fs::write(fixture.project.join("skills.yaml"), format!("name: fixture\nregistries: {{local: '{location}'}}\nagents: [codex]\nskills:\n  - {{name: acme/alpha, source: local, version: v1.0.0}}\n")).unwrap();
+    fixture.base_config("local", &source);
+    let legacy = fixture.home.join(".cache/skm/registries/local");
+    fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+    git(
+        &fixture.project,
+        &["clone", "--quiet", location, legacy.to_str().unwrap()],
+    );
+    fixture.skm(&["install", "--yes"]);
+    fs::rename(&source, fixture.root.path().join("retired-source")).unwrap();
+    fixture.skm(&["check"]);
+    assert!(fs::read_link(fixture.project.join(".agents/skills/alpha"))
+        .unwrap()
+        .starts_with(&legacy));
+}
+
+#[test]
+fn cache_clear_rejects_symlinked_parent_without_touching_external_files() {
+    let fixture = Fixture::new();
+    let external = fixture.root.path().join("external");
+    fs::create_dir_all(external.join("local")).unwrap();
+    fs::write(external.join("local/keep"), "keep").unwrap();
+    fixture.base_config("local", &external);
+    fs::create_dir_all(fixture.home.join(".skm/cache")).unwrap();
+    symlink(&external, fixture.home.join(".skm/cache/registries")).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_skm"))
+        .args(["cache", "clear", "local", "--yes"])
+        .current_dir(&fixture.project)
+        .env("HOME", &fixture.home)
+        .env("XDG_CONFIG_HOME", &fixture.config_home)
+        .env("XDG_CACHE_HOME", fixture.root.path().join("xdg-cache"))
+        .env("SKM_NO_UPDATE_CHECK", "1")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert_eq!(
+        fs::read_to_string(external.join("local/keep")).unwrap(),
+        "keep"
+    );
 }

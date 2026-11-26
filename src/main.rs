@@ -1321,10 +1321,11 @@ fn check_skills(
 
             if !linker::symlink_points_to(&path, &source_dir)? {
                 eprintln!(
-                    "[FAIL] Link at '{}' for agents [{}] to skill '{}' points at the wrong target",
+                    "[FAIL] Link at '{}' for agents [{}] to skill '{}' points at the wrong target; run `skm install{}` to reconcile it",
                     path.display(),
                     agents,
-                    skill.name
+                    skill.name,
+                    if global { " --global" } else { "" }
                 );
                 all_ok = false;
             }

@@ -344,14 +344,43 @@ pub fn clean_cache(
     let mut paths_to_remove = Vec::new();
 
     for reg_name in &registries_to_clean {
-        let root = std::env::current_dir()?;
-        // Cleanup owns only canonical cache entries, while validation also
-        // protects retained legacy sources from being consumed implicitly.
-        linker::effective_registry_path(reg_name, &root)?;
+        // Explicit clearing removes only this canonical entry. It does not
+        // trust its contents or touch retained legacy sources, so it can also
+        // recover a conflicting origin.
         let cache_path = linker::canonical_registry_path(reg_name)
             .ok_or_else(|| format!("Invalid registry name: {reg_name}"))?;
-
-        if !cache_path.exists() {
+        let home = dirs::home_dir().ok_or("Could not determine user home directory")?;
+        for parent in [
+            home.join(".skm"),
+            home.join(".skm/cache"),
+            home.join(".skm/cache/registries"),
+        ] {
+            match fs::symlink_metadata(&parent) {
+                Ok(metadata) if metadata.file_type().is_dir() => (),
+                Ok(_) => {
+                    return Err(
+                        format!("Expected a real cache directory: {}", parent.display()).into(),
+                    )
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+                Err(error) => return Err(error.into()),
+            }
+        }
+        let exists = match fs::symlink_metadata(&cache_path) {
+            Ok(metadata) if metadata.file_type().is_dir() || metadata.file_type().is_symlink() => {
+                true
+            }
+            Ok(_) => {
+                return Err(format!(
+                    "Expected a cache directory or symlink: {}",
+                    cache_path.display()
+                )
+                .into())
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+            Err(error) => return Err(error.into()),
+        };
+        if !exists {
             if verbose {
                 eprintln!(
                     "Cache for '{}' does not exist: {}",
@@ -363,7 +392,11 @@ pub fn clean_cache(
         }
 
         // Calculate size
-        let size = calculate_directory_size(&cache_path)?;
+        let size = if fs::symlink_metadata(&cache_path)?.file_type().is_symlink() {
+            0
+        } else {
+            calculate_directory_size(&cache_path)?
+        };
         total_size += size;
         paths_to_remove.push((reg_name.clone(), cache_path, size));
     }
@@ -919,11 +952,8 @@ pub fn show_cache_stats(registry: Option<String>) -> Result<(), Box<dyn std::err
 
     for reg_name in &registries {
         let root = std::env::current_dir()?;
-        // Cleanup owns only canonical cache entries, while validation also
-        // protects retained legacy sources from being consumed implicitly.
-        linker::effective_registry_path(reg_name, &root)?;
-        let cache_path = linker::canonical_registry_path(reg_name)
-            .ok_or_else(|| format!("Invalid registry name: {reg_name}"))?;
+        // Report the same validated entry that registry consumers use.
+        let cache_path = linker::effective_registry_path(reg_name, &root)?;
 
         let (size, skill_count, version_count) = if cache_path.exists() {
             let size = calculate_directory_size(&cache_path)?;

@@ -538,3 +538,104 @@ fn skills_only_outdated_ignores_invalid_bundle_lock() {
         .unwrap()
         .contains("acme/alpha"));
 }
+
+#[test]
+fn retained_bundle_links_are_owned_for_reinstall_upgrade_and_removal() {
+    for operation in ["install", "upgrade", "remove"] {
+        let fixture = Fixture::new();
+        let canonical = fixture.home.join(".skm/cache/registries/local");
+        let legacy = fixture.home.join(".cache/skm/registries/local");
+        fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        fs::rename(&canonical, &legacy).unwrap();
+        fixture.skm(&["install", "--yes"]);
+        let alpha = fixture.project.join(".agents/skills/alpha");
+        assert!(fs::read_link(&alpha).unwrap().starts_with(&legacy));
+        fixture.skill("beta", "1.0.0", None);
+        fixture.manifest(
+            "alpha: 1.0.0, helper: 1.0.0, beta: 1.0.0",
+            "starter: {packages: [beta]}, other: {packages: [helper]}",
+        );
+        fixture.commit();
+        fixture.skm(&["cache", "refresh", "local"]);
+        assert!(legacy.exists());
+        match operation {
+            "install" => {
+                fixture.skm(&["install", "--yes"]);
+            }
+            "upgrade" => {
+                fixture.skm(&["skill", "upgrade", "acme/starter", "--yes"]);
+            }
+            "remove" => {
+                fixture.skm(&["remove", "acme/starter", "--yes"]);
+            }
+            _ => unreachable!(),
+        }
+        assert!(!alpha.exists());
+        assert!(!fixture.project.join(".agents/skills/helper").exists());
+        if operation != "remove" {
+            assert!(fixture.project.join(".agents/skills/beta").is_symlink());
+        }
+        fixture.skm(&["check"]);
+        assert!(legacy.exists());
+    }
+}
+
+#[test]
+fn conflicting_retained_bundle_origin_blocks_removal_without_writes() {
+    let fixture = Fixture::new();
+    let canonical = fixture.home.join(".skm/cache/registries/local");
+    let legacy = fixture.home.join(".cache/skm/registries/local");
+    fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+    fs::rename(&canonical, &legacy).unwrap();
+    fixture.skm(&["install", "--yes"]);
+    fixture.skm(&["cache", "refresh", "local"]);
+    git(&legacy, &["remote", "set-url", "origin", "/wrong/origin"]);
+    let manifest = fs::read(fixture.project.join("skills.yaml")).unwrap();
+    let lock = fs::read(fixture.project.join("skills.lock.yaml")).unwrap();
+    let link = fixture.project.join(".agents/skills/alpha");
+    let target = fs::read_link(&link).unwrap();
+    let output = fixture.command(&["remove", "acme/starter", "--yes"]);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("different or missing origin"));
+    assert_eq!(
+        fs::read(fixture.project.join("skills.yaml")).unwrap(),
+        manifest
+    );
+    assert_eq!(
+        fs::read(fixture.project.join("skills.lock.yaml")).unwrap(),
+        lock
+    );
+    assert_eq!(fs::read_link(link).unwrap(), target);
+}
+
+#[test]
+fn retained_cache_symlink_escape_is_not_accepted_as_owned_bundle_link() {
+    let fixture = Fixture::new();
+    let canonical = fixture.home.join(".skm/cache/registries/local");
+    let legacy = fixture.home.join(".cache/skm/registries/local");
+    fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+    fs::rename(&canonical, &legacy).unwrap();
+    fixture.skm(&["install", "--yes"]);
+    fixture.skm(&["cache", "refresh", "local"]);
+    let old_version = legacy.join("skills/acme/alpha/v1.0.0");
+    fs::remove_dir_all(&old_version).unwrap();
+    let external = fixture.root.path().join("external");
+    fs::create_dir(&external).unwrap();
+    fs::write(external.join("SKILL.md"), "# external\n").unwrap();
+    symlink(&external, &old_version).unwrap();
+    let manifest = fs::read(fixture.project.join("skills.yaml")).unwrap();
+    let lock = fs::read(fixture.project.join("skills.lock.yaml")).unwrap();
+    let link = fixture.project.join(".agents/skills/alpha");
+    let output = fixture.command(&["remove", "acme/starter", "--yes"]);
+    assert!(!output.status.success());
+    assert_eq!(
+        fs::read(fixture.project.join("skills.yaml")).unwrap(),
+        manifest
+    );
+    assert_eq!(
+        fs::read(fixture.project.join("skills.lock.yaml")).unwrap(),
+        lock
+    );
+    assert!(link.is_symlink());
+    assert!(external.join("SKILL.md").exists());
+}

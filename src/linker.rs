@@ -890,9 +890,23 @@ pub(crate) fn registry_cache_matches(cache: &Path, location: &str, project: &Pat
     }
     // Git records an absolute local clone URL while retaining components such
     // as `..`. Use that same spelling before applying Git's URL rewrites.
-    let effective_location = canonical_local
-        .as_ref()
-        .and_then(|_| local.to_str())
+    // Git records local clone origins as absolute paths, including the
+    // original `..` spelling. Keep that spelling even if the source has
+    // since disappeared; remote URLs and scp-style locations stay unchanged.
+    let local_spelling =
+        if canonical_local.is_some() || (!location.contains("://") && !location.contains(':')) {
+            let root = if project.is_absolute() {
+                project.to_path_buf()
+            } else {
+                std::env::current_dir().unwrap_or_default().join(project)
+            };
+            Some(root.join(location))
+        } else {
+            None
+        };
+    let effective_location = local_spelling
+        .as_deref()
+        .and_then(Path::to_str)
         .unwrap_or(location);
     let expected = std::process::Command::new("git")
         .arg("-C")
@@ -927,7 +941,7 @@ pub(crate) fn validated_registry_path(
     for cache in candidates {
         match fs::symlink_metadata(&cache) {
             Ok(_) if !registry_cache_matches(&cache, location, project) => {
-                return Err(format!("Cached registry '{name}' at {} has a different or missing origin; choose a distinct registry alias or resolve the conflicting cache", cache.display()).into());
+                return Err(format!("Cached registry '{name}' at {} has a different or missing origin; choose a distinct registry alias", cache.display()).into());
             }
             Ok(_) => return Ok(cache),
             Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
@@ -972,6 +986,51 @@ fn effective_registry_location(
             .ok_or_else(|| format!("Registry '{name}' is not configured"))?,
     };
     Ok(url)
+}
+
+/// Recognize a locked exact pin in the selected cache or a validated retained
+/// cache. This is for ownership-sensitive removal only, not health checks.
+pub(crate) fn locked_registry_link_matches(
+    link: &Path,
+    skill: &SkillSpec,
+    project: &Path,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let name = skill
+        .source
+        .as_deref()
+        .ok_or("Locked registry skill has no source")?;
+    let version = skill
+        .version
+        .as_deref()
+        .ok_or("Locked registry skill has no version")?;
+    validate_exact_version(version)?;
+    let location = effective_registry_location(name, project)?;
+    let selected = validated_registry_path(name, &location, project)?;
+    let home = dirs::home_dir().ok_or("Could not determine user home directory")?;
+    let mut roots = vec![selected, home.join(".cache/skm/registries").join(name)];
+    if let Some(cache) = dirs::cache_dir() {
+        let legacy = cache.join("skm/registries").join(name);
+        if !roots.contains(&legacy) {
+            roots.push(legacy);
+        }
+    }
+    for root in roots {
+        let expected = root
+            .join("skills")
+            .join(validated_skill_path(&skill.name)?)
+            .join(format!("v{}", version.trim_start_matches('v')));
+        if !symlink_matches_expected(link, &expected)? {
+            continue;
+        }
+        if !registry_cache_matches(&root, &location, project) {
+            return Err(format!("Cached registry '{name}' at {} has a different or missing origin; choose a distinct registry alias", root.display()).into());
+        }
+        if expected.exists() {
+            resolve_registry_skill_source_dir(skill, &root)?;
+        }
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 pub(crate) fn validate_registry_cache_origin(
@@ -1365,6 +1424,7 @@ pub fn plan_skill_unlink(
         force,
         verbose,
         &expected_source,
+        false,
     )
 }
 
@@ -1405,6 +1465,7 @@ pub(crate) fn plan_locked_skill_unlink(
         force,
         verbose,
         &expected,
+        true,
     )
 }
 
@@ -1417,6 +1478,7 @@ fn plan_skill_unlink_expected(
     force: bool,
     verbose: bool,
     expected_source: &Path,
+    locked: bool,
 ) -> Result<Vec<UnlinkTarget>, Box<dyn std::error::Error>> {
     validate_agents(agents)?;
     let mut targets = Vec::new();
@@ -1429,7 +1491,17 @@ fn plan_skill_unlink_expected(
 
         match fs::symlink_metadata(&skill_path) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
-                if !force && !symlink_matches_expected(&skill_path, expected_source)? {
+                let matches = if force {
+                    true
+                } else if locked
+                    && skill.path.is_none()
+                    && !matches!(skill.version.as_deref(), None | Some("latest" | "default"))
+                {
+                    locked_registry_link_matches(&skill_path, skill, project_root)?
+                } else {
+                    symlink_matches_expected(&skill_path, expected_source)?
+                };
+                if !force && !matches {
                     return Err(format!(
                         "Refusing to remove unexpected symlink for agent '{}': {} does not point to {}. Use --force to override this safety check.",
                         agent,

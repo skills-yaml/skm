@@ -37,7 +37,11 @@ Claimed the task at the integrated bundle-version revision and wired canonical
 writes and origin-validated ordered cache reads through linker, bundle, lock,
 search, registry, version, installer, dev, and cleanup consumers. Read-only
 settings lookup supports legacy settings during previews. Retained legacy cache
-roots and prevented pruning through local-registry cache symlinks.
+roots and prevented pruning through local-registry cache symlinks. Addressed
+review findings on fallback status, reinstall guidance, explicit canonical
+cache clearing, retained locked-link ownership and disappeared local origins.
+Clear rejects symlinked cache parents; old links are trusted for removal only
+after origin and exact-pin validation.
 
 ## Validation
 
@@ -45,6 +49,9 @@ Focused cache, bundle, registry-format, and updater suites passed during
 iteration; full check and test are required on the final candidate. Temporary
 home/XDG fixtures exercise legacy fallback, conflict preservation, refresh,
 reinstall and cleanup; existing tests cover Git rewrites and local paths.
+Added migration tests for bundle install, upgrade, removal, rollback,
+conflicting retained origins and symlink escapes, plus missing relative local
+Git origins and explicit conflict recovery.
 
 ## Blockers and Dependencies
 
