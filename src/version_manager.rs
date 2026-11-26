@@ -646,7 +646,11 @@ pub fn update_to_latest(
     dry_run: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Get current config
-    let config = SkillsConfig::load_from_file(config_path)?;
+    let original = fs::read(config_path)?;
+    let config: SkillsConfig = serde_yaml::from_slice(&original)?;
+    for skill in &config.skills {
+        skill.validate_kind()?;
+    }
 
     // Find the skill
     let skill = config
@@ -656,7 +660,15 @@ pub fn update_to_latest(
         .ok_or_else(|| format!("Skill '{}' not found in configuration", skill_name))?;
 
     if skill.is_bundle() {
-        return upgrade_bundles(&config, skill_name, config_path, global, yes, dry_run);
+        return upgrade_bundles(
+            &config,
+            skill_name,
+            config_path,
+            global,
+            yes,
+            dry_run,
+            original,
+        );
     }
     let registry = skill.source.as_deref().unwrap_or("default");
 
@@ -708,6 +720,7 @@ fn upgrade_bundles(
     global: bool,
     yes: bool,
     dry_run: bool,
+    original: Vec<u8>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if global {
         return Err("published bundles are project-only".into());
@@ -726,7 +739,7 @@ fn upgrade_bundles(
     for (name, details) in &changes {
         println!("{name}: {}", details.join(", "));
     }
-    let plan = installer::prepare_named_bundle(config, project, selected_name)?;
+    let plan = installer::prepare_named_bundle(config, project, selected_name, original)?;
     plan.print(false)?;
     if dry_run {
         return Ok(());
@@ -796,21 +809,18 @@ pub fn upgrade_all(
     if global && !bundle_drift.is_empty() {
         return Err("published bundles are project-only".into());
     }
-    let manifest = if changes.is_empty() {
-        None
+    let updated = if changes.is_empty() {
+        original.clone()
     } else {
-        Some((
-            original.clone(),
-            updated_manifest(
-                &original,
-                &changes
-                    .iter()
-                    .map(|(name, _, new)| (name.clone(), new.clone()))
-                    .collect::<Vec<_>>(),
-            )?,
-        ))
+        updated_manifest(
+            &original,
+            &changes
+                .iter()
+                .map(|(name, _, new)| (name.clone(), new.clone()))
+                .collect::<Vec<_>>(),
+        )?
     };
-    let plan = installer::prepare(&config, project, global, manifest)?;
+    let plan = installer::prepare(&config, project, global, Some((original, updated)))?;
     for (name, details) in &bundle_drift {
         println!("  {name}: {}", details.join(", "));
     }
