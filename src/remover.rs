@@ -544,9 +544,10 @@ fn plan_unlocked_removal(
     force: bool,
     verbose: bool,
 ) -> Result<Vec<linker::UnlinkTarget>, Box<dyn std::error::Error>> {
-    // With no installed targets at all, no declaration can own a link. Avoid
-    // resolving sources (or requiring a cache) for the add-before-install state.
-    if global && global_targets_are_empty(config, project)? {
+    // Validate registry origins even when there are no links to remove.
+    // A cold selected cache can be skipped only when all existing links have
+    // been accounted for by the remaining declarations.
+    if global && global_removal_has_no_owned_targets(config, selected, project)? {
         return Ok(Vec::new());
     }
     let before = linker::resolve_skill_dependency_closure(&config.skills, project)?;
@@ -585,25 +586,71 @@ fn plan_unlocked_removal(
     Ok(targets)
 }
 
-fn global_targets_are_empty(
+fn global_removal_has_no_owned_targets(
     config: &SkillsConfig,
+    selected: &SkillSpec,
     project: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
+    let mut selected_cache_missing = false;
+    for skill in &config.skills {
+        if skill.path.is_none() {
+            let cache = linker::effective_registry_path(
+                skill.source.as_deref().unwrap_or("default"),
+                project,
+            )?;
+            if skill.name == selected.name {
+                selected_cache_missing = match fs::symlink_metadata(cache) {
+                    Ok(_) => false,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+                    Err(error) => return Err(error.into()),
+                };
+            }
+        }
+    }
     let home = dirs::home_dir().ok_or("Cannot resolve home")?;
+    let mut existing = BTreeSet::new();
     for target in linker::resolve_agent_skill_targets(&config.agents, project, true)? {
         // Validate all parent components, including the target directory itself.
         crate::installer::validate_parent(&home, &target.path.join("placeholder"))?;
         match fs::read_dir(&target.path) {
-            Ok(mut entries) => {
-                if entries.next().transpose()?.is_some() {
-                    return Ok(false);
+            Ok(entries) => {
+                for entry in entries {
+                    existing.insert(entry?.path());
                 }
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(error.into()),
         }
     }
-    Ok(true)
+    if existing.is_empty() {
+        return Ok(true);
+    }
+    if !selected_cache_missing {
+        return Ok(false);
+    }
+    for target in linker::resolve_agent_skill_targets(&config.agents, project, true)? {
+        if existing.contains(&linker::get_skill_target_path(
+            &target.path,
+            &selected.name,
+        )?) {
+            return Ok(false);
+        }
+    }
+    let remaining: Vec<_> = config
+        .skills
+        .iter()
+        .filter(|skill| skill.name != selected.name)
+        .cloned()
+        .collect();
+    let retained = linker::resolve_skill_dependency_closure(&remaining, project)?;
+    for skill in retained {
+        for target in
+            linker::plan_skill_unlink(&skill, project, &config.agents, true, false, false)?
+        {
+            existing.remove(&target.path);
+        }
+    }
+    Ok(existing.is_empty())
 }
 
 fn prompt_for_removal(skill_name: &str) -> Result<bool, Box<dyn std::error::Error>> {

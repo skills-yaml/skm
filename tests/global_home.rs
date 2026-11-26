@@ -1411,6 +1411,32 @@ fn global_remove_uninstalled_registry_declaration_without_cache() {
     .unwrap();
     let manifest = home.join(".skm/skills.yaml");
     fs::write(&manifest, "name: User\nagents: [codex]\nregistries: {default: registry}\nskills: []\nextension: retained\n").unwrap();
+    let independent = project.path().join("independent");
+    fs::create_dir(&independent).unwrap();
+    fs::write(
+        independent.join("SKILL.md"),
+        "---\nname: independent\n---\n",
+    )
+    .unwrap();
+    success(command(
+        home,
+        project.path(),
+        &[
+            "add",
+            "independent",
+            "--path",
+            "independent",
+            "--global",
+            "--yes",
+        ],
+    ));
+    success(command(
+        home,
+        project.path(),
+        &["install", "--global", "--yes"],
+    ));
+    let independent_link = home.join(".agents/skills/independent");
+    let independent_target = fs::read_link(&independent_link).unwrap();
     success(command(
         home,
         project.path(),
@@ -1431,12 +1457,25 @@ fn global_remove_uninstalled_registry_declaration_without_cache() {
     .success());
     assert_eq!(snapshot(home), ambiguous);
     fs::remove_file(other).unwrap();
+    let git_stub_dir = project.path().join("git-stub");
+    fs::create_dir(&git_stub_dir).unwrap();
+    let git_stub = git_stub_dir.join("git");
+    fs::write(&git_stub, "#!/bin/sh\n: > git-invoked\nexit 97\n").unwrap();
+    fs::set_permissions(&git_stub, fs::Permissions::from_mode(0o755)).unwrap();
     let before = snapshot(home);
-    success(command(
-        home,
-        project.path(),
-        &["remove", "acme/parent", "--global", "--dry-run", "--yes"],
-    ));
+    success(
+        Command::new(env!("CARGO_BIN_EXE_skm"))
+            .current_dir(project.path())
+            .args(["remove", "acme/parent", "--global", "--dry-run", "--yes"])
+            .env("HOME", home)
+            .env("XDG_CONFIG_HOME", home.join("xdg-config"))
+            .env("XDG_CACHE_HOME", home.join("xdg-cache"))
+            .env("SKM_NO_UPDATE_CHECK", "1")
+            .env("PATH", &git_stub_dir)
+            .output()
+            .unwrap(),
+    );
+    assert!(!project.path().join("git-invoked").exists());
     assert_eq!(snapshot(home), before);
     success(command(
         home,
@@ -1444,9 +1483,64 @@ fn global_remove_uninstalled_registry_declaration_without_cache() {
         &["remove", "acme/parent", "--global", "--yes"],
     ));
     let value: serde_yaml::Value = serde_yaml::from_slice(&fs::read(manifest).unwrap()).unwrap();
-    assert!(value["skills"].as_sequence().unwrap().is_empty());
+    assert_eq!(value["skills"].as_sequence().unwrap().len(), 1);
+    assert_eq!(value["skills"][0]["name"].as_str(), Some("independent"));
     assert_eq!(value["extension"].as_str(), Some("retained"));
+    assert_eq!(fs::read_link(independent_link).unwrap(), independent_target);
     assert!(!home.join(".skm/cache/registries/default").exists());
+}
+
+#[test]
+fn global_remove_rejects_conflicting_cache_even_without_links() {
+    let home = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    let home = home.path();
+    success(command(
+        home,
+        project.path(),
+        &["config", "show", "--global"],
+    ));
+    let registry = home.join(".skm/registry");
+    let skill = registry.join("skills/acme/parent/v1.0.0");
+    fs::create_dir_all(&skill).unwrap();
+    fs::write(
+        skill.join("SKILL.md"),
+        "---\nname: parent\nmetadata:\n  skm-version: '1.0.0'\n---\n",
+    )
+    .unwrap();
+    symlink("v1.0.0", skill.parent().unwrap().join("latest")).unwrap();
+    fs::write(
+        registry.join("skills/acme/manifest.yaml"),
+        "schema_version: 2\nnamespace: acme\npackages: {parent: 1.0.0}\nbundles: {}\n",
+    )
+    .unwrap();
+    let manifest = home.join(".skm/skills.yaml");
+    fs::write(
+        &manifest,
+        "name: User\nagents: [codex]\nregistries: {default: registry}\nskills: []\n",
+    )
+    .unwrap();
+    success(command(
+        home,
+        project.path(),
+        &["add", "acme/parent", "--global", "--yes"],
+    ));
+    let cache = home.join(".skm/cache/registries/default");
+    assert!(!cache.exists());
+    let other_registry = home.join("other-registry");
+    fs::create_dir(&other_registry).unwrap();
+    symlink(&other_registry, &cache).unwrap();
+    let before = snapshot(home);
+    for args in [
+        &["install", "--global", "--dry-run"][..],
+        &["remove", "acme/parent", "--global", "--dry-run", "--yes"],
+        &["remove", "acme/parent", "--global", "--yes"],
+    ] {
+        let output = command(home, project.path(), args);
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("different or missing origin"));
+        assert_eq!(snapshot(home), before);
+    }
 }
 
 #[test]
