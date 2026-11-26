@@ -6,13 +6,11 @@ State: development
 
 Primary feature: `workspace-toolkit`
 
-Status rationale: The unified add and maintenance slices are independently
-reviewed and locally integrated: source `03f3649` → peer integration `8ded132`
-and source `d460052` → `7a6be79`; both are included in combined peer revision
-`6e76f98`. The earlier specification review by agent neo on 2026-11-10 remains
-historical. Local peer integration is not a remote `development` merge;
-combined acceptance, final candidate review and shared-test delivery remain
-pending. The applied shared 0.10.0 reservation is unchanged.
+Status rationale: Reviewed unified add, maintenance and final-review repairs
+are integrated in local peer revision `04cd30e`. Local peer integration is
+not a remote `development` merge; combined acceptance, final candidate review
+and shared-test delivery remain pending. The applied shared 0.10.0 reservation
+is unchanged.
 
 ## Problem and Evidence
 
@@ -166,6 +164,20 @@ remains toolkit-only); change the lockfile schema; remove `--kind` flag entirely
 - `src/linker.rs`: already has resolve_entries; may need minor adjustments.
 - Tests: delete bundle.rs tests, add unified-path tests.
 - README.md: update add documentation.
+
+## Local final-review evidence
+
+A same-registry skill/bundle collision produced an ambiguous search apply
+command. Reviewed `33669ac7efc18a311d4bc352f22204c41ef33104`, integrated at
+`cc5de87`, adds `--kind bundle` for that collision before result limiting; tests
+cover executable suggestions, text, JSON and other registries. Reviewed wording
+`983e921eb41f1ad2f09730913b15e798f40643ab`, integrated at `2282ca3`, records
+the same contract. Reviewed `8e639d1` → `4a8523e` protects the parsed bundle
+upgrade manifest; `489d5ac` → `bb4848f` avoids lock synchronization on cancelled
+version changes; and `33e56f3` → `04cd30e` revalidates removal snapshots after
+confirmation. Focused bundle, registry-format and cache checks and aggregate
+checks passed on their respective candidates; local integration ran native
+gates. Final review and combined verification remain pending.
 
 ## Validation Gates
 

@@ -6,7 +6,7 @@ State: development
 
 Primary feature: `configuration`
 
-Status rationale: S1–S4 and the bootstrap, cleanup-root and reset repairs are independently reviewed and integrated in local peer revision `d61c608`. The candidate is ready for renewed whole-spec review; combined acceptance remains pending. No merge into the remote `development` target has occurred; the applied shared 0.10.0 reservation is reused.
+Status rationale: S1–S4 and the bootstrap, cleanup-root and reset repairs are independently reviewed and integrated in local peer revision `04cd30e`, including the reviewed global removal correction. Final combined-candidate review and acceptance remain pending. No merge into the remote `development` target has occurred; the applied shared 0.10.0 reservation is reused.
 
 ## Problem and Evidence
 
@@ -296,7 +296,7 @@ passes do not establish complete feature acceptance.
 
 The following independently reviewed source revisions were integrated after
 native peer gates passed. The latest local combined revision is
-`d61c60809b64cd47da06debc3d4a641f9b8a76a5`.
+`04cd30ea6aa40b3dd8d4a343a44e6e624254e6c3`.
 These are local peer integrations, not a merge into the configured remote
 `development` test target. The WIP records retain the individual review fixes.
 
@@ -320,7 +320,7 @@ and `5403ad0` respectively. Earlier integrated records identify `57ee1bf` and
 previous board approval entries. Slice approvals do not substitute for review
 of this S5 documentation or acceptance of the final combined revision.
 
-### Combined acceptance evidence through local revision `d61c608`
+### Combined acceptance evidence through local revision `04cd30e`
 
 The following maps criteria to existing fixtures on the combined source. It is
 candidate evidence, not a claim that the final acceptance or all platforms have
@@ -330,13 +330,26 @@ been approved. Final review and gates must be renewed after this record changes.
 | --- | --- |
 | AC1 | `src/config_manager.rs` and `tests/global_home.rs` cover valid empty state, byte preservation, concurrent creators, invalid YAML, unsafe types and symlinks. The reviewed repair `b0f6f432bb6b96e090349048fe7a18047cdd04d2`, integrated locally at `d58ebd790520af95dfc246ca8ff5115fe4143076`, creates `.skm/cache/registries` and guards unsafe paths. Independent Linux CLI smoke confirmed the complete silent layout, byte-preserving rerun and partial-state repair, rejection of file, directory-symlink and dangling registry paths before YAML writes, actionable chmod-0500 home failure, 16 concurrent starts, and project/global dry-run and JSON previews with no writes, parseable JSON and zero Git-shim calls. Focused `task test:global-home`, `task test:cache`, and `task test:updater` and native combined `task check` and `task test` passed. Reset recovery fixtures cover fresh and malformed settings, repeat runs, confirmed and declined prompts, unsafe paths, and permission failure before settings/project mutation. Windows execution and final combined acceptance remain open. |
 | AC2 | `global_manifest_is_shared_across_projects_and_previews_do_not_write`, `global_add_uses_user_registry_override_and_inherited_base_from_either_directory`, and version/inspection fixtures exercise separate projects and effective registries. `cache_transition_retains_legacy_sources_and_rejects_conflicts` and `tests/command_layout.rs` cover origin conflicts and Git rewrites. `cleanup_uses_physical_global_manifest_root_through_symlinked_home_ancestor` covers equivalent logical/physical home spellings and continued rejection of a different origin. |
-| AC3 | `src/wizard/prompt.rs::global_prompt_saves_agents_and_cancel_preserves_metadata` covers selected agents and cancellation; global manifest command fixtures cover stable local paths and cross-directory mutation; `global_removal_rolls_back_a_partial_failure` and installer failure fixtures cover rollback. |
+| AC3 | `src/wizard/prompt.rs::global_prompt_saves_agents_and_cancel_preserves_metadata` covers selected agents and cancellation; global manifest command fixtures cover stable local paths and cross-directory mutation; `global_removal_rolls_back_a_partial_failure` and installer failure fixtures cover rollback. `global_remove_uninstalled_registry_declaration_without_cache`, `global_remove_unlinks_orphan_dependencies_but_retains_shared_ones`, and `global_remove_rejects_manifest_symlink_swap_during_confirmation` cover the reviewed removal repair. |
 | AC4 | `global_install_targets_every_selected_agent_and_checks_exact_sources`, `global_install_rejects_bad_targets_and_preflights_all_destinations`, `global_install_applies_registry_dependencies_to_every_selected_target`, and linker target/deduplication tests cover target selection, invalid/no targets and dependencies. Installer collision, stale-plan and injected-failure tests cover preflight and rollback. Native Windows remains unexecuted. |
 | AC5 | Global inspection, exact-source check and cross-directory removal/cleanup fixtures in `tests/global_home.rs`, plus cleaner ownership and unsafe-root fixtures, cover declarations, development links, dependency ownership and protected real targets. The symlinked-home cleanup fixture covers orphan and cache-prune previews, dependency pins and conflict rejection. |
 | AC6 | Bootstrap import/new-settings/invalid-state fixtures and `cache_transition_retains_legacy_sources_and_rejects_conflicts` cover retained settings and distinct cache roots, conflicting origins, refresh and reinstall. `bootstrap_new_settings_win_over_invalid_legacy` covers existing canonical settings alongside legacy state. An independent reviewer simulated two partial states on runtime source `6e76f98`: one with only custom canonical settings and another with only custom canonical skills plus the cache directory, each with legacy settings. Both regenerated the missing document and preserved existing canonical and legacy bytes. No process was interrupted; the demonstration does not establish recovery for every interruption point. Rollback guards fail closed if paths change; no destructive legacy-cache migration is promised. |
 | AC7 | `preview_help_identity_and_invalid_arguments_do_not_bootstrap`, global preview snapshots and unsafe ancestor fixtures cover non-writing previews and identity/help behavior; JSON preview coverage is in the command fixtures. `global_add_uses_user_registry_override_and_inherited_base_from_either_directory` checks failure and unchanged state for an `.invalid` registry preview, but does not prove whether transport was attempted. Separately, an independent isolated Git-shim demonstration on runtime source `6e76f98` found that global add/install dry-run and plan JSON against uncached `.invalid` HTTPS failed without invoking Git and left complete home/project snapshots unchanged; these were failed previews, not successful ones. Reset fixtures also verify declined and dry-run operations do not bootstrap or write. README and `workspace/docs/installation-scopes.md` describe separate settings and selected-agent skills, migration, and downgrade/export. |
 
-Whole-spec review exposed two concrete failures. A cleanup regression reproduced
+Final review found that global removal could fail for an uninstalled declaration
+with a cold cache or leave orphan dependencies behind. Reviewed source
+`33e56f39040e084ad003f8900838f62e8305f1d3` was integrated locally at
+`04cd30ea6aa40b3dd8d4a343a44e6e624254e6c3`: it computes closure differences,
+preserves shared dependencies, and revalidates manifest paths during staging
+and publication. The same repair rechecks project bundle manifest, lock and
+link snapshots and target parents after confirmation; the bundle maintenance
+interactive regressions cover substitutions and concurrent edits. If the cache
+is absent and other global targets are occupied, unresolved ownership causes a
+non-mutating refusal. The candidate passed `task test:global-home`,
+`task test:bundle`, `task check`, `task test` and `task versions:check`; the
+local integration ran its native gates.
+
+Whole-spec review exposed two earlier concrete failures. A cleanup regression reproduced
 a false different-or-missing-origin error when a home ancestor was symlinked;
 `b7c7f0d` reuses the selected manifest root for orphan cleanup and cache-prune
 dependency ownership. Its focused cache/global-home suites and aggregate tests
@@ -405,7 +418,7 @@ Reservation status is `applied`, owner `global-user-installation`, timing
 `development-start`. The seed already contains the 0.10.0 Cargo source and lockfile.
 On 2026-11-26 the shared peer board confirmed baseline 0.9.1 and target 0.10.0;
 remote tag lookup found no 0.10.0 tag. Reuse this release without another bump.
-Remote `development` integration, final combined acceptance, and publication remain pending.
+Remote `development` integration, final combined acceptance, main merge, and publication remain pending. PR #93’s earlier CI run does not validate this combined head; the remote branch remains at its earlier head.
 
 ## Memory Impact
 
