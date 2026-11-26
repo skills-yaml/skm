@@ -748,6 +748,22 @@ impl ManifestScope {
             .parent()
             .ok_or("Manifest has no parent directory")?
             .to_path_buf();
+        // On Unix Git records local origins against the physical working
+        // directory. Normalize the root only, preserving registry URL suffixes.
+        // Missing roots are valid for previews before bootstrap.
+        #[cfg(unix)]
+        if global {
+            match std::fs::canonicalize(&root) {
+                Ok(root) => {
+                    return Ok(Self {
+                        path: root.join("skills.yaml"),
+                        root,
+                    })
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
         Ok(Self { root, path })
     }
 }
@@ -1289,9 +1305,6 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let scope = ManifestScope::select(global, &current_dir)?;
             if global {
                 validate_manifest_scope(&load_config_for_scope(&scope.path, global)?, true)?;
-            }
-            if global && refresh {
-                return Err("Global outdated refresh is not yet supported; from ~/.skm run `skm cache refresh NAME`, then retry without --refresh".into());
             }
             version_manager::show_outdated(&scope.path, skill_name.as_deref(), refresh, pre)?;
         }

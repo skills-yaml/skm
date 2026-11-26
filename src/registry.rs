@@ -239,12 +239,20 @@ pub fn list(json_output: bool, verbose: bool) -> Result<(), Box<dyn std::error::
 
 /// Refresh a configured registry, allowing project registries to override the global URL.
 pub fn refresh_from_url(name: &str, url: &str) -> Result<(), Box<dyn std::error::Error>> {
+    refresh_from_url_at(name, url, &std::env::current_dir()?)
+}
+
+/// Refresh relative to the directory of the selected manifest.
+pub fn refresh_from_url_at(
+    name: &str,
+    url: &str,
+    manifest_root: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
     if !is_valid_registry_name(name) {
         return Err(format!("Invalid registry name: '{name}'").into());
     }
-    let project = std::env::current_dir()?;
     // Inspect the selected legacy candidate too, before creating the new cache.
-    crate::linker::validated_registry_path(name, url, &project)?;
+    crate::linker::validated_registry_path(name, url, manifest_root)?;
     let cache_path = crate::linker::canonical_registry_path(name)
         .ok_or_else(|| format!("Invalid registry name: {name}"))?;
     let exists = match fs::symlink_metadata(&cache_path) {
@@ -253,7 +261,7 @@ pub fn refresh_from_url(name: &str, url: &str) -> Result<(), Box<dyn std::error:
         Err(error) => return Err(error.into()),
     };
     if !exists {
-        let local = project.join(url);
+        let local = manifest_root.join(url);
         if local.is_dir() && !crate::linker::is_git_repository(&local) {
             if let Some(parent) = cache_path.parent() {
                 fs::create_dir_all(parent)?;
@@ -261,7 +269,7 @@ pub fn refresh_from_url(name: &str, url: &str) -> Result<(), Box<dyn std::error:
             crate::linker::symlink_dir(&fs::canonicalize(local)?, &cache_path)?;
         } else {
             println!("Cloning registry '{}' from '{}'...", name, url);
-            clone_registry(url, &cache_path)?;
+            clone_registry(url, &cache_path, manifest_root)?;
         }
     } else if !crate::linker::is_git_repository(&cache_path) {
         // A validated local directory needs no Git refresh.
@@ -287,13 +295,13 @@ pub fn refresh_effective(
     if let Some(project_registries) = project.and_then(|config| config.registries.as_ref()) {
         registries.extend(project_registries.clone());
     }
+    let project_root = std::env::current_dir()?;
     if let Some(name) = selected {
         let url = registries
             .get(name)
             .ok_or_else(|| format!("Registry '{name}' not found in effective configuration"))?;
-        return refresh_from_url(name, url);
+        return refresh_from_url_at(name, url, &project_root);
     }
-    let project_root = std::env::current_dir()?;
     for (name, url) in &registries {
         crate::linker::validated_registry_path(name, url, &project_root)?;
     }
@@ -301,7 +309,7 @@ pub fn refresh_effective(
     let mut failed = 0;
 
     for (name, url) in &registries {
-        match refresh_from_url(name, url) {
+        match refresh_from_url_at(name, url, &project_root) {
             Ok(_) => updated += 1,
             Err(e) => {
                 eprintln!("Failed to update registry '{}': {}", name, e);
@@ -423,12 +431,13 @@ fn validate_registry_url(url: &str) -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-fn clone_registry(url: &str, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn clone_registry(url: &str, path: &Path, root: &Path) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
 
     let output = std::process::Command::new("git")
+        .current_dir(root)
         .args(["clone", url, path.to_str().unwrap()])
         .output()?;
 
