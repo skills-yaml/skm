@@ -25,11 +25,11 @@ Implement S3 global install and source-exact check with transaction and preview 
 
 ## Actions
 
-Claimed the integrated S2 base. Snapshot the manifest, verify planned links and sources including no-op links, preserve unexpected paths during rollback, and validate global check parents. Added isolated-home command and rollback fixtures. Independent review found that Windows directory symlinks require directory removal; the shared transaction now uses platform-aware symlink removal with a portable replacement and rollback regression.
+Claimed the integrated S2 base. Snapshot the manifest, verify planned links and sources including no-op links, preserve unexpected paths during rollback, and validate global check parents. Added isolated-home command and rollback fixtures. Independent review found that Windows directory symlinks require directory removal; the shared transaction now uses platform-aware symlink removal with a portable replacement and rollback regression. A second review identified loss of an existing Windows file-symlink type on rollback; snapshots now retain and restore link type as well as target, with a portable file-link fixture.
 
 ## Validation
 
-Focused registry-format, global-home, cache, bundle and toolkit modules passed after correcting a project lock synchronization regression. Focused registry-format, global-home, cache, bundle, toolkit and versions checks pass with the review fix. Full task check and task test also pass with the review fix; independent review and integration validation remain required. The portable regression requires native Windows execution, which the standard test workflow does not currently provide.
+Focused registry-format, global-home, cache, bundle and toolkit modules passed after correcting a project lock synchronization regression. Focused registry-format, global-home, cache, bundle, toolkit and versions checks pass with the review fix. Both review fixes passed refreshed focused modules, full task check and task test. Independent review and integration validation remain required. The portable regression requires native Windows execution, which the standard test workflow does not currently provide.
 
 ## Blockers and Dependencies
 
