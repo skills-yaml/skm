@@ -1400,7 +1400,7 @@ pub fn link_skill(
                     continue;
                 }
 
-                fs::remove_file(&skill_target)?;
+                crate::installer::remove_symlink(&skill_target)?;
             }
             Ok(_) => {
                 return Err(format!(
@@ -1592,6 +1592,9 @@ pub fn apply_skill_unlink(targets: &[UnlinkTarget]) -> UnlinkResult {
                 ))
             }
             Ok(_) if target.kind == UnlinkTargetKind::Directory => fs::remove_dir_all(&target.path),
+            Ok(_) if target.kind == UnlinkTargetKind::Symlink => {
+                crate::installer::remove_symlink(&target.path)
+            }
             Ok(_) => fs::remove_file(&target.path),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error),

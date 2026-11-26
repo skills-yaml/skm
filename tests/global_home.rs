@@ -481,6 +481,24 @@ fn global_versions_and_inspection_use_user_registry_not_project_registry() {
     ));
     assert!(String::from_utf8_lossy(&refresh.stdout).contains("team/user: v1.0.0 -> v2.0.0"));
     assert_eq!(snapshot(root.path()), before);
+    let manifest = home.join(".skm/skills.yaml");
+    fs::write(&manifest, "name: User\nagents: [codex]\nregistries: {default: registry}\nskills:\n  - {name: team/user, version: v1.0.0, source: default, publisher: {custom: retained}}\nextension: retained\n").unwrap();
+    success(command(
+        &home,
+        &project,
+        &["skill", "use", "team/user@v2.0.0", "--global", "--yes"],
+    ));
+    let value: serde_yaml::Value = serde_yaml::from_slice(&fs::read(&manifest).unwrap()).unwrap();
+    assert_eq!(value["skills"][0]["version"].as_str(), Some("v2.0.0"));
+    assert_eq!(
+        value["skills"][0]["publisher"]["custom"].as_str(),
+        Some("retained")
+    );
+    assert_eq!(value["extension"].as_str(), Some("retained"));
+    assert_eq!(
+        fs::canonicalize(home.join(".agents/skills/user")).unwrap(),
+        fs::canonicalize(global_registry.join("skills/team/user/v2.0.0")).unwrap()
+    );
 }
 
 #[test]
@@ -788,7 +806,7 @@ fn global_outdated_refresh_accepts_relative_git_origin_beneath_symlinked_home_an
     }
     git(&["add", "."]);
     git(&["commit", "-m", "first"]);
-    let manifest = "name: User\nagents: []\nregistries: {default: nested/../origin}\nskills:\n  - {name: team/user, version: v1.0.0, source: default}\n";
+    let manifest = "name: User\nagents: [codex]\nregistries: {default: nested/../origin}\nskills:\n  - {name: team/user, version: v1.0.0, source: default}\n";
     fs::write(skm.join("skills.yaml"), manifest).unwrap();
     fs::write(
         project.join("skills.yaml"),
@@ -1013,4 +1031,119 @@ fn global_install_applies_registry_dependencies_to_every_selected_target() {
     assert!(command(home, project.path(), &["check", "--global"])
         .status
         .success());
+}
+
+#[test]
+fn global_remove_and_orphan_cleanup_follow_user_manifest_across_directories() {
+    let home = tempfile::tempdir().unwrap();
+    let first = tempfile::tempdir().unwrap();
+    let second = tempfile::tempdir().unwrap();
+    let home = home.path();
+    let source = first.path().join("local");
+    fs::create_dir(&source).unwrap();
+    fs::write(
+        source.join("SKILL.md"),
+        "---\nname: helper\ndescription: test\n---\n",
+    )
+    .unwrap();
+    success(command(
+        home,
+        first.path(),
+        &["init", "--global", "--non-interactive"],
+    ));
+    let manifest = home.join(".skm/skills.yaml");
+    fs::write(
+        &manifest,
+        "name: User\nagents: [codex, cursor]\nskills: []\nextension: retained\n",
+    )
+    .unwrap();
+    fs::write(
+        second.path().join("skills.yaml"),
+        "name: Other\nagents: []\nskills: []\n",
+    )
+    .unwrap();
+    success(command(
+        home,
+        first.path(),
+        &["add", "helper", "--path", "local", "--global", "--yes"],
+    ));
+    success(command(
+        home,
+        second.path(),
+        &["install", "--global", "--yes"],
+    ));
+    let link = home.join(".agents/skills/helper");
+    let second_link = home.join(".cursor/skills/helper");
+    success(command(
+        home,
+        first.path(),
+        &[
+            "dev",
+            "link",
+            source.to_str().unwrap(),
+            "--name",
+            "team/dev-helper",
+            "--global",
+            "--agent",
+            "codex",
+        ],
+    ));
+    let dev_link = home.join(".agents/skills/team/dev-helper");
+    let before = fs::read(&manifest).unwrap();
+    success(command(
+        home,
+        second.path(),
+        &["clean", "symlinks", "--global", "--orphaned", "--yes"],
+    ));
+    assert!(link.is_symlink() && second_link.is_symlink() && dev_link.is_symlink());
+    success(command(
+        home,
+        second.path(),
+        &["remove", "helper", "--global", "--dry-run"],
+    ));
+    assert_eq!(fs::read(&manifest).unwrap(), before);
+    fs::remove_file(&second_link).unwrap();
+    fs::write(&second_link, "real file").unwrap();
+    assert!(!command(
+        home,
+        second.path(),
+        &["remove", "helper", "--global", "--yes"]
+    )
+    .status
+    .success());
+    assert_eq!(fs::read(&manifest).unwrap(), before);
+    assert!(link.is_symlink());
+    fs::remove_file(&second_link).unwrap();
+    symlink(&source, &second_link).unwrap();
+    success(command(
+        home,
+        second.path(),
+        &["remove", "helper", "--global", "--yes"],
+    ));
+    assert!(!link.is_symlink() && !second_link.is_symlink());
+    let value: serde_yaml::Value = serde_yaml::from_slice(&fs::read(&manifest).unwrap()).unwrap();
+    assert_eq!(value["extension"].as_str(), Some("retained"));
+    assert!(value["skills"].as_sequence().unwrap().is_empty());
+    assert_eq!(
+        fs::read_to_string(second.path().join("skills.yaml")).unwrap(),
+        "name: Other\nagents: []\nskills: []\n"
+    );
+}
+
+#[test]
+fn global_cleanup_preview_rejects_unsafe_manifest_without_changes() {
+    let home = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    fs::create_dir(home.path().join(".skm")).unwrap();
+    let outside = home.path().join("outside");
+    fs::write(&outside, "name: external\nagents: []\nskills: []\n").unwrap();
+    symlink(&outside, home.path().join(".skm/skills.yaml")).unwrap();
+    let before = snapshot(home.path());
+    let output = command(
+        home.path(),
+        project.path(),
+        &["clean", "symlinks", "--global", "--orphaned", "--dry-run"],
+    );
+    assert!(!output.status.success());
+    assert_eq!(snapshot(home.path()), before);
 }

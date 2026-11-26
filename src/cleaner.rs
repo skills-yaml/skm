@@ -62,20 +62,26 @@ pub fn clean_symlinks(
         return Err("Must specify at least one of --broken, --orphaned, or --all".into());
     }
 
-    let config_path = current_dir.join("skills.yaml");
-    let project_config = if config_path.exists() {
-        Some(SkillsConfig::load_from_file(&config_path)?)
+    let config_path = if global {
+        crate::config_manager::check_global_manifest_parent()?;
+        crate::config_manager::get_global_manifest_path().ok_or("Cannot resolve global manifest")?
     } else {
-        None
+        current_dir.join("skills.yaml")
+    };
+    let manifest_root = config_path.parent().ok_or("Invalid manifest path")?;
+    let project_config = match fs::symlink_metadata(&config_path) {
+        Ok(_) => Some(crate::load_config(&config_path)?),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error.into()),
     };
     if clean_orphaned && project_config.is_none() {
         return Err(
-            "Cannot identify orphaned links without skills.yaml in the current project".into(),
+            "Cannot identify orphaned links without skills.yaml in the selected scope".into(),
         );
     }
 
     let known_skills = if clean_orphaned {
-        collect_known_skill_names(project_config.as_ref(), &current_dir, global)?
+        collect_known_skill_names(project_config.as_ref(), manifest_root, global)?
     } else {
         HashSet::new()
     };
@@ -215,7 +221,7 @@ pub fn clean_symlinks(
         if verbose {
             eprintln!("Removing: {}", info.path.display());
         }
-        fs::remove_file(&info.path)?;
+        crate::installer::remove_symlink(&info.path)?;
         cleaned += 1;
     }
 
@@ -488,10 +494,22 @@ pub fn clean_old_versions(
     } else {
         None
     };
+    crate::config_manager::check_global_manifest_parent()?;
+    let global_path = crate::config_manager::get_global_manifest_path()
+        .ok_or("Cannot resolve global manifest")?;
+    let global_config = match fs::symlink_metadata(&global_path) {
+        Ok(_) => Some(crate::load_config(&global_path)?),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error.into()),
+    };
+    let mut protected_config = project_config.or_else(|| global_config.clone());
+    if let (Some(protected), Some(global)) = (&mut protected_config, global_config) {
+        protected.skills.extend(global.skills);
+    }
     let mut total_freed = 0;
     let mut versions_removed = 0;
     let versions_to_remove =
-        find_old_version_candidates(registries, keep, project_config.as_ref(), verbose)?;
+        find_old_version_candidates(registries, keep, protected_config.as_ref(), verbose)?;
     let candidate_bytes = versions_to_remove.iter().map(|(_, size)| size).sum::<u64>();
 
     if versions_to_remove.is_empty() {
@@ -734,7 +752,7 @@ pub fn reset(
     if reset_config {
         if let Some(path) = get_base_config_path() {
             items.push(ResetItem {
-                name: "Global configuration".to_string(),
+                name: "Global base settings (global skills manifest is retained)".to_string(),
                 path,
                 kind: ResetItemKind::BaseSettings,
             });
@@ -754,7 +772,7 @@ pub fn reset(
         if let Some(cache_dir) = get_cache_dir() {
             if cache_dir.exists() {
                 items.push(ResetItem {
-                    name: "Cache directory".to_string(),
+                    name: "Shared cache (authoritative manifests are retained)".to_string(),
                     path: cache_dir,
                     kind: ResetItemKind::Cache,
                 });
@@ -849,7 +867,7 @@ pub fn reset(
             ResetItemKind::BaseSettings => crate::config_manager::write_base_settings(
                 &serde_yaml::to_value(BaseConfig::new())?,
             )?,
-            ResetItemKind::Symlink => fs::remove_file(&item.path)?,
+            ResetItemKind::Symlink => crate::installer::remove_symlink(&item.path)?,
             ResetItemKind::Config | ResetItemKind::Cache if item.path.is_dir() => {
                 fs::remove_dir_all(&item.path)?
             }
@@ -1267,8 +1285,10 @@ mod tests {
             profiles: Vec::new(),
             metadata: Default::default(),
         };
-        config.save_to_file(temp.join("skills.yaml")).unwrap();
         BaseConfig::new().save().unwrap();
+        config
+            .save_to_file(home_temp.join(".skm/skills.yaml"))
+            .unwrap();
 
         let source =
             home_temp.join(".cache/skm/registries/default/skills/software-development/spec/latest");
@@ -1313,8 +1333,10 @@ mod tests {
             profiles: Vec::new(),
             metadata: Default::default(),
         };
-        config.save_to_file(temp.join("skills.yaml")).unwrap();
         BaseConfig::new().save().unwrap();
+        config
+            .save_to_file(home_temp.join(".skm/skills.yaml"))
+            .unwrap();
 
         let source = home_temp.join(".cache/skm/registries/default/skills/unused/skill/latest");
         fs::create_dir_all(&source).unwrap();
@@ -1357,6 +1379,10 @@ mod tests {
             metadata: Default::default(),
         };
         config.save_to_file(temp.join("skills.yaml")).unwrap();
+        fs::create_dir_all(home_temp.join(".skm")).unwrap();
+        config
+            .save_to_file(home_temp.join(".skm/skills.yaml"))
+            .unwrap();
         let external = temp.join("external-skills");
         fs::create_dir_all(&external).unwrap();
         fs::write(external.join("keep.txt"), "keep").unwrap();

@@ -176,8 +176,9 @@ skm init --non-interactive --name my-project
 Non-interactive initialization refuses to replace an existing manifest.
 The older `--interactive` and `--advanced` flags remain accepted but are
 hidden from help; interactive prompts are already the default.
-`--global` prepares for global installation; `skills.yaml` remains in the
-current directory.
+`--global` edits the user manifest at `~/.skm/skills.yaml`. Select the
+agents that should receive global skills; `~/.skm/config.yaml` contains base
+settings, not the global skill selection.
 
 Search configured project and inherited global registries for skills and
 published bundles by name:
@@ -298,14 +299,13 @@ Validate the manifest, sources, `SKILL.md` files, and symlink targets:
 skm check
 ```
 
-Use `--global` with `install`, `list`, or `check` to work against user-level agent directories instead of project-local directories.
+Use `--global` with skill commands to select the user manifest and user-level agent directories from any working directory.
 
 ## Project-local or global?
 
 Use project-local skills for repository-specific, team-reviewed workflows. Use
 global skills for a user's baseline tools across projects. Both can coexist;
-`--global` changes link destinations while the manifest stays in the current
-directory. See [installation scopes](workspace/docs/installation-scopes.md) for
+`--global` selects `~/.skm/skills.yaml` and the selected agents’ user-level destinations. See [installation scopes](workspace/docs/installation-scopes.md) for
 examples, tradeoffs, duplicate-name behavior, and daily update commands.
 
 ## Commands

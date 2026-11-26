@@ -833,7 +833,7 @@ fn directory_symlink(_snapshot: &LinkSnapshot) -> bool {
     true
 }
 
-fn remove_symlink(path: &Path) -> io::Result<()> {
+pub(crate) fn remove_symlink(path: &Path) -> io::Result<()> {
     let kind = fs::symlink_metadata(path)?.file_type();
     if !kind.is_symlink() {
         return Err(io::Error::new(
