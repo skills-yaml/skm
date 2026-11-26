@@ -1,9 +1,10 @@
 #![cfg(unix)]
 
 use std::fs;
+use std::io::{Read, Write};
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 struct Fixture {
     root: tempfile::TempDir,
@@ -118,6 +119,192 @@ fn git(root: &Path, args: &[&str]) {
         "git {args:?}: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+#[test]
+fn remove_rejects_manifest_edits_while_waiting_for_confirmation() {
+    let fixture = Fixture::new();
+    fixture.skm(&["install", "--yes"]);
+    let manifest = fixture.project.join("skills.yaml");
+    let lock = fixture.project.join("skills.lock.yaml");
+    let lock_before = fs::read(&lock).unwrap();
+    let alpha = fixture.project.join(".agents/skills/alpha");
+    let helper = fixture.project.join(".agents/skills/helper");
+    let alpha_before = fs::read_link(&alpha).unwrap();
+    let helper_before = fs::read_link(&helper).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_skm"))
+        .args(["remove", "acme/starter"])
+        .current_dir(&fixture.project)
+        .env("HOME", &fixture.home)
+        .env("XDG_CONFIG_HOME", fixture.home.join(".config"))
+        .env("XDG_CACHE_HOME", fixture.home.join(".cache"))
+        .env("SKM_NO_UPDATE_CHECK", "1")
+        .stdin(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stderr = child.stderr.take().unwrap();
+    let mut prompt = Vec::new();
+    while !prompt.ends_with(b"[y/N] ") {
+        let mut byte = [0];
+        assert_eq!(
+            stderr.read(&mut byte).unwrap(),
+            1,
+            "removal ended before confirmation"
+        );
+        prompt.push(byte[0]);
+    }
+    let mut edited = fs::read_to_string(&manifest).unwrap();
+    edited.push_str("  - {name: acme/alpha, version: 1.0.0, source: local}\n");
+    fs::write(&manifest, &edited).unwrap();
+    child.stdin.take().unwrap().write_all(b"y\n").unwrap();
+    let status = child.wait().unwrap();
+    assert!(!status.success());
+    assert_eq!(fs::read_to_string(&manifest).unwrap(), edited);
+    assert_eq!(fs::read(&lock).unwrap(), lock_before);
+    assert_eq!(fs::read_link(alpha).unwrap(), alpha_before);
+    assert_eq!(fs::read_link(helper).unwrap(), helper_before);
+}
+
+fn confirm_removal_after(
+    fixture: &Fixture,
+    during_prompt: impl FnOnce(),
+) -> std::process::ExitStatus {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_skm"))
+        .args(["remove", "acme/starter"])
+        .current_dir(&fixture.project)
+        .env("HOME", &fixture.home)
+        .env("XDG_CONFIG_HOME", fixture.home.join(".config"))
+        .env("XDG_CACHE_HOME", fixture.home.join(".cache"))
+        .env("SKM_NO_UPDATE_CHECK", "1")
+        .stdin(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stderr = child.stderr.take().unwrap();
+    let mut prompt = Vec::new();
+    while !prompt.ends_with(b"[y/N] ") {
+        let mut byte = [0];
+        assert_eq!(
+            stderr.read(&mut byte).unwrap(),
+            1,
+            "removal ended before confirmation"
+        );
+        prompt.push(byte[0]);
+    }
+    during_prompt();
+    child.stdin.take().unwrap().write_all(b"y\n").unwrap();
+    child.wait().unwrap()
+}
+
+#[test]
+fn remove_rejects_lock_changes_and_creation_while_waiting_for_confirmation() {
+    for initially_present in [true, false] {
+        let fixture = Fixture::new();
+        fixture.skm(&["install", "--yes"]);
+        let manifest = fixture.project.join("skills.yaml");
+        let before = fs::read(&manifest).unwrap();
+        let lock = fixture.project.join("skills.lock.yaml");
+        let original_lock = fs::read(&lock).unwrap();
+        if !initially_present {
+            fs::remove_file(&lock).unwrap();
+        }
+        let alpha = fixture.project.join(".agents/skills/alpha");
+        let helper = fixture.project.join(".agents/skills/helper");
+        let alpha_before = fs::read_link(&alpha).unwrap();
+        let helper_before = fs::read_link(&helper).unwrap();
+        let mut changed = original_lock;
+        changed.extend_from_slice(b"\n# edited during confirmation\n");
+        let status = confirm_removal_after(&fixture, || fs::write(&lock, &changed).unwrap());
+        assert!(!status.success());
+        assert_eq!(fs::read(manifest).unwrap(), before);
+        assert_eq!(fs::read(lock).unwrap(), changed);
+        assert_eq!(fs::read_link(alpha).unwrap(), alpha_before);
+        assert_eq!(fs::read_link(helper).unwrap(), helper_before);
+    }
+}
+
+#[test]
+fn remove_rejects_target_replacement_while_waiting_for_confirmation() {
+    let fixture = Fixture::new();
+    fixture.skm(&["install", "--yes"]);
+    let manifest = fixture.project.join("skills.yaml");
+    let lock = fixture.project.join("skills.lock.yaml");
+    let manifest_before = fs::read(&manifest).unwrap();
+    let lock_before = fs::read(&lock).unwrap();
+    let alpha = fixture.project.join(".agents/skills/alpha");
+    let helper = fixture.project.join(".agents/skills/helper");
+    let helper_before = fs::read_link(&helper).unwrap();
+    let outside = fixture.root.path().join("outside");
+    fs::create_dir(&outside).unwrap();
+    let status = confirm_removal_after(&fixture, || {
+        fs::remove_file(&alpha).unwrap();
+        symlink(&outside, &alpha).unwrap();
+    });
+    assert!(!status.success());
+    assert_eq!(fs::read(manifest).unwrap(), manifest_before);
+    assert_eq!(fs::read(lock).unwrap(), lock_before);
+    assert_eq!(fs::read_link(alpha).unwrap(), outside);
+    assert_eq!(fs::read_link(helper).unwrap(), helper_before);
+}
+
+#[test]
+fn remove_rejects_manifest_symlink_swap_during_confirmation() {
+    let fixture = Fixture::new();
+    fixture.skm(&["install", "--yes"]);
+    let manifest = fixture.project.join("skills.yaml");
+    let original = fs::read(&manifest).unwrap();
+    let outside = fixture.root.path().join("outside.yaml");
+    fs::write(&outside, &original).unwrap();
+    let lock = fixture.project.join("skills.lock.yaml");
+    let lock_before = fs::read(&lock).unwrap();
+    let alpha = fixture.project.join(".agents/skills/alpha");
+    let helper = fixture.project.join(".agents/skills/helper");
+    let alpha_before = fs::read_link(&alpha).unwrap();
+    let helper_before = fs::read_link(&helper).unwrap();
+    let status = confirm_removal_after(&fixture, || {
+        fs::remove_file(&manifest).unwrap();
+        symlink(&outside, &manifest).unwrap();
+    });
+    assert!(!status.success());
+    assert!(manifest.is_symlink());
+    assert_eq!(fs::read(outside).unwrap(), original);
+    assert_eq!(fs::read(lock).unwrap(), lock_before);
+    assert_eq!(fs::read_link(alpha).unwrap(), alpha_before);
+    assert_eq!(fs::read_link(helper).unwrap(), helper_before);
+}
+
+#[test]
+fn remove_rejects_symlinked_target_parent_swap_during_confirmation() {
+    let fixture = Fixture::new();
+    fixture.skm(&["install", "--yes"]);
+    let manifest = fixture.project.join("skills.yaml");
+    let original = fs::read(&manifest).unwrap();
+    let lock = fixture.project.join("skills.lock.yaml");
+    let lock_before = fs::read(&lock).unwrap();
+    let targets = fixture.project.join(".agents/skills");
+    let saved = fixture.project.join(".agents/skills-saved");
+    let outside = fixture.root.path().join("outside-skills");
+    fs::create_dir(&outside).unwrap();
+    for skill in ["alpha", "helper"] {
+        symlink(
+            fs::read_link(targets.join(skill)).unwrap(),
+            outside.join(skill),
+        )
+        .unwrap();
+    }
+    let status = confirm_removal_after(&fixture, || {
+        fs::rename(&targets, &saved).unwrap();
+        symlink(&outside, &targets).unwrap();
+    });
+    assert!(!status.success());
+    assert_eq!(fs::read(manifest).unwrap(), original);
+    assert_eq!(fs::read(lock).unwrap(), lock_before);
+    assert!(targets.is_symlink());
+    for skill in ["alpha", "helper"] {
+        assert!(outside.join(skill).is_symlink());
+        assert!(saved.join(skill).is_symlink());
+    }
 }
 
 #[test]
