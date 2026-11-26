@@ -27,7 +27,7 @@ Reconcile S5 documentation and candidate evidence without runtime changes or rem
 
 ## Actions
 
-Reconciled the three active spec statuses and catalog with reviewed peer revisions, mapped AC1–AC7 to combined-source fixtures, and recorded remaining platform and publisher limitations. Reviewed migration and downgrade guidance; no gap requiring a change was found. Reused the applied shared 0.10.0 reservation. Independent review requested a precise wizard fixture citation, explicit unexercised unwritable-home and interrupted-bootstrap cases, an honest preview transport limit, and the missing outdated command flag; corrected those documentation items.
+Reconciled the three active spec statuses and catalog with reviewed peer revisions, mapped AC1–AC7 to combined-source fixtures, and recorded remaining platform and publisher limitations. Reviewed migration and downgrade guidance; no gap requiring a change was found. Reused the applied shared 0.10.0 reservation. Independent review requested a precise wizard fixture citation, explicit unexercised unwritable-home and interrupted-bootstrap cases, an honest preview transport limit, and the missing outdated command flag; corrected those documentation items. Follow-up independent local demonstrations on source `6e76f98` exercised an unwritable home two simulated partial states, and failing uncached HTTPS previews with a Git invocation trace; recorded their bounded results and the missing bootstrap registry-cache directory as an open AC1 defect.
 
 ## Validation
 
@@ -35,7 +35,7 @@ Reconciled the three active spec statuses and catalog with reviewed peer revisio
 
 ## Blockers and Dependencies
 
-Unwritable-home and interrupted-bootstrap evidence, native Windows execution, final combined acceptance, and remote development integration remain open.
+The missing `.skm/cache/registries` bootstrap directory is an open AC1 defect, assigned to a separate runtime task. Native Windows execution, final combined acceptance, and remote development integration remain open.
 
 ## Next Step
 
