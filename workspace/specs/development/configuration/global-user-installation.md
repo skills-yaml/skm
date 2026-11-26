@@ -6,7 +6,7 @@ State: development
 
 Primary feature: `configuration`
 
-Status rationale: S1–S4 are independently reviewed and integrated in local peer revision `6e76f98`. S5 documentation and combined acceptance review are active. No merge into the remote `development` target has occurred; the applied shared 0.10.0 reservation is reused.
+Status rationale: S1–S4 and the AC1 bootstrap repair are independently reviewed and integrated in local peer revision `d58ebd7`. S5 documentation and combined acceptance review are active. No merge into the remote `development` target has occurred; the applied shared 0.10.0 reservation is reused.
 
 ## Problem and Evidence
 
@@ -295,13 +295,13 @@ passes do not establish complete feature acceptance.
 ### Local peer implementation and review evidence
 
 The following independently reviewed source revisions were integrated through
-native peer gates into the local combined revision `6e76f9876ba443f17a4e7daec8ffbb4ad93efc32`.
+native peer gates through the local combined revision `d58ebd790520af95dfc246ca8ff5115fe4143076`.
 These are local peer integrations, not a merge into the configured remote
 `development` test target. The WIP records retain the individual review fixes.
 
 | Step | Reviewed source → local integration | Material review fixes |
 | --- | --- | --- |
-| S1 bootstrap | `57ee1bf` → `b7d0582`; `65ce77a` → `b5440b0`; `b34779c` → `e81eed3` | Deferred bootstrap until settings routing; validated settings writes and reset recovery; guarded retained cache origins, cleanup and literal Git URL rewrites. |
+| S1 bootstrap | `57ee1bf` → `b7d0582`; `65ce77a` → `b5440b0`; `b34779c` → `e81eed3` | Deferred bootstrap until settings routing; validated settings writes and reset recovery; guarded retained cache origins, cleanup and literal Git URL rewrites. The registry-cache bootstrap repair `b0f6f43` → `d58ebd7` creates the specified directory after preflight. |
 | S2 scope | `80e6e54` → `e1bddf4`; `60712b1` → `9524626` | Guarded unsafe preview ancestors, scope-specific add validation and guidance; resolved relative refresh origins under symlinked home ancestors. |
 | S3 install | `22c6d71` → `7b646c7` | Used platform-aware symlink removal and retained file/directory symlink type and target on rollback. |
 | S4 maintenance | `5403ad0` → `6e76f98` | Preserved dependency ownership, refused symlinked cleanup roots, compared native path components and retained global dependency pins during cache pruning. |
@@ -310,11 +310,11 @@ The board records current approvals by `global-cache-consumers-review`,
 `global-scope-review`, `global-scope-refresh-review`, `global-install-review`,
 and `global-maintenance-review` for `b34779c`, `80e6e54`, `60712b1`,
 `22c6d71`, and `5403ad0` respectively. Earlier integrated work records identify
-`57ee1bf` and `65ce77a` as reviewed source revisions. Approvals of individual
+`57ee1bf` and `65ce77a` as reviewed source revisions. `global-bootstrap-registry-review` approved exact repair `b0f6f432bb6b96e090349048fe7a18047cdd04d2` before local integration at `d58ebd7`. Approvals of individual
 slices do not substitute for review of this S5 documentation or acceptance of
 the final combined revision.
 
-### Combined acceptance evidence at local revision `6e76f98`
+### Combined acceptance evidence through local revision `d58ebd7`
 
 The following maps criteria to existing fixtures on the combined source. It is
 candidate evidence, not a claim that the final acceptance or all platforms have
@@ -322,7 +322,7 @@ been approved. Final review and gates must be renewed after this record changes.
 
 | Criterion | Supporting evidence and remaining limit |
 | --- | --- |
-| AC1 | `src/config_manager.rs` bootstrap fixtures cover valid empty state, byte preservation, concurrent creators, invalid YAML, unexpected types and symlinks; `tests/global_home.rs` covers concurrent command startup and unsafe state. An independent reviewer demonstrated on Linux with runtime source `6e76f98` that `config show --global` in an isolated chmod-0500 home returned nonzero with a permission error and left the home empty. A fresh writable home created both documents and the cache directory without stderr. AC1 remains open: bootstrap creates `.skm/cache` but does not create the specified `.skm/cache/registries`. Native Windows execution remains unverified. |
+| AC1 | `src/config_manager.rs` and `tests/global_home.rs` cover valid empty state, byte preservation, concurrent creators, invalid YAML, unsafe types and symlinks. The reviewed repair `b0f6f432bb6b96e090349048fe7a18047cdd04d2`, integrated locally at `d58ebd790520af95dfc246ca8ff5115fe4143076`, creates `.skm/cache/registries` and guards unsafe paths. Independent Linux CLI smoke confirmed the complete silent layout, byte-preserving rerun and partial-state repair, rejection of file, directory-symlink and dangling registry paths before YAML writes, actionable chmod-0500 home failure, 16 concurrent starts, and project/global dry-run and JSON previews with no writes, parseable JSON and zero Git-shim calls. Focused `task test:global-home`, `task test:cache`, and `task test:updater` and native combined `task check` and `task test` passed. Windows execution and final combined acceptance remain open. |
 | AC2 | `global_manifest_is_shared_across_projects_and_previews_do_not_write`, `global_add_uses_user_registry_override_and_inherited_base_from_either_directory`, and version/inspection fixtures exercise separate projects and effective registries. `cache_transition_retains_legacy_sources_and_rejects_conflicts` and `tests/command_layout.rs` cover origin conflicts and Git rewrites. |
 | AC3 | `src/wizard/prompt.rs::global_prompt_saves_agents_and_cancel_preserves_metadata` covers selected agents and cancellation; global manifest command fixtures cover stable local paths and cross-directory mutation; `global_removal_rolls_back_a_partial_failure` and installer failure fixtures cover rollback. |
 | AC4 | `global_install_targets_every_selected_agent_and_checks_exact_sources`, `global_install_rejects_bad_targets_and_preflights_all_destinations`, `global_install_applies_registry_dependencies_to_every_selected_target`, and linker target/deduplication tests cover target selection, invalid/no targets and dependencies. Installer collision, stale-plan and injected-failure tests cover preflight and rollback. Native Windows remains unexecuted. |
