@@ -345,6 +345,7 @@ pub fn bootstrap_user_home() -> ConfigResult<()> {
     let config_path = config_dir.join("config.yaml");
     let manifest_path = config_dir.join("skills.yaml");
     let cache_path = config_dir.join("cache");
+    let registries_path = cache_path.join("registries");
 
     // Validate existing state before creating anything else or importing legacy data.
     let current = read_regular_file(&config_path)?;
@@ -355,7 +356,9 @@ pub fn bootstrap_user_home() -> ConfigResult<()> {
     if let Some(content) = &manifest {
         validate_manifest(content, &manifest_path)?;
     }
-    existing_directory(&cache_path)?;
+    if existing_directory(&cache_path)? {
+        existing_directory(&registries_path)?;
+    }
 
     if current.is_none() {
         let legacy = dirs::config_dir().map(|d| d.join("skm").join("config.yaml"));
@@ -386,6 +389,7 @@ pub fn bootstrap_user_home() -> ConfigResult<()> {
         publish_missing(&manifest_path, EMPTY_GLOBAL_MANIFEST)?;
     }
     directory(&cache_path, true)?;
+    directory(&registries_path, true)?;
 
     // A concurrent creator may have won; validate the actual published files.
     let content =

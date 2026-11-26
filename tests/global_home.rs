@@ -44,7 +44,7 @@ fn imports_settings_and_preserves_opaque_fields_after_registry_edits() {
         fs::read_to_string(home.join(".skm/skills.yaml")).unwrap(),
         "name: Global skills\nagents: []\nskills: []\n"
     );
-    assert!(home.join(".skm/cache").is_dir());
+    assert!(home.join(".skm/cache/registries").is_dir());
     assert!(!String::from_utf8_lossy(&output.stderr).contains("Initializing"));
 }
 
@@ -122,6 +122,7 @@ fn simultaneous_startup_preserves_complete_files() {
     let manifest = fs::read(home.path().join(".skm/skills.yaml")).unwrap();
     serde_yaml::from_slice::<serde_yaml::Value>(&config).unwrap();
     serde_yaml::from_slice::<serde_yaml::Value>(&manifest).unwrap();
+    assert!(home.path().join(".skm/cache/registries").is_dir());
     assert!(
         command(home.path(), home.path(), &["config", "show", "--global"])
             .status
@@ -135,6 +136,82 @@ fn simultaneous_startup_preserves_complete_files() {
         manifest,
         fs::read(home.path().join(".skm/skills.yaml")).unwrap()
     );
+}
+
+#[test]
+fn bootstrap_repairs_missing_registry_directory_without_replacing_files() {
+    let home = tempfile::tempdir().unwrap();
+    let skm = home.path().join(".skm");
+    fs::create_dir_all(skm.join("cache")).unwrap();
+    let config = "default_registry: custom\nregistries:\n  custom: /custom\n";
+    let manifest = "name: Personal\nagents: [codex]\nskills: []\n";
+    fs::write(skm.join("config.yaml"), config).unwrap();
+    fs::write(skm.join("skills.yaml"), manifest).unwrap();
+    fs::write(skm.join("cache/retained"), "keep").unwrap();
+
+    let before = snapshot(home.path());
+    for args in [
+        &["install", "--global", "--dry-run"][..],
+        &["install", "--global", "--json"],
+    ] {
+        let preview = command(home.path(), home.path(), args);
+        assert!(
+            preview.status.success(),
+            "{}",
+            String::from_utf8_lossy(&preview.stderr)
+        );
+        assert_eq!(snapshot(home.path()), before);
+    }
+
+    let output = command(home.path(), home.path(), &["config", "show", "--global"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+    assert!(skm.join("cache/registries").is_dir());
+    assert_eq!(fs::read_to_string(skm.join("config.yaml")).unwrap(), config);
+    assert_eq!(
+        fs::read_to_string(skm.join("skills.yaml")).unwrap(),
+        manifest
+    );
+    assert_eq!(
+        fs::read_to_string(skm.join("cache/retained")).unwrap(),
+        "keep"
+    );
+}
+
+#[test]
+fn bootstrap_rejects_unsafe_registry_directory_before_writing_files() {
+    for symlinked in [false, true] {
+        let home = tempfile::tempdir().unwrap();
+        let skm = home.path().join(".skm");
+        let registries = skm.join("cache/registries");
+        fs::create_dir_all(registries.parent().unwrap()).unwrap();
+        let outside = home.path().join("outside");
+        fs::create_dir(&outside).unwrap();
+        if symlinked {
+            symlink(&outside, &registries).unwrap();
+        } else {
+            fs::write(&registries, "keep").unwrap();
+        }
+
+        let output = command(home.path(), home.path(), &["config", "show", "--global"]);
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("Expected a real directory"));
+        assert!(!skm.join("config.yaml").exists());
+        assert!(!skm.join("skills.yaml").exists());
+        assert_eq!(fs::read_dir(&outside).unwrap().count(), 0);
+        if symlinked {
+            assert!(fs::symlink_metadata(&registries)
+                .unwrap()
+                .file_type()
+                .is_symlink());
+        } else {
+            assert_eq!(fs::read_to_string(&registries).unwrap(), "keep");
+        }
+    }
 }
 
 #[test]
