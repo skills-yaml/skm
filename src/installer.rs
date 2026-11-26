@@ -356,12 +356,6 @@ fn prepare_inner(
                             return Err("Invalid local bundle member in lockfile".into());
                         }
                         linker::validate_exact_version(&member.version)?;
-                        let registry = linker::resolve_registry_path(&member.source)
-                            .ok_or("Invalid registry in bundle lock")?;
-                        let expected = registry
-                            .join("skills")
-                            .join(linker::validated_skill_path(&member.name)?)
-                            .join(format!("v{}", member.version.trim_start_matches('v')));
                         for target in &targets {
                             let path = linker::get_skill_target_path(&target.path, &member.name)?;
                             if outputs
@@ -385,11 +379,11 @@ fn prepare_inner(
                                 .into());
                             }
                             let previous = fs::read_link(&path)?;
-                            let matches = if expected.exists() {
-                                linker::symlink_points_to(&path, &expected)?
-                            } else {
-                                previous == expected
-                            };
+                            let matches = linker::locked_registry_link_matches(
+                                &path,
+                                &locked_skill_spec(&member),
+                                project,
+                            )?;
                             if !matches {
                                 return Err(format!(
                                     "Refusing to remove unexpected bundle link: {}",
@@ -922,8 +916,39 @@ mod tests {
             )
             .unwrap();
         }
+        crate::config_manager::BaseConfig {
+            default_registry: "local".into(),
+            registries: std::collections::HashMap::from([(
+                "local".into(),
+                registry.to_string_lossy().into_owned(),
+            )]),
+            check_for_updates: false,
+        }
+        .save()
+        .unwrap();
         let manifest = registry.join("skills/acme/manifest.yaml");
         fs::write(&manifest, "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0, beta: 1.0.0}\nbundles: {starter: {packages: [alpha]}}\n").unwrap();
+        for args in [
+            &["init", "--quiet"][..],
+            &["add", "."][..],
+            &[
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-qm",
+                "fixture",
+            ][..],
+        ] {
+            assert!(std::process::Command::new("git")
+                .arg("-C")
+                .arg(&registry)
+                .args(args)
+                .status()
+                .unwrap()
+                .success());
+        }
         let config = SkillsConfig {
             name: "fixture".into(),
             version: None,
@@ -949,7 +974,17 @@ mod tests {
         let original = fs::read(root.join("skills.lock.yaml")).unwrap();
         let alpha = root.join(".agents/skills/alpha");
         let old_target = fs::read_link(&alpha).unwrap();
-        fs::write(&manifest, "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0, beta: 1.0.0}\nbundles: {starter: {packages: [beta]}}\n").unwrap();
+        let canonical = home.path().join(".skm/cache/registries/local");
+        fs::create_dir_all(canonical.parent().unwrap()).unwrap();
+        assert!(std::process::Command::new("git")
+            .arg("clone")
+            .arg("--quiet")
+            .arg(&registry)
+            .arg(&canonical)
+            .status()
+            .unwrap()
+            .success());
+        fs::write(canonical.join("skills/acme/manifest.yaml"), "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0, beta: 1.0.0}\nbundles: {starter: {packages: [beta]}}\n").unwrap();
         let plan = prepare(&config, root, false, None).unwrap();
         assert!(plan.apply_with_failure(Some(1)).is_err());
         assert_eq!(fs::read_link(alpha).unwrap(), old_target);

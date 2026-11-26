@@ -91,7 +91,7 @@ fn command_groups_replace_old_names() {
 #[test]
 fn outdated_uses_cache_and_preserves_manifest() {
     let home = temp_home();
-    let manifest = "name: test\nagents: []\nskills:\n  - name: sample\n    source: default\n    version: v1.0.0\n";
+    let manifest = "name: test\nregistries: {default: .cache/skm/registries/default}\nagents: []\nskills:\n  - name: sample\n    source: default\n    version: v1.0.0\n";
     fs::write(home.join("skills.yaml"), manifest).unwrap();
     let cache = home.join(".cache/skm/registries/default/skills/sample");
     for version in ["v1.0.0", "v1.1.0", "v2.0.0-beta.1"] {
@@ -181,7 +181,7 @@ fn cache_refresh_fetches_a_new_remote_commit() {
         "{}",
         String::from_utf8_lossy(&first.stderr)
     );
-    let cached = home.join(".cache/skm/registries/demo");
+    let cached = home.join(".skm/cache/registries/demo");
     assert!(cached.join("first.txt").exists());
 
     fs::write(seed.join("second.txt"), "second").unwrap();
@@ -280,7 +280,7 @@ fn commit_cache_source(home: &std::path::Path, filename: &str) {
 #[test]
 fn cache_refresh_honors_git_url_rewrites() {
     let home = rewritten_cache_fixture();
-    let cache = home.path().join(".cache/skm/registries/default");
+    let cache = home.path().join(".skm/cache/registries/default");
     commit_cache_source(home.path(), "second.txt");
     let refresh = skm(home.path())
         .args(["cache", "refresh"])
@@ -330,7 +330,7 @@ fn cache_refresh_honors_git_url_rewrites() {
 #[test]
 fn cache_refresh_resolves_project_url_with_repository_local_rewrites() {
     let home = rewritten_cache_fixture();
-    let cache = home.path().join(".cache/skm/registries/default");
+    let cache = home.path().join(".skm/cache/registries/default");
     git(
         &cache,
         &[
@@ -365,6 +365,51 @@ fn cache_refresh_resolves_project_url_with_repository_local_rewrites() {
 }
 
 #[test]
+fn cache_refresh_honors_bare_name_rewrites_without_bypassing_conflicts() {
+    let home = rewritten_cache_fixture();
+    let cache = home.path().join(".skm/cache/registries/default");
+    let source = home.path().join("source");
+    git(
+        &cache,
+        &[
+            "config",
+            &format!("url.{}.insteadOf", source.display()),
+            "named-registry",
+        ],
+    );
+    fs::write(
+        home.path().join("skills.yaml"),
+        "name: fixture\nregistries: {default: named-registry}\nagents: []\nskills: []\n",
+    )
+    .unwrap();
+    commit_cache_source(home.path(), "second.txt");
+    let refresh = skm(home.path())
+        .args(["cache", "refresh", "default"])
+        .output()
+        .unwrap();
+    assert!(
+        refresh.status.success(),
+        "{}",
+        String::from_utf8_lossy(&refresh.stderr)
+    );
+    assert!(cache.join("second.txt").exists());
+
+    // A local path with the same spelling must not bypass a mismatching rewrite.
+    let local = home.path().join("named-registry");
+    fs::create_dir(&local).unwrap();
+    git(
+        &cache,
+        &["remote", "set-url", "origin", local.to_str().unwrap()],
+    );
+    let refresh = skm(home.path())
+        .args(["cache", "refresh", "default"])
+        .output()
+        .unwrap();
+    assert!(!refresh.status.success());
+    assert!(String::from_utf8_lossy(&refresh.stderr).contains("different or missing origin"));
+}
+
+#[test]
 fn cache_refresh_preserves_spaces_in_rewritten_source() {
     let home = rewritten_cache_fixture();
     commit_cache_source(home.path(), "second.txt");
@@ -393,7 +438,7 @@ fn cache_refresh_preserves_spaces_in_rewritten_source() {
     );
     assert!(home
         .path()
-        .join(".cache/skm/registries/default/second.txt")
+        .join(".skm/cache/registries/default/second.txt")
         .exists());
 }
 
@@ -407,7 +452,7 @@ fn cache_refresh_rejects_invalid_origins_without_mutating_cache() {
         "trailing-space",
     ] {
         let home = rewritten_cache_fixture();
-        let cache = home.path().join(".cache/skm/registries/default");
+        let cache = home.path().join(".skm/cache/registries/default");
         match invalid {
             "different" => git(
                 &cache,

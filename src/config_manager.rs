@@ -29,7 +29,7 @@ pub fn get_global_manifest_path() -> Option<PathBuf> {
 
 /// Get the cache directory path
 pub fn get_cache_dir() -> Option<PathBuf> {
-    dirs::cache_dir().map(|d| d.join("skm"))
+    get_user_cache_dir()
 }
 
 /// Canonical cache location for user-scoped SKM state.
@@ -210,10 +210,18 @@ impl BaseConfig {
     }
 
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
-        let path = get_base_config_path().ok_or("Could not determine config directory")?;
-
-        let Some(content) = read_regular_file(&path)? else {
-            return Ok(Self::new());
+        let canonical = get_base_config_path().ok_or("Could not determine config directory")?;
+        let (path, content) = match read_regular_file(&canonical)? {
+            Some(content) => (canonical, content),
+            None => {
+                let Some(legacy) = dirs::config_dir().map(|d| d.join("skm/config.yaml")) else {
+                    return Ok(Self::new());
+                };
+                let Some(content) = read_regular_file(&legacy)? else {
+                    return Ok(Self::new());
+                };
+                (legacy, content)
+            }
         };
         let config = validate_base(&content, &path)?;
 
@@ -302,38 +310,7 @@ pub fn update_cache(registry_name: Option<&str>) -> Result<(), Box<dyn std::erro
             .get(reg_name)
             .ok_or_else(|| format!("Registry '{}' not found", reg_name))?;
 
-        let cache_path = crate::linker::resolve_registry_path(reg_name)
-            .ok_or_else(|| format!("Could not resolve cache path for registry: {}", reg_name))?;
-
-        // Create parent directories
-        if let Some(parent) = cache_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
-        if cache_path.exists() {
-            eprintln!("Updating registry '{}'...", reg_name);
-            // Pull latest changes
-            let output = std::process::Command::new("git")
-                .args(["-C", cache_path.to_str().unwrap(), "pull"])
-                .output()?;
-
-            if !output.status.success() {
-                let err = String::from_utf8_lossy(&output.stderr);
-                return Err(format!("Failed to update registry '{}': {}", reg_name, err).into());
-            }
-            eprintln!("Registry '{}' updated successfully.", reg_name);
-        } else {
-            eprintln!("Cloning registry '{}' from '{}'...", reg_name, url);
-            let output = std::process::Command::new("git")
-                .args(["clone", url, cache_path.to_str().unwrap()])
-                .output()?;
-
-            if !output.status.success() {
-                let err = String::from_utf8_lossy(&output.stderr);
-                return Err(format!("Failed to clone registry '{}': {}", reg_name, err).into());
-            }
-            eprintln!("Registry '{}' cloned successfully.", reg_name);
-        }
+        crate::registry::refresh_from_url(reg_name, url)?;
     }
 
     Ok(())

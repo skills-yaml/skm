@@ -164,14 +164,13 @@ pub fn link_local_skill(
             skill_name, src
         );
         Some(src.clone())
-    } else if skill_exists_in_registries(&skill_name) {
+    } else if let Some(reg) = find_skill_registry(&skill_name)? {
         if !force {
             return Err(format!(
                 "A skill named '{}' already exists in a registry. Use --force to override or --source to be explicit.",
                 skill_name
             ).into());
         }
-        let reg = find_skill_registry(&skill_name).unwrap_or_else(|| "default".to_string());
         println!(
             "Warning: This will override any registry skill named '{}'",
             skill_name
@@ -444,17 +443,19 @@ pub fn show_local_skill(
     Ok(())
 }
 
-/// Check if a skill exists in any registry
-fn skill_exists_in_registries(skill_name: &str) -> bool {
-    find_skill_registry(skill_name).is_some()
-}
-
 /// Find the registry name for a skill
-fn find_skill_registry(skill_name: &str) -> Option<String> {
-    let base_config = BaseConfig::load().ok()?;
+fn find_skill_registry(skill_name: &str) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    let mut registries = BaseConfig::load()?.registries;
+    let project = std::env::current_dir()?;
+    let manifest = project.join("skills.yaml");
+    if manifest.exists() {
+        if let Some(overrides) = SkillsConfig::load_from_file(&manifest)?.registries {
+            registries.extend(overrides);
+        }
+    }
 
-    for name in base_config.registries.keys() {
-        let cache_path = linker::resolve_registry_path(name)?;
+    for (name, url) in &registries {
+        let cache_path = linker::validated_registry_path(name, url, &project)?;
         if !cache_path.exists() {
             continue;
         }
@@ -467,12 +468,12 @@ fn find_skill_registry(skill_name: &str) -> Option<String> {
         if let Ok(validated_path) = linker::validated_skill_path(skill_name) {
             let skill_path = skills_dir.join(validated_path);
             if skill_path.exists() {
-                return Some(name.clone());
+                return Ok(Some(name.clone()));
             }
         }
     }
 
-    None
+    Ok(None)
 }
 
 #[cfg(test)]

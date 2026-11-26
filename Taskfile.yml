@@ -105,6 +105,7 @@ tasks:
     cmds:
       - cargo test --bin skm linker::tests -- --test-threads=1
       - cargo test --bin skm search_cli_tests -- --test-threads=1
+      - cargo test --test bundle_maintenance -- --test-threads=1
 
   test:registry-format:
     desc: Test registry discovery and publisher-neutral configuration interfaces

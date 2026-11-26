@@ -86,8 +86,15 @@ pub fn list_skill_versions(
     skill_name: &str,
     registry_name: &str,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    let registry_path = linker::resolve_registry_path(registry_name)
-        .ok_or_else(|| format!("Could not resolve path for registry: {}", registry_name))?;
+    list_skill_versions_at(skill_name, registry_name, &std::env::current_dir()?)
+}
+
+fn list_skill_versions_at(
+    skill_name: &str,
+    registry_name: &str,
+    manifest_root: &Path,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let registry_path = linker::effective_registry_path(registry_name, manifest_root)?;
 
     let skill_path = registry_path
         .join("skills")
@@ -369,7 +376,11 @@ pub fn show_outdated(
                 .ok_or_else(|| format!("Registry '{source}' not found in configuration"))?;
             registry::refresh_from_url(source, url)?;
         }
-        let versions = list_skill_versions(&skill.name, source)?;
+        let versions = list_skill_versions_at(
+            &skill.name,
+            source,
+            config_path.parent().unwrap_or_else(|| Path::new(".")),
+        )?;
         match newest_published_version(&versions, include_pre) {
             Some(latest) if compare_versions(latest, current) == Ordering::Greater => {
                 println!("{}: {} -> {} ({})", skill.name, current, latest, source);
@@ -499,7 +510,11 @@ pub fn use_version(
         .source
         .as_deref()
         .unwrap_or("default");
-    let available_versions = list_skill_versions(skill_name, registry)?;
+    let available_versions = list_skill_versions_at(
+        skill_name,
+        registry,
+        config_path.parent().unwrap_or_else(|| Path::new(".")),
+    )?;
     if !available_versions.contains(&version.to_string()) && version != "latest" {
         return Err(format!(
             "Version '{}' not found for skill '{}' in registry '{}'. Available versions: {}",
@@ -602,7 +617,11 @@ pub fn update_to_latest(
     let registry = skill.source.as_deref().unwrap_or("default");
 
     // List versions and find latest
-    let versions = list_skill_versions(skill_name, registry)?;
+    let versions = list_skill_versions_at(
+        skill_name,
+        registry,
+        config_path.parent().unwrap_or_else(|| Path::new(".")),
+    )?;
     let latest = newest_published_version(&versions, pre)
         .ok_or_else(|| format!("No versions found for skill '{}'", skill_name))?;
 
@@ -707,7 +726,11 @@ pub fn upgrade_all(
             continue;
         }
         let source = skill.source.as_deref().unwrap_or("default");
-        let versions = list_skill_versions(&skill.name, source)?;
+        let versions = list_skill_versions_at(
+            &skill.name,
+            source,
+            config_path.parent().unwrap_or_else(|| Path::new(".")),
+        )?;
         if let Some(newest) = newest_published_version(&versions, pre) {
             if compare_versions(newest, current) == Ordering::Greater {
                 changes.push((skill.name.clone(), current.to_string(), newest.to_string()));
@@ -839,6 +862,17 @@ mod tests {
         fs::write(skill_reg_path.join("v1.0.0").join("SKILL.md"), "# v1.0.0").unwrap();
         fs::write(skill_reg_path.join("v1.1.0").join("SKILL.md"), "# v1.1.0").unwrap();
         fs::write(skill_reg_path.join("latest").join("SKILL.md"), "# latest").unwrap();
+
+        BaseConfig {
+            default_registry: "default".into(),
+            registries: std::collections::HashMap::from([(
+                "default".into(),
+                registry_path.to_string_lossy().into_owned(),
+            )]),
+            check_for_updates: false,
+        }
+        .save()
+        .unwrap();
 
         // 1. Test list_skill_versions
         let versions = list_skill_versions("test-skill", "default").unwrap();

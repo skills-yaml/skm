@@ -121,6 +121,10 @@ pub fn remove(
         }
     }
 
+    // Validate before changing configuration; legacy sources remain in place.
+    let project = std::env::current_dir()?;
+    let url = config.registries.get(&name).unwrap();
+    crate::linker::validated_registry_path(&name, url, &project)?;
     // Remove registry
     config.registries.remove(&name);
 
@@ -145,7 +149,11 @@ pub fn remove(
     // Also remove cache if it exists
     if let Some(path) = crate::linker::resolve_registry_path(&name) {
         if path.exists() {
-            fs::remove_dir_all(&path)?;
+            if fs::symlink_metadata(&path)?.file_type().is_symlink() {
+                fs::remove_file(&path)?;
+            } else {
+                fs::remove_dir_all(&path)?;
+            }
             println!("Removed cache directory: {}", path.display());
         }
     }
@@ -162,7 +170,11 @@ pub fn list(json_output: bool, verbose: bool) -> Result<(), Box<dyn std::error::
 
     for (name, url) in &config.registries {
         let is_default = *name == config.default_registry;
-        let cache_path = crate::linker::resolve_registry_path(name);
+        let cache_path = Some(crate::linker::validated_registry_path(
+            name,
+            url,
+            &std::env::current_dir()?,
+        )?);
         let is_cached = cache_path.as_ref().is_some_and(|p| p.exists());
         let is_up_to_date = if is_cached {
             is_registry_up_to_date(cache_path.as_ref().unwrap()).unwrap_or(false)
@@ -230,52 +242,32 @@ pub fn refresh_from_url(name: &str, url: &str) -> Result<(), Box<dyn std::error:
     if !is_valid_registry_name(name) {
         return Err(format!("Invalid registry name: '{name}'").into());
     }
-    let cache_path = crate::linker::resolve_registry_path(name)
-        .ok_or_else(|| format!("Could not resolve cache path for registry: {}", name))?;
-
-    if !cache_path.exists() {
-        println!("Cloning registry '{}' from '{}'...", name, url);
-        clone_registry(url, &cache_path)?;
+    let project = std::env::current_dir()?;
+    // Inspect the selected legacy candidate too, before creating the new cache.
+    crate::linker::validated_registry_path(name, url, &project)?;
+    let cache_path = crate::linker::canonical_registry_path(name)
+        .ok_or_else(|| format!("Invalid registry name: {name}"))?;
+    let exists = match fs::symlink_metadata(&cache_path) {
+        Ok(_) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(error.into()),
+    };
+    if !exists {
+        let local = project.join(url);
+        if local.is_dir() && !crate::linker::is_git_repository(&local) {
+            if let Some(parent) = cache_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            crate::linker::symlink_dir(&fs::canonicalize(local)?, &cache_path)?;
+        } else {
+            println!("Cloning registry '{}' from '{}'...", name, url);
+            clone_registry(url, &cache_path)?;
+        }
+    } else if !crate::linker::is_git_repository(&cache_path) {
+        // A validated local directory needs no Git refresh.
+    } else if fs::symlink_metadata(&cache_path)?.file_type().is_symlink() {
+        return Err(format!("Cannot refresh symlinked Git cache for registry '{name}' without changing its backing source").into());
     } else {
-        let output = std::process::Command::new("git")
-            .args([
-                "-C",
-                cache_path.to_str().ok_or("non-UTF-8 cache path")?,
-                "remote",
-                "get-url",
-                "origin",
-            ])
-            .output()?;
-        // Expand a literal URL with the cache's Git rules. Passing the URL directly
-        // to ls-remote could interpret a relative path like "origin" as a remote.
-        let remotes = std::process::Command::new("git")
-            .arg("-C")
-            .arg(&cache_path)
-            .arg("remote")
-            .output()?;
-        let remote_names = String::from_utf8_lossy(&remotes.stdout);
-        let mut remote_name = "skm-url-validation".to_string();
-        while remote_names.lines().any(|name| name == remote_name) {
-            remote_name.push('-');
-        }
-        // Command-local configuration writes no files; --get-url uses no network.
-        let expected = std::process::Command::new("git")
-            .arg("-C")
-            .arg(&cache_path)
-            .arg("-c")
-            .arg(format!("remote.{remote_name}.url={url}"))
-            .args(["ls-remote", "--get-url", "--", &remote_name])
-            .output()?;
-        if !output.status.success()
-            || !remotes.status.success()
-            || !expected.status.success()
-            || output.stdout != expected.stdout
-        {
-            return Err(format!(
-                "Cached registry '{name}' has a different or missing origin; run `skm cache clear {name}` before refreshing"
-            )
-            .into());
-        }
         println!("Updating registry '{}'...", name);
         update_registry(&cache_path)?;
     }
@@ -300,6 +292,10 @@ pub fn refresh_effective(
             .get(name)
             .ok_or_else(|| format!("Registry '{name}' not found in effective configuration"))?;
         return refresh_from_url(name, url);
+    }
+    let project_root = std::env::current_dir()?;
+    for (name, url) in &registries {
+        crate::linker::validated_registry_path(name, url, &project_root)?;
     }
     let mut updated = 0;
     let mut failed = 0;
@@ -351,7 +347,11 @@ pub fn info(name: String, json_output: bool) -> Result<(), Box<dyn std::error::E
         .ok_or_else(|| format!("Registry '{}' not found", name))?;
 
     let is_default = config.default_registry == name;
-    let cache_path = crate::linker::resolve_registry_path(&name);
+    let cache_path = Some(crate::linker::validated_registry_path(
+        &name,
+        url,
+        &std::env::current_dir()?,
+    )?);
     let is_cached = cache_path.as_ref().is_some_and(|p| p.exists());
     let is_up_to_date = if is_cached {
         is_registry_up_to_date(cache_path.as_ref().unwrap()).unwrap_or(false)
