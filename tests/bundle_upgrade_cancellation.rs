@@ -29,6 +29,16 @@ impl Fixture {
             home,
             registry,
         };
+        let config_dir = fixture.home.join(".skm");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::write(
+            config_dir.join("config.yaml"),
+            format!(
+                "default_registry: local\nregistries:\n  local: {}\n",
+                serde_json::to_string(&fixture.registry.to_string_lossy()).unwrap()
+            ),
+        )
+        .unwrap();
         fixture.publish("1.0.0");
         git(&fixture.registry, &["init", "--quiet"]);
         fixture.commit();
@@ -82,6 +92,7 @@ impl Fixture {
 
     fn command(&self, args: &[&str]) -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_skm"));
+        isolate_git_environment(&mut command);
         command
             .args(args)
             .current_dir(&self.project)
@@ -150,13 +161,22 @@ impl Fixture {
     }
 }
 
+fn isolate_git_environment(command: &mut Command) {
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("GIT_") {
+            command.env_remove(key);
+        }
+    }
+    command
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_TERMINAL_PROMPT", "0");
+}
+
 fn git(root: &Path, args: &[&str]) {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(args)
-        .output()
-        .unwrap();
+    let mut command = Command::new("git");
+    isolate_git_environment(&mut command);
+    let output = command.arg("-C").arg(root).args(args).output().unwrap();
     assert!(
         output.status.success(),
         "git {args:?}: {}",
