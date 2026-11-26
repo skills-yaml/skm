@@ -67,9 +67,10 @@ where
     let (targets, lock_update) = if !global && config.skills.iter().any(SkillSpec::is_bundle) {
         match read_install_lock(project_root)? {
             Some(lock) => {
-                let (targets, removed_names) =
-                    plan_locked_removal(&config, &skill, &lock, project_root, force, verbose)?;
-                (targets, Some((lock, removed_names)))
+                match plan_locked_removal(&config, &skill, &lock, project_root, force, verbose)? {
+                    Some((targets, removed_names)) => (targets, Some((lock, removed_names))),
+                    None => (Vec::new(), None),
+                }
             }
             None => (
                 plan_unlocked_removal(&config, &skill, project_root, global, force, verbose)?,
@@ -207,6 +208,8 @@ fn read_install_lock(project: &Path) -> Result<Option<InstallLock>, Box<dyn std:
     Ok(Some(lock))
 }
 
+type LockedRemoval = (Vec<linker::UnlinkTarget>, BTreeSet<String>);
+
 fn plan_locked_removal(
     config: &SkillsConfig,
     selected: &SkillSpec,
@@ -214,28 +217,22 @@ fn plan_locked_removal(
     project: &Path,
     force: bool,
     verbose: bool,
-) -> Result<(Vec<linker::UnlinkTarget>, BTreeSet<String>), Box<dyn std::error::Error>> {
+) -> Result<Option<LockedRemoval>, Box<dyn std::error::Error>> {
     let locked_skills: BTreeMap<_, _> = lock
         .skills
         .iter()
         .map(|skill| (skill.name.as_str(), skill))
         .collect();
-    let get_bundle = |spec: &SkillSpec| -> Result<&LockedBundle, Box<dyn std::error::Error>> {
-        lock.bundles
-            .iter()
-            .find(|bundle| {
-                bundle.name == spec.name && Some(bundle.source.as_str()) == spec.source.as_deref()
-            })
-            .ok_or_else(|| {
-                format!(
-                    "Bundle '{}' is not recorded in skills.lock.yaml; run skm install",
-                    spec.name
-                )
-                .into()
-            })
+    let get_bundle = |spec: &SkillSpec| {
+        lock.bundles.iter().find(|bundle| {
+            bundle.name == spec.name && Some(bundle.source.as_str()) == spec.source.as_deref()
+        })
     };
     let candidates: Vec<SkillSpec> = if selected.is_bundle() {
-        let bundle = get_bundle(selected)?;
+        let Some(bundle) = get_bundle(selected) else {
+            // Added since the last install: no links or lock entries belong to it.
+            return Ok(None);
+        };
         let mut result = Vec::new();
         for member in &bundle.members {
             if member.path.is_some() || member.source != bundle.source {
@@ -246,10 +243,10 @@ fn plan_locked_removal(
         }
         result
     } else {
-        vec![locked_skills
-            .get(selected.name.as_str())
-            .ok_or("Skill missing from skills.lock.yaml; run skm install")?
-            .spec()]
+        let Some(locked) = locked_skills.get(selected.name.as_str()) else {
+            return Ok(None);
+        };
+        vec![locked.spec()]
     };
     let mut retained = BTreeSet::new();
     for remaining in config
@@ -258,16 +255,17 @@ fn plan_locked_removal(
         .filter(|skill| skill.name != selected.name)
     {
         if remaining.is_bundle() {
-            for member in &get_bundle(remaining)?.members {
-                retained.insert(member.name.clone());
+            if let Some(bundle) = get_bundle(remaining) {
+                for member in &bundle.members {
+                    retained.insert(member.name.clone());
+                }
             }
         } else {
-            let locked = locked_skills
-                .get(remaining.name.as_str())
-                .ok_or("Skill missing from skills.lock.yaml; run skm install")?;
-            // Resolve the installed pin, not the currently published bundle or alias.
-            let closure = linker::resolve_skill_dependency_closure(&[locked.spec()], project)?;
-            retained.extend(closure.into_iter().map(|skill| skill.name));
+            if let Some(locked) = locked_skills.get(remaining.name.as_str()) {
+                // Resolve the installed pin, not the currently published bundle or alias.
+                let closure = linker::resolve_skill_dependency_closure(&[locked.spec()], project)?;
+                retained.extend(closure.into_iter().map(|skill| skill.name));
+            }
         }
     }
     let mut targets = Vec::new();
@@ -285,7 +283,7 @@ fn plan_locked_removal(
             verbose,
         )?);
     }
-    Ok((targets, removed_names))
+    Ok(Some((targets, removed_names)))
 }
 
 fn update_installed_lock(
