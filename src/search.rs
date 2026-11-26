@@ -1,7 +1,7 @@
 use crate::config::SkillsConfig;
 use crate::config_manager::BaseConfig;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs;
 use std::io::{Read, Seek};
@@ -88,7 +88,7 @@ impl SearchItem<'_> {
         }
     }
 
-    fn display(&self) -> SearchMatch<'_> {
+    fn display(&self, ambiguous: bool) -> SearchMatch<'_> {
         match self {
             Self::Skill(entry) => SearchMatch {
                 name: &entry.name,
@@ -106,7 +106,10 @@ impl SearchItem<'_> {
                 apply_command: None,
             },
             Self::Bundle(bundle) => {
-                let command = format!("skm add {} --source {}", bundle.id, bundle.registry);
+                let mut command = format!("skm add {} --source {}", bundle.id, bundle.registry);
+                if ambiguous {
+                    command.push_str(" --kind bundle");
+                }
                 SearchMatch {
                     name: &bundle.id,
                     kind: "bundle",
@@ -731,11 +734,7 @@ pub fn print_results(
     if limit == 0 {
         return Err("--limit must be greater than zero".into());
     }
-    let visible: Vec<_> = matches
-        .iter()
-        .take(limit)
-        .map(SearchItem::display)
-        .collect();
+    let visible = display_matches(matches, limit);
     if json {
         println!(
             "{}",
@@ -774,6 +773,21 @@ pub fn print_results(
         }
     }
     Ok(())
+}
+
+fn display_matches<'a>(matches: &'a [SearchItem<'a>], limit: usize) -> Vec<SearchMatch<'a>> {
+    let skills: BTreeSet<_> = matches
+        .iter()
+        .filter_map(|item| match item {
+            SearchItem::Skill(entry) => Some((entry.name.as_str(), entry.registry.as_str())),
+            SearchItem::Bundle(_) => None,
+        })
+        .collect();
+    matches
+        .iter()
+        .take(limit)
+        .map(|item| item.display(skills.contains(&(item.name(), item.registry()))))
+        .collect()
 }
 
 fn format_text_results(entries: &[SearchMatch<'_>]) -> String {
@@ -886,7 +900,7 @@ mod tests {
         };
         let skill_item = SearchItem::Skill(&skill);
         let bundle_item = SearchItem::Bundle(&bundle);
-        let displayed = [skill_item.display(), bundle_item.display()];
+        let displayed = [skill_item.display(false), bundle_item.display(false)];
 
         let output = format_text_results(&displayed);
         let lines: Vec<_> = output.lines().collect();
@@ -935,7 +949,7 @@ mod tests {
         };
         let skill_item = SearchItem::Skill(&missing);
         let bundle_item = SearchItem::Bundle(&bundle);
-        let output = format_text_results(&[skill_item.display(), bundle_item.display()]);
+        let output = format_text_results(&[skill_item.display(false), bundle_item.display(false)]);
         assert!(output.contains("Description unavailable."));
         assert!(output.contains("Includes 3 skills: software/first-long-skill,"));
         assert!(output.contains("software/third-long-skill."));
@@ -987,6 +1001,44 @@ mod tests {
     }
 
     #[test]
+    fn bundle_suggestions_only_disambiguate_same_registry_collisions() {
+        let entries = [entry("software/starter", "company")];
+        let bundles = [
+            Bundle {
+                id: "software/starter".into(),
+                registry: "company".into(),
+                members: 1,
+                packages: vec!["software/starter".into()],
+            },
+            Bundle {
+                id: "software/starter".into(),
+                registry: "default".into(),
+                members: 1,
+                packages: vec!["software/starter".into()],
+            },
+        ];
+        let matches = matching_items(&entries, &bundles, "starter").unwrap();
+        let visible = display_matches(&matches, 2);
+        assert_eq!(
+            visible[0].add_command,
+            "skm add software/starter --source company --kind bundle"
+        );
+        assert_eq!(
+            visible[1].add_command,
+            "skm add software/starter --source company --kind skill"
+        );
+        let all = display_matches(&matches, usize::MAX);
+        assert_eq!(
+            all[2].add_command,
+            "skm add software/starter --source default"
+        );
+        assert_eq!(
+            all[2].apply_command.as_deref(),
+            Some("skm add software/starter --source default --yes && skm install --yes")
+        );
+    }
+
+    #[test]
     fn git_tree_ignores_symlinks_and_unsafe_or_unversioned_paths() {
         let tree = b"100644 blob a\tskills/dev/spec/v2.0.0/SKILL.md\0\
                      120000 blob b\tskills/link/v1.0.0/SKILL.md\0\
@@ -1018,7 +1070,7 @@ mod tests {
             packages: vec!["software/review".into()],
         }];
         let matches = matching_items(&entries, &bundles, "software").unwrap();
-        let visible = matches.iter().map(SearchItem::display).collect();
+        let visible = display_matches(&matches, usize::MAX);
         let warnings = ["other: unavailable".into()];
         let json = serde_json::to_value(SearchOutput {
             query: "software",
