@@ -241,6 +241,7 @@ fn plan_locked_removal(
             if member.path.is_some() || member.source != bundle.source {
                 return Err("Invalid bundle member in skills.lock.yaml".into());
             }
+            linker::validate_exact_version(&member.version)?;
             result.push(member.spec());
         }
         result

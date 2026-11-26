@@ -1639,4 +1639,62 @@ mod tests {
         fs::write(other.join("manifest.yaml"), "schema_version: 2\nnamespace: other\npackages: {alpha: 1.0.0}\nbundles: {starter: {packages: [alpha]}}\n").unwrap();
         assert!(crate::installer::prepare(&config, fixture.project.path(), false, None).is_err());
     }
+    #[cfg(unix)]
+    #[test]
+    #[serial]
+    fn removing_unversioned_alias_skill_preserves_bundle() {
+        let fixture = Fixture::new();
+        let home = tempfile::tempdir().unwrap();
+        let _guard = HomeGuard::set(home.path());
+        let project = fixture.project.path();
+        let config_path = project.join("skills.yaml");
+        fixture.skill("beta", "1.0.0", None);
+        let beta = fixture.registry.path().join("skills/acme/beta");
+        fs::write(
+            beta.join("v1.0.0/SKILL.md"),
+            "---\nname: beta\ndescription: Unversioned fixture.\n---\n# beta\n",
+        )
+        .unwrap();
+        std::os::unix::fs::symlink("v1.0.0", beta.join("latest")).unwrap();
+        std::os::unix::fs::symlink("v1.0.0", beta.join("default")).unwrap();
+        let prepared = prepare(project, "acme/starter", "local", true).unwrap();
+        apply(project, &prepared).unwrap();
+        for alias in ["latest", "default"] {
+            let mut config = SkillsConfig::load_from_file(&config_path).unwrap();
+            config.skills.push(SkillSpec {
+                name: "acme/beta".into(),
+                version: Some(alias.into()),
+                source: Some("local".into()),
+                path: None,
+                kind: None,
+            });
+            config.save_to_file(&config_path).unwrap();
+            crate::installer::prepare(&config, project, false, None)
+                .unwrap()
+                .apply()
+                .unwrap();
+            crate::check_skills(&config_path, project, false).unwrap();
+            crate::remover::remove_skill("acme/beta", project, false, true, false, false, false)
+                .unwrap();
+            assert!(!project.join(".agents/skills/beta").exists());
+            assert!(project.join(".agents/skills/alpha").is_symlink());
+            crate::check_skills(&config_path, project, false).unwrap();
+        }
+        let lock_path = project.join("skills.lock.yaml");
+        let mut lock: serde_yaml::Value =
+            serde_yaml::from_slice(&fs::read(&lock_path).unwrap()).unwrap();
+        lock["bundles"][0]["members"][0]["version"] = "latest".into();
+        fs::write(&lock_path, serde_yaml::to_string(&lock).unwrap()).unwrap();
+        assert!(crate::remover::remove_skill(
+            "acme/starter",
+            project,
+            false,
+            true,
+            false,
+            false,
+            false
+        )
+        .is_err());
+        assert!(project.join(".agents/skills/alpha").is_symlink());
+    }
 }

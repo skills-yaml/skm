@@ -990,12 +990,16 @@ pub(crate) fn plan_locked_skill_unlink(
             .version
             .as_deref()
             .ok_or("Locked registry skill has no version")?;
-        validate_exact_version(version)?;
-        resolve_registry_path(source)
-            .ok_or("Invalid locked registry source")?
-            .join("skills")
-            .join(validated_skill_path(&skill.name)?)
-            .join(format!("v{}", version.trim_start_matches('v')))
+        if matches!(version, "latest" | "default") {
+            resolve_skill_source_dir(skill, project_root)?
+        } else {
+            validate_exact_version(version)?;
+            resolve_registry_path(source)
+                .ok_or("Invalid locked registry source")?
+                .join("skills")
+                .join(validated_skill_path(&skill.name)?)
+                .join(format!("v{}", version.trim_start_matches('v')))
+        }
     };
     plan_skill_unlink_expected(
         skill,
