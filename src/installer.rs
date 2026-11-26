@@ -61,14 +61,49 @@ struct PlanAction {
 
 struct RemoveAction {
     path: PathBuf,
-    previous: PathBuf,
+    previous: LinkSnapshot,
+}
+
+#[derive(PartialEq, Eq)]
+struct LinkSnapshot {
+    target: PathBuf,
+    #[cfg(windows)]
+    directory: bool,
+}
+
+impl LinkSnapshot {
+    fn read(path: &Path) -> io::Result<Self> {
+        let kind = fs::symlink_metadata(path)?.file_type();
+        if !kind.is_symlink() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Expected a symlink",
+            ));
+        }
+        #[cfg(windows)]
+        use std::os::windows::fs::FileTypeExt;
+        Ok(Self {
+            target: fs::read_link(path)?,
+            #[cfg(windows)]
+            directory: kind.is_symlink_dir(),
+        })
+    }
+
+    fn restore(&self, path: &Path) -> io::Result<()> {
+        #[cfg(windows)]
+        if !self.directory {
+            return std::os::windows::fs::symlink_file(&self.target, path);
+        }
+        linker::symlink_dir(&self.target, path)
+    }
 }
 
 struct LinkAction {
     path: PathBuf,
     source: PathBuf,
     canonical_source: PathBuf,
-    previous: Option<PathBuf>,
+    previous: Option<LinkSnapshot>,
+    unchanged: bool,
 }
 
 pub struct Prepared {
@@ -292,30 +327,33 @@ fn prepare_inner(
                 agents: target.agents.clone(),
             });
             let previous = match fs::symlink_metadata(&path) {
-                Ok(metadata) if metadata.file_type().is_symlink() => Some(fs::read_link(&path)?),
+                Ok(metadata) if metadata.file_type().is_symlink() => {
+                    Some(LinkSnapshot::read(&path)?)
+                }
                 Ok(_) => {
                     return Err(format!("Refusing to replace real path: {}", path.display()).into())
                 }
                 Err(error) if error.kind() == io::ErrorKind::NotFound => None,
                 Err(error) => return Err(error.into()),
             };
-            if previous.is_some() && linker::symlink_points_to(&path, &source)? {
-                continue;
+            let unchanged = previous.is_some() && linker::symlink_points_to(&path, &source)?;
+            if !unchanged {
+                public.actions.push(PlanAction {
+                    action: if previous.is_some() {
+                        "replace"
+                    } else {
+                        "create"
+                    },
+                    path: path.display().to_string(),
+                    target: Some(source.display().to_string()),
+                });
             }
-            public.actions.push(PlanAction {
-                action: if previous.is_some() {
-                    "replace"
-                } else {
-                    "create"
-                },
-                path: path.display().to_string(),
-                target: Some(source.display().to_string()),
-            });
             links.push(LinkAction {
                 path,
                 source: source.clone(),
                 canonical_source: canonical_source.clone(),
                 previous,
+                unchanged,
             });
         }
     }
@@ -378,7 +416,7 @@ fn prepare_inner(
                                 )
                                 .into());
                             }
-                            let previous = fs::read_link(&path)?;
+                            let previous = LinkSnapshot::read(&path)?;
                             let matches = linker::locked_registry_link_matches(
                                 &path,
                                 &locked_skill_spec(&member),
@@ -490,7 +528,7 @@ pub fn sync_existing_lock(config_path: &Path, project: &Path) -> Result<()> {
         return Ok(());
     }
     let prepared = prepare(&config, project, false, None)?;
-    if !prepared.links.is_empty() {
+    if prepared.links.iter().any(|link| !link.unchanged) {
         return Err("Skill links are incomplete; run skm install to refresh the lockfile".into());
     }
     prepared.apply()
@@ -507,7 +545,7 @@ fn read_regular_optional(path: &Path) -> Result<Option<Vec<u8>>> {
     }
 }
 
-fn validate_parent(root: &Path, path: &Path) -> Result<()> {
+pub(crate) fn validate_parent(root: &Path, path: &Path) -> Result<()> {
     let parent = path.parent().ok_or("Skill target has no parent")?;
     let relative = parent.strip_prefix(root)?;
     let mut current = root.to_path_buf();
@@ -549,9 +587,6 @@ impl Prepared {
     }
 
     pub(crate) fn apply_with_failure(&self, fail_after_link: Option<usize>) -> Result<()> {
-        if self.public.actions.is_empty() {
-            return Ok(());
-        }
         if let Some((path, original, _)) = &self.manifest {
             if read_regular_optional(path)?.as_deref() != Some(original.as_slice()) {
                 return Err("skills.yaml changed after planning; retry".into());
@@ -561,6 +596,13 @@ impl Prepared {
             if read_regular_optional(path)?.as_ref() != previous.as_ref() {
                 return Err("skills.lock.yaml changed after planning; retry".into());
             }
+        }
+        // Even a no-op plan must still describe the observed sources and targets.
+        for link in &self.links {
+            self.validate_link(link)?;
+        }
+        if self.public.actions.is_empty() {
+            return Ok(());
         }
         let transaction = tempfile::Builder::new()
             .prefix(".skm-install-")
@@ -575,7 +617,7 @@ impl Prepared {
                 validate_parent(&self.root, &removal.path)?;
                 let metadata = fs::symlink_metadata(&removal.path)?;
                 if !metadata.file_type().is_symlink()
-                    || fs::read_link(&removal.path)? != removal.previous
+                    || LinkSnapshot::read(&removal.path)? != removal.previous
                 {
                     return Err(format!(
                         "Bundle link changed after planning: {}",
@@ -583,39 +625,46 @@ impl Prepared {
                     )
                     .into());
                 }
-                fs::remove_file(&removal.path)?;
+                remove_symlink(&removal.path)?;
                 removed.push(removal);
             }
             for (index, link) in self.links.iter().enumerate() {
-                validate_parent(&self.root, &link.path)?;
-                if fs::canonicalize(&link.source)? != link.canonical_source {
-                    return Err(format!(
-                        "Skill source changed after planning: {}",
-                        link.source.display()
-                    )
-                    .into());
-                }
-                match (&link.previous, fs::symlink_metadata(&link.path)) {
-                    (None, Err(error)) if error.kind() == io::ErrorKind::NotFound => {}
-                    (Some(previous), Ok(metadata))
-                        if metadata.file_type().is_symlink()
-                            && fs::read_link(&link.path)? == *previous => {}
-                    _ => {
-                        return Err(format!(
-                            "Skill target changed after planning: {}",
-                            link.path.display()
-                        )
-                        .into())
-                    }
+                self.validate_link(link)?;
+                if link.unchanged {
+                    continue;
                 }
                 ensure_parents(&link.path, &self.root, &mut created_directories)?;
-                completed.push(link);
+                self.validate_link(link)?;
                 if link.previous.is_some() {
-                    fs::remove_file(&link.path)?;
+                    remove_symlink(&link.path)?;
                 }
+                completed.push(link);
                 linker::symlink_dir(&link.source, &link.path)?;
                 if fail_after_link == Some(index + 1) {
                     return Err("injected install failure".into());
+                }
+            }
+            if let Some((path, original, _)) = &self.manifest {
+                if read_regular_optional(path)?.as_deref() != Some(original.as_slice()) {
+                    return Err("skills.yaml changed during installation; retry".into());
+                }
+            }
+            for link in self.links.iter().filter(|link| link.unchanged) {
+                self.validate_link(link)?;
+            }
+            for link in self.links.iter().filter(|link| !link.unchanged) {
+                validate_parent(&self.root, &link.path)?;
+                let actual = LinkSnapshot::read(&link.path)?;
+                if actual.target != link.source
+                    || !directory_symlink(&actual)
+                    || fs::canonicalize(&link.source)? != link.canonical_source
+                    || !link.source.join("SKILL.md").is_file()
+                {
+                    return Err(format!(
+                        "Skill link or source changed during installation: {}",
+                        link.path.display()
+                    )
+                    .into());
                 }
             }
             if let Some((path, original, updated)) = &self.manifest {
@@ -677,17 +726,36 @@ impl Prepared {
                 }
             }
             for link in completed.into_iter().rev() {
-                if link.path.is_symlink() {
-                    if let Err(restore) = fs::remove_file(&link.path) {
+                if let Err(restore) = validate_parent(&self.root, &link.path) {
+                    rollback_errors.push(format!("unsafe rollback parent: {restore}"));
+                    continue;
+                }
+                match fs::symlink_metadata(&link.path) {
+                    Ok(metadata)
+                        if metadata.file_type().is_symlink()
+                            && LinkSnapshot::read(&link.path).ok().is_some_and(|snapshot| {
+                                snapshot.target == link.source && directory_symlink(&snapshot)
+                            }) =>
+                    {
+                        if let Err(restore) = remove_symlink(&link.path) {
+                            rollback_errors.push(format!(
+                                "could not remove link {}: {restore}",
+                                link.path.display()
+                            ));
+                            continue;
+                        }
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                    _ => {
                         rollback_errors.push(format!(
-                            "could not remove link {}: {restore}",
+                            "link changed during rollback: {}",
                             link.path.display()
                         ));
                         continue;
                     }
                 }
                 if let Some(previous) = &link.previous {
-                    if let Err(restore) = linker::symlink_dir(previous, &link.path) {
+                    if let Err(restore) = previous.restore(&link.path) {
                         rollback_errors.push(format!(
                             "could not restore link {}: {restore}",
                             link.path.display()
@@ -696,7 +764,7 @@ impl Prepared {
                 }
             }
             for removal in removed.into_iter().rev() {
-                if let Err(restore) = linker::symlink_dir(&removal.previous, &removal.path) {
+                if let Err(restore) = removal.previous.restore(&removal.path) {
                     rollback_errors.push(format!(
                         "could not restore link {}: {restore}",
                         removal.path.display()
@@ -704,7 +772,9 @@ impl Prepared {
                 }
             }
             for directory in created_directories.into_iter().rev() {
-                let _ = fs::remove_dir(directory);
+                if validate_parent(&self.root, &directory).is_ok() {
+                    let _ = fs::remove_dir(directory);
+                }
             }
             if rollback_errors.is_empty() {
                 return Err(
@@ -721,6 +791,64 @@ impl Prepared {
         }
         Ok(())
     }
+
+    fn validate_link(&self, link: &LinkAction) -> Result<()> {
+        validate_parent(&self.root, &link.path)?;
+        if fs::canonicalize(&link.source)? != link.canonical_source
+            || !link.source.is_dir()
+            || !link.source.join("SKILL.md").is_file()
+        {
+            return Err(format!(
+                "Skill source changed after planning: {}",
+                link.source.display()
+            )
+            .into());
+        }
+        match (&link.previous, fs::symlink_metadata(&link.path)) {
+            (None, Err(error)) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            (Some(previous), Ok(metadata))
+                if metadata.file_type().is_symlink()
+                    && LinkSnapshot::read(&link.path)? == *previous
+                    && (!link.unchanged
+                        || linker::symlink_points_to(&link.path, &link.source)?) =>
+            {
+                Ok(())
+            }
+            _ => Err(format!(
+                "Skill target changed after planning: {}",
+                link.path.display()
+            )
+            .into()),
+        }
+    }
+}
+
+#[cfg(windows)]
+fn directory_symlink(snapshot: &LinkSnapshot) -> bool {
+    snapshot.directory
+}
+
+#[cfg(not(windows))]
+fn directory_symlink(_snapshot: &LinkSnapshot) -> bool {
+    true
+}
+
+fn remove_symlink(path: &Path) -> io::Result<()> {
+    let kind = fs::symlink_metadata(path)?.file_type();
+    if !kind.is_symlink() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Refusing to remove non-symlink: {}", path.display()),
+        ));
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::FileTypeExt;
+        if kind.is_symlink_dir() {
+            return fs::remove_dir(path);
+        }
+    }
+    fs::remove_file(path)
 }
 
 fn ensure_parents(path: &Path, root: &Path, created: &mut Vec<PathBuf>) -> Result<()> {
@@ -738,6 +866,106 @@ fn ensure_parents(path: &Path, root: &Path, created: &mut Vec<PathBuf>) -> Resul
         created.push(parent);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests_portable {
+    use super::*;
+
+    #[cfg(unix)]
+    fn symlink_file(source: &Path, target: &Path) -> io::Result<()> {
+        std::os::unix::fs::symlink(source, target)
+    }
+
+    #[cfg(windows)]
+    fn symlink_file(source: &Path, target: &Path) -> io::Result<()> {
+        std::os::windows::fs::symlink_file(source, target)
+    }
+
+    #[test]
+    fn directory_symlink_replacement_and_rollback_are_portable() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path();
+        let source = project.join("source");
+        let old = project.join("old");
+        fs::create_dir(&source).unwrap();
+        fs::create_dir(&old).unwrap();
+        fs::write(source.join("SKILL.md"), b"---\nname: sample\n---\n").unwrap();
+        let config = SkillsConfig {
+            name: "fixture".into(),
+            version: None,
+            registries: None,
+            agents: vec!["codex".into(), "cursor".into()],
+            skills: vec![SkillSpec {
+                name: "sample".into(),
+                version: None,
+                source: None,
+                path: Some("source".into()),
+                kind: None,
+            }],
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            metadata: Default::default(),
+        };
+        let target = project.join(".agents/skills/sample");
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        linker::symlink_dir(&old, &target).unwrap();
+        let plan = prepare(&config, project, false, None).unwrap();
+        assert!(plan.apply_with_failure(Some(1)).is_err());
+        assert_eq!(fs::read_link(&target).unwrap(), old);
+        assert!(source.is_dir());
+        plan.apply().unwrap();
+        assert!(linker::symlink_points_to(&target, &source).unwrap());
+        assert!(
+            linker::symlink_points_to(&project.join(".cursor/skills/sample"), &source).unwrap()
+        );
+        assert!(old.is_dir());
+        assert!(remove_symlink(&source).is_err());
+        assert!(source.join("SKILL.md").is_file());
+    }
+
+    #[test]
+    fn rollback_restores_existing_file_symlink_type_and_target() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path();
+        let source = project.join("source");
+        let old = project.join("old-file");
+        fs::create_dir(&source).unwrap();
+        fs::write(source.join("SKILL.md"), b"---\nname: sample\n---\n").unwrap();
+        fs::write(&old, b"owned").unwrap();
+        let config = SkillsConfig {
+            name: "fixture".into(),
+            version: None,
+            registries: None,
+            agents: vec!["codex".into(), "cursor".into()],
+            skills: vec![SkillSpec {
+                name: "sample".into(),
+                version: None,
+                source: None,
+                path: Some("source".into()),
+                kind: None,
+            }],
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            metadata: Default::default(),
+        };
+        let target = project.join(".agents/skills/sample");
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        symlink_file(&old, &target).unwrap();
+        let original = LinkSnapshot::read(&target).unwrap();
+        #[cfg(windows)]
+        assert!(!original.directory);
+        let plan = prepare(&config, project, false, None).unwrap();
+        assert!(plan.apply_with_failure(Some(1)).is_err());
+        assert!(LinkSnapshot::read(&target).unwrap() == original);
+        assert_eq!(fs::read(&target).unwrap(), b"owned");
+        assert!(!project.join(".cursor/skills/sample").exists());
+        plan.apply().unwrap();
+        assert!(linker::symlink_points_to(&target, &source).unwrap());
+        assert_eq!(fs::read(old).unwrap(), b"owned");
+    }
 }
 
 #[cfg(all(test, unix))]
@@ -881,6 +1109,96 @@ mod tests {
         assert_eq!(fs::read(&manifest_path).unwrap(), b"name: external\n");
         assert!(!project.join(".agents/skills/alpha").exists());
         assert!(!project.join("skills.lock.yaml").exists());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn global_install_rolls_back_and_rejects_stale_noop_plans() {
+        struct HomeGuard(Option<std::ffi::OsString>);
+        impl Drop for HomeGuard {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(value) => std::env::set_var("HOME", value),
+                    None => std::env::remove_var("HOME"),
+                }
+            }
+        }
+        let (home, mut config) = fixture();
+        let _guard = HomeGuard(std::env::var_os("HOME"));
+        std::env::set_var("HOME", home.path());
+        let manifest_root = home.path().join(".skm");
+        fs::create_dir(&manifest_root).unwrap();
+        for skill in &mut config.skills {
+            skill.path = Some(
+                home.path()
+                    .join(skill.path.as_ref().unwrap())
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+        }
+        let manifest = serde_yaml::to_string(&config).unwrap().into_bytes();
+        fs::write(manifest_root.join("skills.yaml"), &manifest).unwrap();
+        let old = home.path().join("old");
+        fs::create_dir(&old).unwrap();
+        fs::create_dir_all(home.path().join(".agents/skills")).unwrap();
+        symlink(&old, home.path().join(".agents/skills/alpha")).unwrap();
+        let plan = prepare(
+            &config,
+            &manifest_root,
+            true,
+            Some((manifest.clone(), manifest.clone())),
+        )
+        .unwrap();
+        fs::write(
+            manifest_root.join("skills.yaml"),
+            b"name: externally changed\n",
+        )
+        .unwrap();
+        assert!(plan.apply().is_err());
+        assert_eq!(
+            fs::read_link(home.path().join(".agents/skills/alpha")).unwrap(),
+            old
+        );
+        fs::write(manifest_root.join("skills.yaml"), &manifest).unwrap();
+        fs::create_dir_all(home.path().join(".cursor/skills")).unwrap();
+        fs::write(home.path().join(".cursor/skills/beta"), b"owned").unwrap();
+        assert!(plan.apply().is_err());
+        assert_eq!(
+            fs::read(home.path().join(".cursor/skills/beta")).unwrap(),
+            b"owned"
+        );
+        fs::remove_dir_all(home.path().join(".cursor")).unwrap();
+        let source = home.path().join("alpha/SKILL.md");
+        let source_bytes = fs::read(&source).unwrap();
+        fs::remove_file(&source).unwrap();
+        assert!(plan.apply().is_err());
+        fs::write(source, source_bytes).unwrap();
+        assert!(plan.apply_with_failure(Some(2)).is_err());
+        assert_eq!(
+            fs::read_link(home.path().join(".agents/skills/alpha")).unwrap(),
+            old
+        );
+        assert!(!home.path().join(".agents/skills/beta").exists());
+        assert!(!home.path().join(".cursor").exists());
+        assert_eq!(
+            fs::read(manifest_root.join("skills.yaml")).unwrap(),
+            manifest
+        );
+        plan.apply().unwrap();
+        assert!(!manifest_root.join("skills.lock.yaml").exists());
+        let plan = prepare(
+            &config,
+            &manifest_root,
+            true,
+            Some((manifest.clone(), manifest.clone())),
+        )
+        .unwrap();
+        assert!(plan.public.actions.is_empty());
+        fs::remove_file(home.path().join(".agents/skills/alpha")).unwrap();
+        symlink(&old, home.path().join(".agents/skills/alpha")).unwrap();
+        assert!(plan.apply().is_err());
+        fs::write(manifest_root.join("skills.yaml"), b"name: changed\n").unwrap();
+        assert!(plan.apply().is_err());
     }
 
     #[test]

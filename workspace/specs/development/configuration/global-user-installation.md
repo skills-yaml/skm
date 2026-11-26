@@ -326,6 +326,23 @@ manifest and preserves origin validation. S3 and S4 retain installation
 transaction, all-target, mutation, and cleanup work;
 these checks do not establish full acceptance of those areas.
 
+### Current S3 install candidate
+
+The installer snapshots the selected manifest and checks planned sources and
+destinations, including already-correct links, before and during application.
+It restores changed links on failure and refuses unsafe rollback parents or
+unexpected replacement paths. Global checks also reject unsafe target parents.
+Temporary-home command fixtures cover every supported agent, shared targets,
+dependency closure, conflicting names, empty/invalid selections, real targets,
+wrong-source links, preview, reinstall, and project isolation. Failure-injection
+fixtures cover rollback and stale manifests, sources and destinations. Existing
+cache-transition tests exercise retained legacy sources and reinstall.
+Symlink replacement and rollback use platform-aware removal and preserve the
+original link type and target, with portable directory and file-link regressions. Native Windows execution remains unverified and
+requires evidence before complete cross-platform acceptance.
+These are bounded AC4–AC7 evidence pending independent exact-candidate review;
+S4 mutation and cleanup and S5 combined acceptance remain open.
+
 ## Validation Gates and Review
 
 Use only Taskfile entrypoints and the repository's

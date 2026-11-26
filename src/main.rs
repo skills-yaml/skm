@@ -842,7 +842,10 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             yes,
         } => {
             let scope = ManifestScope::select(global, &current_dir)?;
-            let config = load_config_for_scope(&scope.path, global)?;
+            // Parse the same bytes that the installer later checks for staleness.
+            load_config_for_scope(&scope.path, global)?;
+            let manifest = std::fs::read(&scope.path)?;
+            let config: SkillsConfig = serde_yaml::from_slice(&manifest)?;
             validate_config(&config)?;
             validate_manifest_scope(&config, global)?;
 
@@ -874,7 +877,12 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                     toolkit::InstallOptions { dry_run, json },
                 )?;
             } else {
-                let plan = installer::prepare(&config, &scope.root, global, None)?;
+                let plan = installer::prepare(
+                    &config,
+                    &scope.root,
+                    global,
+                    Some((manifest.clone(), manifest)),
+                )?;
                 plan.print(json)?;
                 if !dry_run && !json {
                     plan.apply()?;
@@ -1424,6 +1432,10 @@ fn check_skills(
         // Verify links
         for target in linker::resolve_agent_skill_targets(&config.agents, current_dir, global)? {
             let path = linker::get_skill_target_path(&target.path, &skill.name)?;
+            if global {
+                let home = dirs::home_dir().ok_or("Could not determine home directory")?;
+                installer::validate_parent(&home, &path)?;
+            }
             let agents = target.agents.join(", ");
             if !path.is_symlink() {
                 eprintln!(

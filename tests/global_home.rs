@@ -836,3 +836,181 @@ fn global_outdated_refresh_accepts_relative_git_origin_beneath_symlinked_home_an
         )
     );
 }
+
+#[test]
+fn global_install_targets_every_selected_agent_and_checks_exact_sources() {
+    let home = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    let home = home.path();
+    fs::create_dir_all(home.join(".skm/local-skill")).unwrap();
+    fs::write(
+        home.join(".skm/local-skill/SKILL.md"),
+        "---\nname: sample\ndescription: test\n---\n",
+    )
+    .unwrap();
+    let manifest = b"name: Global\nagents: [claude, codex, copilot, cursor, antigravity, pi, opencode, cline, kilo, gemini-cli, goose, crush, openhands, grok, qwen, hermes]\nskills:\n  - name: sample\n    path: local-skill\n";
+    fs::write(home.join(".skm/skills.yaml"), manifest).unwrap();
+    let project_manifest = b"name: Unrelated\nagents: []\nskills: []\n";
+    fs::write(project.path().join("skills.yaml"), project_manifest).unwrap();
+    let paths = [
+        ".claude/skills",
+        ".agents/skills",
+        ".copilot/skills",
+        ".cursor/skills",
+        ".gemini/config/skills",
+        ".pi/agent/skills",
+        ".config/opencode/skills",
+        ".cline/skills",
+        ".kilo/skills",
+        ".gemini/skills",
+        ".config/crush/skills",
+        ".openhands/skills",
+        ".grok/skills",
+        ".qwen/skills",
+        ".hermes/skills",
+    ];
+    let preview = command(home, project.path(), &["install", "--global", "--json"]);
+    assert!(
+        preview.status.success(),
+        "{}",
+        String::from_utf8_lossy(&preview.stderr)
+    );
+    let plan: serde_json::Value = serde_json::from_slice(&preview.stdout).unwrap();
+    assert_eq!(plan["actions"].as_array().unwrap().len(), paths.len());
+    assert!(!home.join(".agents").exists());
+    assert!(!home.join(".skm/config.yaml").exists());
+    for args in [
+        &["install", "--global", "--yes"][..],
+        &["check", "--global"],
+    ] {
+        let output = command(home, project.path(), args);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    for path in paths {
+        assert_eq!(
+            fs::canonicalize(home.join(path).join("sample")).unwrap(),
+            fs::canonicalize(home.join(".skm/local-skill")).unwrap()
+        );
+    }
+    assert_eq!(fs::read(home.join(".skm/skills.yaml")).unwrap(), manifest);
+    assert_eq!(
+        fs::read(project.path().join("skills.yaml")).unwrap(),
+        project_manifest
+    );
+    assert!(!project.path().join("skills.lock.yaml").exists());
+    assert!(!project.path().join(".agents").exists());
+    let repeat = command(home, project.path(), &["install", "--global", "--json"]);
+    let plan: serde_json::Value = serde_json::from_slice(&repeat.stdout).unwrap();
+    assert!(plan["actions"].as_array().unwrap().is_empty());
+    let wrong = home.join("wrong");
+    fs::create_dir(&wrong).unwrap();
+    let target = home.join(".agents/skills/sample");
+    fs::remove_file(&target).unwrap();
+    symlink(&wrong, &target).unwrap();
+    let check = command(home, project.path(), &["check", "--global"]);
+    assert!(!check.status.success());
+    assert!(String::from_utf8_lossy(&check.stderr).contains("wrong target"));
+    assert!(
+        command(home, project.path(), &["install", "--global", "--yes"])
+            .status
+            .success()
+    );
+    assert!(command(home, project.path(), &["check", "--global"])
+        .status
+        .success());
+}
+
+#[test]
+fn global_install_rejects_bad_targets_and_preflights_all_destinations() {
+    let home = tempfile::tempdir().unwrap();
+    let home = home.path();
+    fs::create_dir_all(home.join(".skm/source")).unwrap();
+    fs::write(
+        home.join(".skm/source/SKILL.md"),
+        "---\nname: sample\ndescription: test\n---\n",
+    )
+    .unwrap();
+    let path = home.join(".skm/skills.yaml");
+    for agents in ["[]", "[unknown]"] {
+        fs::write(
+            &path,
+            format!(
+                "name: Global\nagents: {agents}\nskills:\n  - name: sample\n    path: source\n"
+            ),
+        )
+        .unwrap();
+        assert!(!command(home, home, &["install", "--global", "--yes"])
+            .status
+            .success());
+    }
+    fs::write(
+        &path,
+        "name: Global\nagents: [codex, cursor]\nskills:\n  - name: sample\n    path: source\n",
+    )
+    .unwrap();
+    fs::create_dir_all(home.join(".cursor/skills")).unwrap();
+    fs::write(home.join(".cursor/skills/sample"), "owned").unwrap();
+    assert!(!command(home, home, &["install", "--global", "--yes"])
+        .status
+        .success());
+    assert!(!home.join(".agents").exists());
+    assert_eq!(
+        fs::read(home.join(".cursor/skills/sample")).unwrap(),
+        b"owned"
+    );
+    fs::remove_file(home.join(".cursor/skills/sample")).unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    fs::remove_dir_all(home.join(".cursor")).unwrap();
+    symlink(outside.path(), home.join(".cursor")).unwrap();
+    assert!(!command(home, home, &["install", "--global", "--yes"])
+        .status
+        .success());
+    assert!(!home.join(".agents").exists());
+    assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
+    fs::write(&path, "name: Global\nagents: [codex]\nskills:\n  - name: one/sample\n    path: source\n  - name: two/sample\n    path: source\n").unwrap();
+    assert!(!command(home, home, &["install", "--global", "--yes"])
+        .status
+        .success());
+    assert!(!home.join(".agents").exists());
+}
+
+#[test]
+fn global_install_applies_registry_dependencies_to_every_selected_target() {
+    let home = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    let home = home.path();
+    let registry = home.join(".skm/registry");
+    for (name, dependencies) in [
+        ("alpha", "  skm-dependencies: 'team/beta@1.0.0'\n"),
+        ("beta", ""),
+    ] {
+        let source = registry.join(format!("skills/team/{name}/v1.0.0"));
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("SKILL.md"), format!("---\nname: {name}\ndescription: test\nmetadata:\n  skm-version: '1.0.0'\n{dependencies}---\n")).unwrap();
+    }
+    let manifest = home.join(".skm/skills.yaml");
+    fs::write(&manifest, "name: Global\nagents: [codex, cursor]\nregistries: {default: registry}\nskills:\n  - name: team/alpha\n    version: '1.0.0'\n").unwrap();
+    let before = fs::read(&manifest).unwrap();
+    let output = command(home, project.path(), &["install", "--global", "--yes"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    for agent in [".agents/skills", ".cursor/skills"] {
+        for skill in ["alpha", "beta"] {
+            assert_eq!(
+                fs::canonicalize(home.join(agent).join(skill)).unwrap(),
+                fs::canonicalize(registry.join(format!("skills/team/{skill}/v1.0.0"))).unwrap()
+            );
+        }
+    }
+    assert_eq!(fs::read(manifest).unwrap(), before);
+    assert!(command(home, project.path(), &["check", "--global"])
+        .status
+        .success());
+}
