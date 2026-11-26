@@ -39,7 +39,9 @@ user-manifest and development-registration cleanup ownership, portable symlink
 removal, and migration guidance. Added cross-directory and failure regressions.
 Independent review rejected the first candidate on dependency ownership,
 symlinked cleanup roots, and Windows path comparisons. Corrected all three and
-added dependency, unsafe-root, and native-path regression fixtures.
+added dependency, unsafe-root, and native-path regression fixtures. A second
+review identified that pruning could remove a global dependency pin; corrected
+prune ownership to include the global closure and added a Git-cache regression.
 
 ## Validation
 

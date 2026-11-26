@@ -352,7 +352,8 @@ pins to retain opaque publisher metadata. Cleanup derives global ownership from
 the user manifest and global development registrations regardless of working
 directory, including transitive dependencies resolved without fetching. Cleanup
 fails closed if dependency ownership cannot be resolved, refuses unsafe target
-roots, and compares namespace paths using native components. Portable symlink
+roots, compares namespace paths using native components, and protects global
+dependency pins during cache pruning. Portable symlink
 removal is shared by maintenance and linking. The command fixtures cover cross-directory mutation, conflicts, previews, metadata,
 registered development skills, and unaffected project manifests. Documentation
 explains former directory-based global manifests and downgrade/export steps.

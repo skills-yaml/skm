@@ -562,6 +562,17 @@ pub fn clean_old_versions(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
         Err(error) => return Err(error.into()),
     };
+    // Global installs have no lockfile, so resolve their complete ownership
+    // against the user manifest and its own effective registry URLs. A missing
+    // or conflicting source makes pruning unsafe and must fail before writes.
+    let global_config = if let Some(mut global) = global_config {
+        let root = global_path.parent().ok_or("Invalid global manifest path")?;
+        let dependencies = linker::resolve_skill_dependency_closure(&global.skills, root)?;
+        global.skills.extend(dependencies);
+        Some(global)
+    } else {
+        None
+    };
     let mut protected_config = project_config.or_else(|| global_config.clone());
     if let (Some(protected), Some(global)) = (&mut protected_config, global_config) {
         protected.skills.extend(global.skills);

@@ -1206,3 +1206,89 @@ fn global_cleanup_refuses_symlinked_agent_root_and_preserves_project_links() {
     }
     assert!(command(home, project, &["check"]).status.success());
 }
+
+#[test]
+fn cache_prune_preserves_global_dependency_versions_from_git_cache() {
+    let home = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    let other_project = tempfile::tempdir().unwrap();
+    let home = home.path();
+    let project = project.path();
+    let origin = home.join("origin");
+    fs::create_dir(&origin).unwrap();
+    let git = |args: &[&str]| {
+        let output = Command::new("git")
+            .current_dir(&origin)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    git(&["init", "--initial-branch=main"]);
+    git(&["config", "user.name", "SKM Test"]);
+    git(&["config", "user.email", "skm-test@example.invalid"]);
+    for name in ["alpha", "beta"] {
+        for version in ["1.0.0", "2.0.0"] {
+            let path = origin.join(format!("skills/team/{name}/v{version}"));
+            fs::create_dir_all(&path).unwrap();
+            let dependency = if name == "alpha" && version == "1.0.0" {
+                "  skm-dependencies: 'team/beta@1.0.0'\n"
+            } else {
+                ""
+            };
+            fs::write(path.join("SKILL.md"), format!("---\nname: {name}\ndescription: test\nmetadata:\n  skm-version: '{version}'\n{dependency}---\n")).unwrap();
+        }
+    }
+    git(&["add", "."]);
+    git(&["commit", "-m", "fixture"]);
+    success(command(home, project, &["config", "show", "--global"]));
+    fs::write(
+        home.join(".skm/config.yaml"),
+        format!(
+            "default_registry: default\nregistries:\n  default: '{}'\ncheck_for_updates: false\n",
+            origin.display()
+        ),
+    )
+    .unwrap();
+    let manifest = home.join(".skm/skills.yaml");
+    fs::write(&manifest, "name: Global\nagents: [codex, cursor]\nskills:\n  - {name: team/alpha, version: '1.0.0', source: default}\n").unwrap();
+    success(command(home, project, &["install", "--global", "--yes"]));
+    let cache = home.join(".skm/cache/registries/default/skills/team");
+    assert!(cache.join("alpha/v1.0.0").exists() && cache.join("beta/v1.0.0").exists());
+    let before = snapshot(home);
+    let preview = success(command(
+        home,
+        project,
+        &["cache", "prune", "default", "--keep", "1", "--dry-run"],
+    ));
+    let text = String::from_utf8_lossy(&preview.stdout);
+    assert!(!text.contains("v1.0.0"));
+    assert!(text.contains("v2.0.0"));
+    assert_eq!(snapshot(home), before);
+    let original = fs::read(&manifest).unwrap();
+    fs::write(&manifest, "name: Global\nagents: [codex, cursor]\nregistries: {default: /wrong-origin}\nskills:\n  - {name: team/alpha, version: '1.0.0', source: default}\n").unwrap();
+    let conflict_snapshot = snapshot(home);
+    let conflict = command(
+        home,
+        other_project.path(),
+        &["cache", "prune", "default", "--keep", "1", "--yes"],
+    );
+    assert!(!conflict.status.success());
+    assert_eq!(snapshot(home), conflict_snapshot);
+    fs::write(&manifest, &original).unwrap();
+    success(command(
+        home,
+        other_project.path(),
+        &["cache", "prune", "default", "--keep", "1", "--yes"],
+    ));
+    for name in ["alpha", "beta"] {
+        assert!(cache.join(name).join("v1.0.0").exists());
+        assert!(!cache.join(name).join("v2.0.0").exists());
+    }
+    success(command(home, project, &["check", "--global"]));
+    assert_eq!(fs::read_to_string(manifest).unwrap(), "name: Global\nagents: [codex, cursor]\nskills:\n  - {name: team/alpha, version: '1.0.0', source: default}\n");
+}
