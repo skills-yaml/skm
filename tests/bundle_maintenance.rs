@@ -198,7 +198,7 @@ fn removal_uses_installed_members_even_after_registry_drift() {
     fs::remove_dir_all(
         fixture
             .home
-            .join(".cache/skm/registries/local/skills/acme/alpha/v1.0.0"),
+            .join(".skm/cache/registries/local/skills/acme/alpha/v1.0.0"),
     )
     .unwrap();
     fixture.skm(&["remove", "acme/starter", "--yes"]);

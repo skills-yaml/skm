@@ -180,11 +180,9 @@ pub fn discover_for_add(
         .and_then(|r| r.get(registry))
         .or_else(|| base.registries.get(registry))
         .ok_or_else(|| format!("Registry '{registry}' is not configured"))?;
-    crate::linker::validate_registry_cache_origin(registry, location, project)
+    let cache = crate::linker::validated_registry_path(registry, location, project)
         .map_err(|error| error.to_string())?;
     let local = project.join(location);
-    let cache = crate::linker::resolve_registry_path(registry)
-        .ok_or_else(|| format!("Invalid registry name: {registry}"))?;
     let mut temporary = None;
     let root = if local.exists() {
         local
@@ -259,6 +257,12 @@ fn discover_locations(
         registries.insert(registry.to_owned(), location);
     }
 
+    // Cache-origin conflicts are errors, even when a local source or a remote
+    // scan could otherwise hide the conflicting entry.
+    for (name, location) in &registries {
+        crate::linker::validated_registry_path(name, location, project)
+            .map_err(|error| error.to_string())?;
+    }
     let mut discovery = Discovery::default();
     for (name, location) in registries {
         match load_registry(&name, &location, project, refresh) {
@@ -288,9 +292,8 @@ fn load_registry(
     project: &Path,
     refresh: bool,
 ) -> Result<RegistryContents, String> {
-    if crate::linker::resolve_registry_path(name).is_none() {
-        return Err("Invalid registry name".into());
-    }
+    let cache = crate::linker::validated_registry_path(name, location, project)
+        .map_err(|error| error.to_string())?;
     if location.trim().is_empty() {
         return Err("Registry URL or local path is empty".into());
     }
@@ -302,12 +305,8 @@ fn load_registry(
     if !is_git_url(location) {
         return Err("Local registry path does not exist, or URL scheme is unsupported".into());
     }
-    if !refresh {
-        if let Some(cache) = crate::linker::resolve_registry_path(name) {
-            if cache_matches(&cache, location) {
-                return scan_local(name, &cache);
-            }
-        }
+    if !refresh && cache.exists() {
+        return scan_local(name, &cache);
     }
     scan_remote(name, location)
 }
@@ -642,10 +641,6 @@ pub(crate) fn is_git_url(location: &str) -> bool {
     ["https://", "http://", "ssh://", "git://", "file://", "git@"]
         .iter()
         .any(|prefix| location.starts_with(prefix))
-}
-
-pub(crate) fn cache_matches(cache: &Path, location: &str) -> bool {
-    crate::linker::registry_cache_matches(cache, location, Path::new("."))
 }
 
 pub(crate) fn run_git(mut command: Command, timeout: Duration) -> Result<Vec<u8>, String> {

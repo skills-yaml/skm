@@ -356,8 +356,7 @@ fn prepare_inner(
                             return Err("Invalid local bundle member in lockfile".into());
                         }
                         linker::validate_exact_version(&member.version)?;
-                        let registry = linker::resolve_registry_path(&member.source)
-                            .ok_or("Invalid registry in bundle lock")?;
+                        let registry = linker::effective_registry_path(&member.source, project)?;
                         let expected = registry
                             .join("skills")
                             .join(linker::validated_skill_path(&member.name)?)
@@ -922,6 +921,16 @@ mod tests {
             )
             .unwrap();
         }
+        crate::config_manager::BaseConfig {
+            default_registry: "local".into(),
+            registries: std::collections::HashMap::from([(
+                "local".into(),
+                registry.to_string_lossy().into_owned(),
+            )]),
+            check_for_updates: false,
+        }
+        .save()
+        .unwrap();
         let manifest = registry.join("skills/acme/manifest.yaml");
         fs::write(&manifest, "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0, beta: 1.0.0}\nbundles: {starter: {packages: [alpha]}}\n").unwrap();
         let config = SkillsConfig {

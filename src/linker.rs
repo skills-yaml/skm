@@ -582,44 +582,21 @@ where
     if id.contains('/') {
         return Err(format!("Bundle ID must be namespace/name: {}", bundle.name).into());
     }
-    // Match the same cached registry used for package resolution. A local
-    // registry path must agree with the cache when both are present.
-    let project_local_root = {
-        let config_path = project_root.join("skills.yaml");
-        let config: Result<crate::config::SkillsConfig, _> =
-            crate::config::SkillsConfig::load_from_file(&config_path);
-        config
-            .ok()
-            .and_then(|config| {
-                config.registries.and_then(|registries| {
-                    registries.get(source).map(|location| {
-                        let local = project_root.join(location);
-                        if local.join("skills").is_dir() {
-                            Some((local, location.clone()))
-                        } else {
-                            None
-                        }
-                    })
-                })
-            })
-            .flatten()
-    };
-    let cache =
-        resolve_registry_path(source).ok_or_else(|| format!("Invalid registry name: {source}"))?;
-    let cached_root = cache.is_dir().then_some(cache);
-    if let (Some((_, location)), Some(cached)) = (&project_local_root, &cached_root) {
-        if !registry_cache_matches(cached, location, project_root) {
-            return Err(format!("Cached registry '{source}' has a different origin").into());
+    let mut registry_root = effective_registry_path(source, project_root)?;
+    if !registry_root.is_dir() {
+        let location = effective_registry_location(source, project_root)?;
+        let local = project_root.join(location);
+        if local.is_dir() {
+            registry_root = local;
         }
     }
-    let registry_root = cached_root
-        .or_else(|| project_local_root.map(|(local, _)| local))
-        .ok_or_else(|| {
-            format!(
-                "Could not resolve registry '{source}' for bundle '{}'",
-                bundle.name
-            )
-        })?;
+    if !registry_root.is_dir() {
+        return Err(format!(
+            "Could not resolve registry '{source}' for bundle '{}'",
+            bundle.name
+        )
+        .into());
+    }
     published_members(
         &registry_root,
         namespace,
@@ -858,11 +835,10 @@ pub fn resolve_registry_path(name: &str) -> Option<PathBuf> {
     if !is_safe_registry_name(name) {
         return None;
     }
-    Some(dirs::home_dir()?.join(".cache/skm/registries").join(name))
+    canonical_registry_path(name)
 }
 
-/// Destination for future canonical cache writes after all readers are guarded.
-#[allow(dead_code)]
+/// Destination for canonical cache writes.
 pub(crate) fn canonical_registry_path(name: &str) -> Option<PathBuf> {
     if !is_safe_registry_name(name) {
         return None;
@@ -872,6 +848,10 @@ pub(crate) fn canonical_registry_path(name: &str) -> Option<PathBuf> {
             .join("registries")
             .join(name),
     )
+}
+
+pub(crate) fn is_git_repository(path: &Path) -> bool {
+    path.join(".git").exists() || (path.join("HEAD").is_file() && path.join("objects").is_dir())
 }
 
 /// Check the effective Git fetch origin without creating temporary files or fetching.
@@ -884,7 +864,7 @@ pub(crate) fn registry_cache_matches(cache: &Path, location: &str, project: &Pat
     {
         return true;
     }
-    if !cache.is_dir() || !cache.join(".git").is_dir() {
+    if !cache.is_dir() || !is_git_repository(cache) {
         return false;
     }
     let origin = std::process::Command::new("git")
@@ -926,7 +906,6 @@ pub(crate) fn registry_cache_matches(cache: &Path, location: &str, project: &Pat
 
 /// Select and validate an existing cache before consuming it. Missing caches
 /// resolve to the canonical destination for a caller that will populate it.
-#[allow(dead_code)]
 pub(crate) fn validated_registry_path(
     name: &str,
     location: &str,
@@ -962,19 +941,45 @@ pub(crate) fn validated_registry_path(
     Ok(canonical)
 }
 
+/// Resolve an effective registry from a manifest directory and validate its cache.
+/// Explicit callers can use `validated_registry_path` with a selected URL directly.
+pub(crate) fn effective_registry_path(
+    name: &str,
+    manifest_root: &Path,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let url = effective_registry_location(name, manifest_root)?;
+    validated_registry_path(name, &url, manifest_root)
+}
+
+fn effective_registry_location(
+    name: &str,
+    manifest_root: &Path,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let manifest = manifest_root.join("skills.yaml");
+    let override_url = if manifest.exists() {
+        crate::config::SkillsConfig::load_from_file(&manifest)?
+            .registries
+            .and_then(|registries| registries.get(name).cloned())
+    } else {
+        None
+    };
+    let url = match override_url {
+        Some(url) => url,
+        None => crate::config_manager::BaseConfig::load()?
+            .registries
+            .get(name)
+            .cloned()
+            .ok_or_else(|| format!("Registry '{name}' is not configured"))?,
+    };
+    Ok(url)
+}
+
 pub(crate) fn validate_registry_cache_origin(
     name: &str,
     location: &str,
     project: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let cache =
-        resolve_registry_path(name).ok_or_else(|| format!("Invalid registry name: {name}"))?;
-    match fs::symlink_metadata(&cache) {
-        Ok(_) if !registry_cache_matches(&cache, location, project) => Err(format!("Cached registry '{name}' has a different or missing origin; choose a distinct registry alias or resolve the conflicting cache").into()),
-        Ok(_) => Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error.into()),
-    }
+    validated_registry_path(name, location, project).map(|_| ())
 }
 
 pub fn validate_agents(agents: &[String]) -> Result<(), Box<dyn std::error::Error>> {
@@ -1006,8 +1011,7 @@ pub fn resolve_skill_source_dir(
         Ok(project_root.join(local_path))
     } else {
         let registry_name = skill.source.as_deref().unwrap_or("default");
-        let reg_path = resolve_registry_path(registry_name)
-            .ok_or_else(|| format!("Could not resolve path for registry: {}", registry_name))?;
+        let reg_path = effective_registry_path(registry_name, project_root)?;
 
         resolve_registry_skill_source_dir(skill, &reg_path)
     }
@@ -1387,8 +1391,7 @@ pub(crate) fn plan_locked_skill_unlink(
             resolve_skill_source_dir(skill, project_root)?
         } else {
             validate_exact_version(version)?;
-            resolve_registry_path(source)
-                .ok_or("Invalid locked registry source")?
+            effective_registry_path(source, project_root)?
                 .join("skills")
                 .join(validated_skill_path(&skill.name)?)
                 .join(format!("v{}", version.trim_start_matches('v')))

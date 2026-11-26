@@ -35,6 +35,7 @@ impl Fixture {
             .current_dir(&self.project)
             .env("HOME", &self.home)
             .env("XDG_CONFIG_HOME", &self.config_home)
+            .env("XDG_CACHE_HOME", self.root.path().join("xdg-cache"))
             .env("SKM_NO_UPDATE_CHECK", "1")
             .output()
             .unwrap();
@@ -177,7 +178,7 @@ fn project_registry_override_and_selected_default_drive_new_additions() {
     .unwrap();
     fixture.skm(&["registry", "set-default", "custom"]);
     fixture.skm(&["cache", "refresh", "custom"]);
-    let cache = fixture.home.join(".cache/skm/registries/custom");
+    let cache = fixture.home.join(".skm/cache/registries/custom");
     assert_eq!(
         git(&cache, &["remote", "get-url", "origin"]),
         project_repo.display().to_string()
@@ -234,4 +235,139 @@ fn bulk_upgrade_previews_and_updates_all_exact_pins() {
     assert!(manifest.contains("path: local"));
     assert!(fixture.project.join(".agents/skills/alpha").is_symlink());
     assert!(fixture.project.join("skills.lock.yaml").exists());
+}
+
+#[test]
+fn cache_transition_retains_legacy_sources_and_rejects_conflicts() {
+    let fixture = Fixture::new();
+    let origin = fixture.root.path().join("registry with spaces");
+    fs::create_dir(&origin).unwrap();
+    registry_with_skill(&origin, "alpha");
+    let other = fixture.root.path().join("other");
+    fs::create_dir(&other).unwrap();
+    registry_with_skill(&other, "wrong");
+    fixture.base_config("local", &origin);
+    let manifest_path = fixture.project.join("skills.yaml");
+    let manifest = format!("name: fixture\nregistries:\n  local: {}\nagents: [codex]\nskills:\n  - name: acme/alpha\n    source: local\n    version: v1.0.0\n", origin.display());
+    fs::write(&manifest_path, &manifest).unwrap();
+    let historical = fixture.home.join(".cache/skm/registries/local");
+    let os_cache = fixture.root.path().join("xdg-cache/skm/registries/local");
+    fs::create_dir_all(os_cache.parent().unwrap()).unwrap();
+    git(
+        fixture.root.path(),
+        &[
+            "clone",
+            "--quiet",
+            origin.to_str().unwrap(),
+            os_cache.to_str().unwrap(),
+        ],
+    );
+    // The distinct OS cache is used when the historical linker cache is absent.
+    fixture.skm(&["install", "--yes"]);
+    let link = fixture.project.join(".agents/skills/alpha");
+    assert!(fs::read_link(&link).unwrap().starts_with(&os_cache));
+    fixture.skm(&["check"]);
+    fs::create_dir_all(historical.parent().unwrap()).unwrap();
+    git(
+        fixture.root.path(),
+        &[
+            "clone",
+            "--quiet",
+            origin.to_str().unwrap(),
+            historical.to_str().unwrap(),
+        ],
+    );
+    // Historical linker root wins over the distinct OS root.
+    let versions = fixture.skm(&[
+        "skill",
+        "versions",
+        "acme/alpha",
+        "--registry",
+        "local",
+        "--json",
+    ]);
+    assert!(serde_json::from_slice::<serde_json::Value>(&versions.stdout).is_ok());
+    fixture.skm(&["install", "--yes"]);
+    assert!(fs::read_link(&link).unwrap().starts_with(&historical));
+    fixture.skm(&["cache", "refresh", "local"]);
+    let canonical = fixture.home.join(".skm/cache/registries/local");
+    assert!(canonical.is_dir() && historical.is_dir() && os_cache.is_dir());
+    assert!(fs::read_link(&link).unwrap().starts_with(&historical));
+    let check = Command::new(env!("CARGO_BIN_EXE_skm"))
+        .args(["check"])
+        .current_dir(&fixture.project)
+        .env("HOME", &fixture.home)
+        .env("XDG_CONFIG_HOME", &fixture.config_home)
+        .env("XDG_CACHE_HOME", fixture.root.path().join("xdg-cache"))
+        .env("SKM_NO_UPDATE_CHECK", "1")
+        .output()
+        .unwrap();
+    assert!(!check.status.success());
+    fixture.skm(&["install", "--yes"]);
+    fixture.skm(&["check"]);
+    assert!(fs::read_link(&link).unwrap().starts_with(&canonical));
+    let previous_link = fs::read_link(&link).unwrap();
+    let changed = manifest.replace(&origin.display().to_string(), &other.display().to_string());
+    fs::write(&manifest_path, &changed).unwrap();
+    let before = fs::read(&manifest_path).unwrap();
+    let dev_skill = fixture.project.join("dev-alpha");
+    fs::create_dir(&dev_skill).unwrap();
+    fs::write(dev_skill.join("SKILL.md"), "# Development skill\n").unwrap();
+    for args in [
+        &["install", "--yes"][..],
+        &["skill", "versions", "acme/alpha", "--registry", "local"][..],
+        &["search", "alpha", "--registry", "local"][..],
+        &["cache", "refresh", "local"][..],
+        &["cache", "status", "local"][..],
+        &["skill", "outdated", "acme/alpha"][..],
+        &["skill", "use", "acme/alpha@v1.0.0", "--yes"][..],
+        &["skill", "upgrade", "acme/alpha", "--yes"][..],
+        &[
+            "dev",
+            "link",
+            "dev-alpha",
+            "--name",
+            "alpha",
+            "--agent",
+            "codex",
+        ][..],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_skm"))
+            .args(args)
+            .current_dir(&fixture.project)
+            .env("HOME", &fixture.home)
+            .env("XDG_CONFIG_HOME", &fixture.config_home)
+            .env("XDG_CACHE_HOME", fixture.root.path().join("xdg-cache"))
+            .env("SKM_NO_UPDATE_CHECK", "1")
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "{args:?}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("different or missing origin"),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(fs::read(&manifest_path).unwrap(), before);
+        assert_eq!(fs::read_link(&link).unwrap(), previous_link);
+    }
+    assert!(historical.is_dir() && os_cache.is_dir());
+    assert!(!fixture.project.join(".skm-dev.yaml").exists());
+}
+
+#[test]
+fn cache_cleanup_never_prunes_a_local_registry_source() {
+    let fixture = Fixture::new();
+    let source = fixture.root.path().join("local-registry");
+    let version = source.join("skills/acme/alpha/v1.0.0");
+    fs::create_dir_all(&version).unwrap();
+    fs::write(version.join("SKILL.md"), "# Alpha\n").unwrap();
+    fixture.base_config("local", &source);
+    fixture.skm(&["cache", "refresh", "local"]);
+    let cache = fixture.home.join(".skm/cache/registries/local");
+    assert!(cache.is_symlink());
+    fixture.skm(&["cache", "prune", "local", "--keep", "0", "--yes"]);
+    assert!(version.join("SKILL.md").exists());
+    fixture.skm(&["cache", "clear", "local", "--yes"]);
+    assert!(!cache.exists());
+    assert!(version.join("SKILL.md").exists());
 }

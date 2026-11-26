@@ -292,26 +292,26 @@ passes do not establish complete feature acceptance.
 | S4 | Make add/remove and version mutations consistent with the selected global manifest, and make maintenance preserve its ownership. Exclude new installation modes and agent targets. | S3 shared installer transaction and global target checks pass. | AC3 mutation/cancellation/rollback, AC5 list/version/cleanup, and AC2 cross-directory mutation portions; remover/version/cleaner fixtures first, then global command integration and affected cache/dev-registration consumers. Add focused Taskfile selectors where needed. |
 | S5 | Reconcile user docs, complete acceptance evidence, independent review, final gates and lifecycle delivery. No additional runtime features. | S1–S4 bounded gates pass. | Close AC1–AC7 with candidate-bound evidence; inspect docs/examples, `task workspace:check`, then `task versions:check`; resolve independent review before complete final `task check` and `task test`. Verify actual shared-test and main revisions through native CI. |
 
-### Current S1 partial implementation
+### Current S1 implementation candidate
 
-The `global-cache-paths` peer candidate activates silent create-if-absent user
-home bootstrap, imports legacy settings without deleting them, preserves opaque
-settings on registry mutation, validates global settings edits against the startup
-schema, and routes base settings readers/writers to the canonical path. Reset
-writes canonical defaults without reimporting legacy settings; recovery remains
-available for invalid settings and backup previews do not write. The new cache resolver selects canonical, historical linker,
-then distinct OS cache entries and validates the effective origin. It is dormant:
-existing readers and writers retain their legacy cache paths until the dependent
-cache-consumer task can activate the cutover atomically. This avoids introducing
-an unvalidated new cache read in the intermediate revision.
+The bootstrap and settings-import peer is integrated in the shared peer
+revision. The cache-consumer candidate selects a validated canonical entry,
+then historical linker cache, then distinct OS cache, and writes new registry
+caches under the canonical user directory. Git fetch origins retain the existing
+byte-exact rewrite comparison. Cache cleanup avoids pruning symlinked local
+registry backing sources and leaves legacy cache roots intact. Read-only settings
+loading can inspect legacy settings without bootstrapping during previews.
 
-The candidate adds temporary-home, concurrency, invalid-state, preview, and
-ordered resolver conflict fixtures. The dependent task must guard every reader,
-activate canonical writes and legacy reads, preserve legacy backing sources, and
-cover Git rewrites and local-directory aliases across consumers. S2 remains
-blocked on that work and combined review. No AC1, AC2, AC6 or AC7 is closed by
-this slice; command routing, full preview coverage and final acceptance remain
-pending.
+Bounded AC2/AC5/AC6 evidence includes temporary-home Git fixtures covering
+ordered legacy roots, alias conflicts before manifest/link changes, canonical
+refresh, wrong-source checks and reinstall, and preservation of both old cache
+sources. Existing rewrite, relative local Git, plain local directory, bundle,
+registry, updater, and CLI tests cover shared consumers. This candidate requires
+independent exact-revision review and integration validation. These slices do
+not close full AC2, AC5, or AC6: S2 must select the user manifest and effective
+registry URL independently of the current project; S3 and S4 must complete
+global install, mutation and maintenance ownership. Preview and release-wide
+acceptance remain open until S5.
 
 ## Validation Gates and Review
 

@@ -344,8 +344,12 @@ pub fn clean_cache(
     let mut paths_to_remove = Vec::new();
 
     for reg_name in &registries_to_clean {
-        let cache_path = linker::resolve_registry_path(reg_name)
-            .ok_or_else(|| format!("Could not resolve path for registry: {}", reg_name))?;
+        let root = std::env::current_dir()?;
+        // Cleanup owns only canonical cache entries, while validation also
+        // protects retained legacy sources from being consumed implicitly.
+        linker::effective_registry_path(reg_name, &root)?;
+        let cache_path = linker::canonical_registry_path(reg_name)
+            .ok_or_else(|| format!("Invalid registry name: {reg_name}"))?;
 
         if !cache_path.exists() {
             if verbose {
@@ -419,7 +423,11 @@ pub fn clean_cache(
                 cache_path.display()
             );
         }
-        fs::remove_dir_all(cache_path)?;
+        if fs::symlink_metadata(cache_path)?.file_type().is_symlink() {
+            fs::remove_file(cache_path)?;
+        } else {
+            fs::remove_dir_all(cache_path)?;
+        }
         total_removed += 1;
     }
 
@@ -516,8 +524,12 @@ fn find_old_version_candidates(
     let mut versions_to_remove = Vec::new();
 
     for reg_name in registries {
-        let cache_path = linker::resolve_registry_path(reg_name)
-            .ok_or_else(|| format!("Could not resolve path for registry: {}", reg_name))?;
+        let root = std::env::current_dir()?;
+        // Cleanup owns only canonical cache entries, while validation also
+        // protects retained legacy sources from being consumed implicitly.
+        linker::effective_registry_path(reg_name, &root)?;
+        let cache_path = linker::canonical_registry_path(reg_name)
+            .ok_or_else(|| format!("Invalid registry name: {reg_name}"))?;
 
         if !cache_path.exists() {
             if verbose {
@@ -526,6 +538,11 @@ fn find_old_version_candidates(
             continue;
         }
 
+        // A canonical local-directory cache may be a symlink into a user's
+        // registry. Never prune versions from that external backing source.
+        if fs::symlink_metadata(&cache_path)?.file_type().is_symlink() {
+            continue;
+        }
         let skills_dir = cache_path.join("skills");
         if !skills_dir.exists() {
             continue;
@@ -901,8 +918,12 @@ pub fn show_cache_stats(registry: Option<String>) -> Result<(), Box<dyn std::err
     println!("{}", "=".repeat(50));
 
     for reg_name in &registries {
-        let cache_path = linker::resolve_registry_path(reg_name)
-            .ok_or_else(|| format!("Could not resolve path for registry: {}", reg_name))?;
+        let root = std::env::current_dir()?;
+        // Cleanup owns only canonical cache entries, while validation also
+        // protects retained legacy sources from being consumed implicitly.
+        linker::effective_registry_path(reg_name, &root)?;
+        let cache_path = linker::canonical_registry_path(reg_name)
+            .ok_or_else(|| format!("Invalid registry name: {reg_name}"))?;
 
         let (size, skill_count, version_count) = if cache_path.exists() {
             let size = calculate_directory_size(&cache_path)?;
@@ -1357,11 +1378,14 @@ mod tests {
             EnvVarGuard::new("XDG_CACHE_HOME", home_temp.join(".cache").to_str().unwrap());
 
         // Create base config to register registry
-        let base_config = BaseConfig::new();
+        let cache_dir = get_cache_dir().unwrap().join("registries").join("default");
+        let mut base_config = BaseConfig::new();
+        base_config
+            .registries
+            .insert("default".into(), cache_dir.to_string_lossy().into_owned());
         base_config.save().unwrap();
 
         // Create default registry cache directory
-        let cache_dir = get_cache_dir().unwrap().join("registries").join("default");
         let skills_dir = cache_dir
             .join("skills")
             .join("software-development")
@@ -1408,7 +1432,16 @@ mod tests {
         );
         let _xdg_cache_guard =
             EnvVarGuard::new("XDG_CACHE_HOME", home_temp.join(".cache").to_str().unwrap());
-        BaseConfig::new().save().unwrap();
+        let mut base_config = BaseConfig::new();
+        base_config.registries.insert(
+            "default".into(),
+            get_cache_dir()
+                .unwrap()
+                .join("registries/default")
+                .to_string_lossy()
+                .into_owned(),
+        );
+        base_config.save().unwrap();
 
         let skill_dir = get_cache_dir()
             .unwrap()

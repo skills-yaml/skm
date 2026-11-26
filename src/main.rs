@@ -1582,29 +1582,35 @@ fn ensure_registries_cached(config: &SkillsConfig) -> Result<(), Box<dyn std::er
         }
     }
 
-    for (name, url) in &all_registries {
-        let path = linker::resolve_registry_path(name)
-            .ok_or_else(|| format!("Could not resolve path for registry: {}", name))?;
-
-        if std::fs::symlink_metadata(&path).is_ok() {
+    let project = std::env::current_dir()?;
+    // Validate every existing candidate before any clone or symlink is written.
+    let paths = all_registries
+        .iter()
+        .map(|(name, url)| {
+            linker::validated_registry_path(name, url, &project).map(|path| (name, url, path))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    for (name, url, selected) in paths {
+        if std::fs::symlink_metadata(&selected).is_ok() {
             continue;
         }
-
-        // Get parent directory to clone into
+        let path = linker::canonical_registry_path(name)
+            .ok_or_else(|| format!("Invalid registry name: {name}"))?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-
-        let local = std::env::current_dir()?.join(url);
-        if local.is_dir() && !local.join(".git").is_dir() {
+        let local = project.join(url);
+        if local.is_dir() && !crate::linker::is_git_repository(&local) {
             linker::symlink_dir(&std::fs::canonicalize(local)?, &path)?;
             continue;
         }
         eprintln!("Cloning registry '{}' from '{}'...", name, url);
         let output = std::process::Command::new("git")
-            .args(["clone", url, path.to_str().unwrap()])
+            .arg("clone")
+            .arg("--")
+            .arg(url)
+            .arg(&path)
             .output()?;
-
         if !output.status.success() {
             let err = String::from_utf8_lossy(&output.stderr);
             return Err(format!("Failed to clone registry '{}': {}", name, err).into());
@@ -2349,7 +2355,7 @@ mod search_cli_tests {
         assert!(run(Commands::Check { global: false })
             .unwrap_err()
             .to_string()
-            .contains("different origin"));
+            .contains("different or missing origin"));
         assert!(project.join(".agents/skills/alpha").is_symlink());
         fs::write(&config_path, &before).unwrap();
         assert!(linker::registry_cache_matches(
