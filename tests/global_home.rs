@@ -238,3 +238,248 @@ fn reset_preview_and_unsafe_recovery_do_not_write() {
     assert!(!home.join(".skm-backups").exists());
     assert_eq!(fs::read_dir(outside).unwrap().count(), 0);
 }
+
+fn success(output: Output) -> Output {
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+}
+
+fn snapshot(root: &Path) -> Vec<(String, Vec<u8>)> {
+    fn visit(root: &Path, dir: &Path, entries: &mut Vec<(String, Vec<u8>)>) {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            let name = path
+                .strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .into_owned();
+            let metadata = fs::symlink_metadata(&path).unwrap();
+            if metadata.file_type().is_symlink() {
+                entries.push((
+                    name,
+                    fs::read_link(&path)
+                        .unwrap()
+                        .to_string_lossy()
+                        .as_bytes()
+                        .to_vec(),
+                ));
+            } else if metadata.is_dir() {
+                entries.push((name, Vec::new()));
+                visit(root, &path, entries);
+            } else {
+                entries.push((name, fs::read(path).unwrap()));
+            }
+        }
+    }
+    let mut entries = Vec::new();
+    visit(root, root, &mut entries);
+    entries.sort();
+    entries
+}
+
+#[test]
+fn global_manifest_is_shared_across_projects_and_previews_do_not_write() {
+    let root = tempfile::tempdir().unwrap();
+    let home = root.path().join("home");
+    let first = root.path().join("first");
+    let second = root.path().join("second");
+    for dir in [&home, &first, &second] {
+        fs::create_dir(dir).unwrap();
+    }
+    let project =
+        "name: project\nagents: [codex]\nskills: []\nregistries: {default: project-registry}\n";
+    fs::write(first.join("skills.yaml"), project).unwrap();
+    fs::write(second.join("skills.yaml"), project).unwrap();
+    success(command(
+        &home,
+        &first,
+        &["init", "--global", "--non-interactive", "--name", "User"],
+    ));
+    let manifest = home.join(".skm/skills.yaml");
+    let initialized = fs::read(&manifest).unwrap();
+    assert!(!command(
+        &home,
+        &second,
+        &[
+            "init",
+            "--global",
+            "--non-interactive",
+            "--name",
+            "Overwrite"
+        ]
+    )
+    .status
+    .success());
+    assert_eq!(fs::read(&manifest).unwrap(), initialized);
+    let local = first.join("local");
+    fs::create_dir(&local).unwrap();
+    fs::write(
+        local.join("SKILL.md"),
+        "---\nname: helper\ndescription: test\n---\n",
+    )
+    .unwrap();
+    fs::write(&manifest, "name: User\nagents: [codex]\nskills: []\nregistries: {default: global-registry}\nextension: retained\n").unwrap();
+    success(command(
+        &home,
+        &first,
+        &["add", "helper", "--path", "local", "--global", "--yes"],
+    ));
+    let value: serde_yaml::Value = serde_yaml::from_slice(&fs::read(&manifest).unwrap()).unwrap();
+    assert_eq!(value["skills"][0]["path"].as_str(), local.to_str());
+    assert_eq!(value["extension"].as_str(), Some("retained"));
+    let listed = success(command(&home, &second, &["list", "--global"]));
+    assert!(String::from_utf8_lossy(&listed.stdout).contains("helper"));
+    let project_list = success(command(&home, &second, &["list"]));
+    assert!(!String::from_utf8_lossy(&project_list.stdout).contains("helper"));
+    let before = snapshot(root.path());
+    for args in [
+        &["install", "--global", "--dry-run"][..],
+        &["install", "--global", "--json"],
+        &["add", "another", "--path", "local", "--global", "--json"],
+        &["remove", "helper", "--global", "--dry-run", "--yes"],
+        &["skill", "outdated", "--global"],
+    ] {
+        let result = success(command(&home, &second, args));
+        if args.contains(&"--json") {
+            serde_json::from_slice::<serde_json::Value>(&result.stdout).unwrap();
+        }
+        assert_eq!(snapshot(root.path()), before, "{args:?}");
+    }
+    assert_eq!(
+        fs::read_to_string(first.join("skills.yaml")).unwrap(),
+        project
+    );
+    assert_eq!(
+        fs::read_to_string(second.join("skills.yaml")).unwrap(),
+        project
+    );
+}
+
+#[test]
+fn global_add_uses_user_registry_override_and_inherited_base_from_either_directory() {
+    let root = tempfile::tempdir().unwrap();
+    let home = root.path().join("home");
+    let first = root.path().join("one");
+    let second = root.path().join("two");
+    for dir in [&home, &first, &second] {
+        fs::create_dir(dir).unwrap();
+    }
+    success(command(&home, &first, &["config", "show", "--global"]));
+    for (base, name) in [
+        (&home.join(".skm/global-registry"), "global-only"),
+        (&first.join("project-registry"), "project-only"),
+        (&home.join(".skm/base-registry"), "base-only"),
+    ] {
+        let skill = base.join("skills/team").join(name).join("v1.0.0");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(
+            skill.join("SKILL.md"),
+            format!("---\nname: {name}\ndescription: test\n---\n"),
+        )
+        .unwrap();
+    }
+    fs::write(home.join(".skm/config.yaml"), "default_registry: default\nregistries: {default: base-registry, inherited: base-registry}\n").unwrap();
+    let global = home.join(".skm/skills.yaml");
+    fs::write(
+        &global,
+        "name: User\nagents: [codex]\nskills: []\nregistries: {default: global-registry}\n",
+    )
+    .unwrap();
+    let project = "name: Project\nagents: [codex]\nskills: []\nregistries: {default: project-registry, inherited: project-registry}\n";
+    fs::write(first.join("skills.yaml"), project).unwrap();
+    fs::write(second.join("skills.yaml"), project).unwrap();
+    for dir in [&first, &second] {
+        let before = snapshot(root.path());
+        let preview = success(command(
+            &home,
+            dir,
+            &["add", "team/global-only", "--global", "--json"],
+        ));
+        serde_json::from_slice::<serde_json::Value>(&preview.stdout).unwrap();
+        assert_eq!(snapshot(root.path()), before);
+        assert!(!command(
+            &home,
+            dir,
+            &["add", "team/project-only", "--global", "--json"]
+        )
+        .status
+        .success());
+        success(command(
+            &home,
+            dir,
+            &[
+                "add",
+                "team/base-only",
+                "--registry",
+                "inherited",
+                "--global",
+                "--json",
+            ],
+        ));
+        assert_eq!(snapshot(root.path()), before);
+    }
+    fs::write(&global, "name: User\nagents: [codex]\nskills: []\nregistries: {default: 'https://example.invalid/no-fetch.git'}\n").unwrap();
+    let before = snapshot(root.path());
+    assert!(!command(
+        &home,
+        &first,
+        &["add", "team/missing", "--global", "--json"]
+    )
+    .status
+    .success());
+    assert_eq!(snapshot(root.path()), before);
+}
+
+#[test]
+fn global_versions_and_inspection_use_user_registry_not_project_registry() {
+    let root = tempfile::tempdir().unwrap();
+    let home = root.path().join("home");
+    let project = root.path().join("project");
+    fs::create_dir(&home).unwrap();
+    fs::create_dir(&project).unwrap();
+    success(command(&home, &project, &["config", "show", "--global"]));
+    let global_registry = home.join(".skm/registry");
+    for version in ["v1.0.0", "v2.0.0"] {
+        let path = global_registry.join("skills/team/user").join(version);
+        fs::create_dir_all(&path).unwrap();
+        fs::write(
+            path.join("SKILL.md"),
+            "---\nname: user\ndescription: test\n---\n",
+        )
+        .unwrap();
+    }
+    let cache = home.join(".skm/cache/registries/default");
+    fs::create_dir_all(cache.parent().unwrap()).unwrap();
+    symlink(&global_registry, &cache).unwrap();
+    fs::write(home.join(".skm/skills.yaml"), "name: User\nagents: [codex]\nregistries: {default: registry}\nskills:\n  - {name: team/user, version: v1.0.0, source: default}\n").unwrap();
+    fs::write(
+        project.join("skills.yaml"),
+        "name: Project\nagents: [codex]\nregistries: {default: wrong}\nskills: []\n",
+    )
+    .unwrap();
+    let before = snapshot(root.path());
+    let output = success(command(&home, &project, &["skill", "outdated", "--global"]));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("team/user: v1.0.0 -> v2.0.0"));
+    success(command(
+        &home,
+        &project,
+        &["skill", "use", "team/user@v2.0.0", "--global", "--dry-run"],
+    ));
+    success(command(
+        &home,
+        &project,
+        &["skill", "upgrade", "team/user", "--global", "--dry-run"],
+    ));
+    let refresh = command(
+        &home,
+        &project,
+        &["skill", "outdated", "--global", "--refresh"],
+    );
+    assert!(!refresh.status.success());
+    assert!(String::from_utf8_lossy(&refresh.stderr).contains("from ~/.skm"));
+    assert_eq!(snapshot(root.path()), before);
+}

@@ -44,7 +44,7 @@ fn get_registries_cache_dir() -> Option<PathBuf> {
     get_cache_dir().map(|d| d.join("registries"))
 }
 
-const EMPTY_GLOBAL_MANIFEST: &str = "name: Global skills\nagents: []\nskills: []\n";
+pub(crate) const EMPTY_GLOBAL_MANIFEST: &str = "name: Global skills\nagents: []\nskills: []\n";
 
 type ConfigResult<T> = Result<T, Box<dyn std::error::Error>>;
 
