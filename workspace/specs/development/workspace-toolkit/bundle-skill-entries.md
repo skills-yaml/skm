@@ -6,12 +6,14 @@ State: development
 
 Primary feature: `workspace-toolkit`
 
-Status rationale: User-directed contract change on 2026-11-10. Registry-published
-bundles should be first-class entries in `skills.yaml` `skills:` without being
-unpacked into individual member pins. Implementation is active on the current
-detached peer worktree; independent review and integration into `development` are pending.
-The user requires exact published bundle versions. An additive schema-2 history
-map and its consumers are under implementation; independent review remains pending.
+Status rationale: The bundle entry implementation and additive schema-2 exact
+release history are locally integrated and independently reviewed: source
+`ec71776` → peer integration `bf319e7`, and source `69578de` → `f9d16e6`
+(the board records `bundle-version-review` approval of `69578de`). Both are
+included in combined peer revision `6e76f98`. This local integration is not a
+remote `development` merge. Combined acceptance, final candidate review and
+shared-test delivery remain pending. The separate default registry publisher's
+history has not been updated; exact pins require published history.
 
 ## Problem and Evidence
 
@@ -240,7 +242,7 @@ workspace/agents/memory/changelog.md on 2026-11-10: registry bundles are
 first-class `kind: bundle` entries in skills.yaml, resolved at install time,
 with the lockfile tracking both bundle and members.
 
-The exact published-version decision is recorded in decisions.md and changelog.md on 2026-11-26; integration and review remain pending.
+The exact published-version decision is recorded in decisions.md and changelog.md on 2026-11-26; combined acceptance and remote delivery remain pending.
 
 ## Validation Gates
 
