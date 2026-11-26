@@ -2225,6 +2225,96 @@ mod search_cli_tests {
 
     #[test]
     #[serial]
+    fn relative_git_registry_paths_survive_repeated_add_and_install() {
+        let environment = Environment::new();
+        let project = environment.project();
+        let registry = environment.root.path().join("registry with spaces");
+        let directory = registry.join("skills/acme/alpha/v1.0.0");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(
+            directory.join("SKILL.md"),
+            "---\nname: alpha\nmetadata:\n  skm-version: 1.0.0\n---\n# Alpha\n",
+        )
+        .unwrap();
+        std::os::unix::fs::symlink("v1.0.0", directory.parent().unwrap().join("latest")).unwrap();
+        fs::create_dir_all(environment.root.path().join("a")).unwrap();
+        git(&registry, &["init", "--quiet"]);
+        git(&registry, &["add", "."]);
+        git(
+            &registry,
+            &[
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-qm",
+                "fixture",
+            ],
+        );
+        let registries = HashMap::from([
+            ("local".into(), "../registry with spaces".into()),
+            ("alternate".into(), "../a/../registry with spaces".into()),
+        ]);
+        BaseConfig {
+            default_registry: "local".into(),
+            registries: registries.clone(),
+            check_for_updates: false,
+        }
+        .save()
+        .unwrap();
+        let config_path = project.join("skills.yaml");
+        SkillsConfig {
+            name: "relative".into(),
+            version: None,
+            registries: Some(registries),
+            agents: vec!["codex".into()],
+            skills: Vec::new(),
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            metadata: Default::default(),
+        }
+        .save_to_file(&config_path)
+        .unwrap();
+        let add = || {
+            add_registry_item(
+                &config_path,
+                &project,
+                "acme/alpha",
+                Some("local".into()),
+                None,
+                None,
+                false,
+                false,
+                false,
+                true,
+            )
+        };
+        add().unwrap();
+        let install = || {
+            run(Commands::Install {
+                global: false,
+                dry_run: false,
+                json: false,
+                yes: true,
+            })
+        };
+        install().unwrap();
+        let before = fs::read(&config_path).unwrap();
+        add().unwrap();
+        install().unwrap();
+        assert_eq!(fs::read(&config_path).unwrap(), before);
+        assert!(project.join(".agents/skills/alpha").is_symlink());
+        assert!(linker::registry_cache_matches(
+            &linker::resolve_registry_path("alternate").unwrap(),
+            "../a/../registry with spaces",
+            &project
+        ));
+    }
+
+    #[test]
+    #[serial]
     fn conflicting_cached_origins_are_rejected_and_cached_preview_needs_no_tmpdir() {
         let environment = Environment::new();
         let project = environment.project();

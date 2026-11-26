@@ -42,8 +42,10 @@ passed. An earlier aggregate test passed 156 unit tests, then failed two command
 contract integration tests expecting add to link immediately. Their updates are
 owned by the parallel maintenance task. Preliminary independent review identified
 registry origin, plain local registry, temporary-file preview, and YAML preservation
-issues; fixes have focused regression coverage. The new handoff is provisional:
-independent review, maintenance integration, and combined gates remain pending.
+issues; fixes have focused regression coverage. Review also identified relative
+Git path spelling drift; the fix preserves Git-visible fetch URL comparison and
+has repeat add/install coverage. The maintenance lane was merged from its reviewed
+internal integration revision. Combined aggregate gates and fresh review follow.
 
 ## Blockers and Dependencies
 
@@ -56,6 +58,6 @@ Publish an exact-revision handoff for independent review and integrate with the 
 
 ## Handoff
 
-Provisional candidate committed for independent review. The maintenance lane has
-not yet integrated; no shared integration or publication is asserted. Memory impact: none for this bounded lane; the spec retains pending
+Candidate incorporates the reviewed maintenance integration and will be handed
+off for independent review. No shared test integration or publication is asserted. Memory impact: none for this bounded lane; the spec retains pending
 memory impact until the overall unified behavior is resolved and delivered.

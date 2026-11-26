@@ -772,9 +772,11 @@ pub(crate) fn registry_cache_matches(cache: &Path, location: &str, project: &Pat
     while names.lines().any(|line| line == name) {
         name.push('-');
     }
+    // Git records an absolute local clone URL while retaining components such
+    // as `..`. Use that same spelling before applying Git's URL rewrites.
     let effective_location = canonical_local
         .as_ref()
-        .and_then(|p| p.to_str())
+        .and_then(|_| local.to_str())
         .unwrap_or(location);
     let expected = std::process::Command::new("git")
         .arg("-C")
