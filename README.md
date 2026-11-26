@@ -252,8 +252,13 @@ and its resolved members into `skills.lock.yaml`. `skm check` detects when the
 published bundle changes members or a member's published version changes.
 `skm skill outdated` reports these changes and `skm skill upgrade --all`
 updates the lock and links, removing obsolete members that no other entry needs.
-Schema-2 bundles do not publish bundle versions: use `latest` or `default`;
-exact bundle version selections are rejected.
+When publishers provide bundle release history, `latest` and `default` select the
+newest numeric release. Pin a published release with
+`skm skill use workspace/all-workspace-skills@1.2.0 --yes`; this updates the
+manifest, links and lock together. `outdated` reports newer releases, while
+`upgrade` keeps exact bundle pins unchanged; use `skill use` to change one.
+Legacy bundles without history support aliases but cannot resolve exact pins.
+See [registry formats](workspace/docs/registry-format.md) for publisher details.
 
 Install the skills declared in `skills.yaml` into project-local agent folders:
 

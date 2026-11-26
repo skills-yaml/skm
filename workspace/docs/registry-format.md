@@ -34,6 +34,10 @@ packages:
 bundles:
   writing:
     packages: [author]
+bundle_versions:
+  writing:
+    1.9.0: {reviewer: 1.0.0}
+    1.10.0: {author: 1.2.0}
 ```
 
 The namespace must match its registry directory. Package IDs are safe identifiers
@@ -43,6 +47,23 @@ any subset of the namespace's packages. Installation uses schema 2; schema 1
 remains discoverable as a collection. Unknown root-level publisher fields are
 ignored; declared installation fields retain typed parsing, and bundle member
 structures reject unknown fields.
+
+The optional `bundle_versions` map gives a bundle ID a nonempty map of exact
+numeric `MAJOR.MINOR.PATCH` releases to nonempty maps of member IDs and exact
+skill versions. The greatest release is selected numerically and must match the
+current `bundles` membership and `packages` versions exactly. Historical members
+may be absent from current `packages`, but their version directories must remain
+available, including any exact dependencies. All histories are validated before
+installation; missing releases, invalid history and inconsistent current
+projections fail. Schema-2 bundles without history continue to support `latest`
+and `default` but cannot be pinned exactly. The existing fields remain mandatory
+for older readers. Namespace manifests are limited to 8 MiB.
+
+A skills lock retains the declared bundle selector in `version`, records the
+selected release in optional `resolved_version`, and records the resolved members
+and dependencies. This detects a new release even if its members are unchanged,
+and detects changes to a consumed historical release. `skill use` changes the
+selector transactionally; `upgrade` preserves exact pins and re-resolves aliases.
 
 Optional installation metadata applies identically to every publisher:
 

@@ -495,7 +495,12 @@ fn groups_from_reader(
     namespace: &str,
 ) -> (Vec<Collection>, Vec<Bundle>) {
     let mut bytes = Vec::new();
-    if reader.take(64 * 1024).read_to_end(&mut bytes).is_err() {
+    if reader
+        .take(crate::linker::MAX_NAMESPACE_MANIFEST_SIZE + 1)
+        .read_to_end(&mut bytes)
+        .is_err()
+        || bytes.len() as u64 > crate::linker::MAX_NAMESPACE_MANIFEST_SIZE
+    {
         return (Vec::new(), Vec::new());
     }
     let Ok(manifest) = serde_yaml::from_slice::<NamespaceManifest>(&bytes) else {

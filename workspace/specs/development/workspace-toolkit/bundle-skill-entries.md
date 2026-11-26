@@ -10,9 +10,8 @@ Status rationale: User-directed contract change on 2026-11-10. Registry-publishe
 bundles should be first-class entries in `skills.yaml` `skills:` without being
 unpacked into individual member pins. Implementation is active on the current
 detached peer worktree; independent review and integration into `development` are pending.
-Schema-2 manifests do not define bundle versions or history. The current
-candidate rejects exact bundle selectors; reconciling that limitation with the
-specified exact-version behavior remains an open product decision.
+The user requires exact published bundle versions. An additive schema-2 history
+map and its consumers are under implementation; independent review remains pending.
 
 ## Problem and Evidence
 
@@ -55,7 +54,7 @@ Consumers are CLI users who want to track a published bundle as a unit, scripts
 that need deterministic bundle tracking in the manifest, and CI (`skm check`)
 that needs to detect bundle drift.
 
-Non-goals: change the registry format; change toolkit bundles (`bundles:` key
+Non-goals: bump the registry schema or remove its legacy projection; change toolkit bundles (`bundles:` key
 in `skills.yaml` remains toolkit-only); support local-path bundles; support
 global bundle entries; change search behavior; unpack bundles in the manifest.
 
@@ -112,6 +111,19 @@ All consumers (install, list, check, remove, upgrade) iterate resolved entries;
 bundle members participate in linking, target uniqueness, and symlink validation
 exactly as today.
 
+### Published bundle history model
+
+Schema-2 publishers may add `bundle_versions: {bundle-id: {release: {member: version}}}`.
+Release keys and member versions are exact numeric semantic versions. Each history
+is nonempty and identifies a current bundle; the greatest numeric release must
+exactly match its legacy `bundles` membership and `packages` versions. Historical
+members need not remain in current `packages`, but their exact source directories
+must remain available and pass ordinary path, integrity and dependency checks.
+Publishers retain the existing fields for older readers. Alias/default selects
+the greatest release; a legacy bundle without history retains alias behavior and
+rejects exact selectors with an actionable missing-history error. Invalid history
+or an inconsistent latest projection is rejected before installation.
+
 ## Lockfile Contract
 
 `skills.lock.yaml` `kind: skills` locks gain a `bundles` section alongside
@@ -126,6 +138,7 @@ bundles:
   - name: workspace/all-workspace-skills
     version: latest              # as declared in skills.yaml
     source: default
+    resolved_version: 1.0.0     # omitted for legacy unversioned bundles
     members:                     # resolved at install time
       - name: workspace/fix-bug
         version: 0.5.1
@@ -141,7 +154,10 @@ outputs: [...]
 `skm check` recomputes the bundle resolution and fails if:
 - the bundle's resolved members differ from the lockfile's recorded members
   (membership drift), or
-- any member's resolved version differs (version drift).
+- any member's resolved version differs (version drift), or
+- the selected published release differs, even when members are identical.
+Exact pins remain stable against unrelated newer releases but detect changes to
+the selected release's resolved members.
 
 ## Command Behavior
 
@@ -181,11 +197,19 @@ outputs: [...]
    repeating is a no-op.
 5. `skm remove <bundle>` removes the entry and unlinks members.
 6. `skm skill outdated` reports new bundle members after `skm cache refresh`.
-7. `skm skill upgrade --all` updates the lockfile for changed bundles without
-   rewriting the manifest's bundle entry.
+7. `skm skill upgrade --all` updates the lockfile for changed alias bundles without
+   rewriting the manifest's bundle entry; exact pins remain pinned, with guidance
+   to use `skill use` for a newer release.
 8. Existing skills-only projects (no `kind: bundle`) are unaffected; all current
    tests pass unchanged or with minimal adaptation.
 9. `task check` and `task test` pass.
+10. Exact `skill use bundle@X.Y.Z` atomically changes the manifest, links and lock;
+    aliases select the greatest numeric release. `outdated` reports newer releases
+    and member differences. Missing, invalid or inconsistent history fails safely.
+11. Historical membership and versions resolve through normal dependency, path and
+    integrity validation; rollback, shared ownership and dry-run remain safe.
+12. Legacy schema-2 bundles and old locks continue to work; lock drift distinguishes
+    the selected release even when its member set is unchanged.
 
 ## Affected Areas
 
@@ -195,7 +219,8 @@ outputs: [...]
   plan time.
 - `src/installer.rs`: lockfile `bundles` section; plan includes bundle members.
 - `src/main.rs`: add routing, list/check display, remove.
-- `src/version_manager.rs`: outdated/upgrade for bundle entries.
+- `src/version_manager.rs`: outdated/upgrade/use for bundle entries and release guidance.
+- `src/search.rs`: aligned namespace-manifest size boundary without output changes.
 - `src/remover.rs`: remove bundle entry + members.
 - `README.md`, `workspace/docs/registry-format.md`: documentation.
 - Tests in each affected module.
@@ -210,7 +235,15 @@ outputs: [...]
 
 Status: updated
 
-Rationale: Recorded in workspace/agents/memory/decisions.md and
+Rationale: Prior result recorded in workspace/agents/memory/decisions.md and
 workspace/agents/memory/changelog.md on 2026-11-10: registry bundles are
 first-class `kind: bundle` entries in skills.yaml, resolved at install time,
 with the lockfile tracking both bundle and members.
+
+The exact published-version decision is recorded in decisions.md and changelog.md on 2026-11-26; integration and review remain pending.
+
+## Validation Gates
+
+Run focused bundle, registry-format and maintenance tests, `task versions:check`,
+then `task check` and `task test` on the candidate. Independent exact-candidate
+review is required for the public schema and data-integrity changes.

@@ -119,8 +119,8 @@ remains toolkit-only); change the lockfile schema; remove `--kind` flag entirely
 - Idempotent re-add: `skm add <bundle> --yes` when a `kind: bundle` entry with
   the same name/source already exists is a no-op (reports "already present"),
   preserving the previous spec's idempotency contract.
-- The lockfile schema is unchanged (already has `bundles:` section from
-  bundle-skill-entries.md). After `skm remove <bundle>`, the lockfile's
+- The lockfile retains its existing schema and `bundles:` section; the linked
+  bundle-skill-entries spec adds optional resolved release metadata. After `skm remove <bundle>`, the lockfile's
   `bundles:` section no longer contains that bundle.
 
 ## Implementation Plan

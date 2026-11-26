@@ -147,7 +147,12 @@ pub(crate) fn bundle_changes(
     let locked = lock.get("bundles").and_then(|v| v.as_sequence());
     let mut changes = Vec::new();
     for entry in linker::resolve_entries(&config.skills, project)? {
-        if let linker::ResolvedEntry::Bundle { spec, members } = entry {
+        if let linker::ResolvedEntry::Bundle {
+            spec,
+            members,
+            resolved_version,
+        } = entry
+        {
             let old = locked.and_then(|entries| {
                 entries
                     .iter()
@@ -175,6 +180,16 @@ pub(crate) fn bundle_changes(
                 })
                 .collect();
             let mut details = Vec::new();
+            if let Some(old) = old {
+                let previous = old.get("resolved_version").and_then(|v| v.as_str());
+                if previous != resolved_version.as_deref() {
+                    details.push(format!(
+                        "release: {} -> {}",
+                        previous.unwrap_or("unversioned"),
+                        resolved_version.as_deref().unwrap_or("unversioned")
+                    ));
+                }
+            }
             if old.is_none() {
                 details.push("not recorded in lockfile".to_string());
             }
@@ -245,13 +260,87 @@ pub fn show_outdated(
         }
     }
     let project = config_path.parent().unwrap_or_else(|| Path::new("."));
-    if config.skills.iter().any(|s| s.is_bundle()) {
-        for (name, details) in bundle_changes(&config, project)? {
-            if skill_name.is_none_or(|selected| selected == name) {
-                println!("{name}: {}", details.join(", "));
-                outdated += 1;
+    // Alias drift compares the installed lock to current registry state.
+    let mut aliases = config.clone();
+    aliases.skills.retain(|s| {
+        s.is_bundle()
+            && skill_name.is_none_or(|name| name == s.name)
+            && matches!(
+                s.version.as_deref(),
+                None | Some("latest") | Some("default")
+            )
+    });
+    if !aliases.skills.is_empty() {
+        for (name, details) in bundle_changes(&aliases, project)? {
+            println!("{name}: {}", details.join(", "));
+            outdated += 1;
+        }
+    }
+    // Exact-pin availability compares the selected release itself to latest,
+    // independent of whichever release happens to be installed in the lock.
+    for skill in config
+        .skills
+        .iter()
+        .filter(|s| s.is_bundle() && skill_name.is_none_or(|name| name == s.name))
+    {
+        let selected = match skill.version.as_deref() {
+            None | Some("latest") | Some("default") => continue,
+            Some(version) => version,
+        };
+        let current = linker::resolve_entries(std::slice::from_ref(skill), project)?;
+        let mut newest = skill.clone();
+        newest.version = Some("latest".into());
+        let newest = linker::resolve_entries(&[newest], project)?;
+        let bundle =
+            |entries: Vec<linker::ResolvedEntry>| -> Result<_, Box<dyn std::error::Error>> {
+                entries
+                    .into_iter()
+                    .find_map(|entry| match entry {
+                        linker::ResolvedEntry::Bundle {
+                            members,
+                            resolved_version,
+                            ..
+                        } => Some((members, resolved_version)),
+                        _ => None,
+                    })
+                    .ok_or_else(|| "Bundle resolution missing".into())
+            };
+        let (old_members, _) = bundle(current)?;
+        let (new_members, latest_version) = bundle(newest)?;
+        let Some(latest_version) = latest_version else {
+            continue;
+        };
+        if compare_versions(&latest_version, selected) != Ordering::Greater {
+            continue;
+        }
+        let old: std::collections::BTreeMap<_, _> = old_members
+            .into_iter()
+            .map(|s| (s.name, s.version.unwrap_or_else(|| "latest".into())))
+            .collect();
+        let new: std::collections::BTreeMap<_, _> = new_members
+            .into_iter()
+            .map(|s| (s.name, s.version.unwrap_or_else(|| "latest".into())))
+            .collect();
+        let mut details = Vec::new();
+        for (name, version) in &new {
+            match old.get(name) {
+                None => details.push(format!("added {name}@{version}")),
+                Some(previous) if previous != version => {
+                    details.push(format!("{name}: {previous} -> {version}"))
+                }
+                _ => {}
             }
         }
+        for name in old.keys().filter(|name| !new.contains_key(*name)) {
+            details.push(format!("removed {name}"));
+        }
+        let changes = if details.is_empty() {
+            String::new()
+        } else {
+            format!("; {}", details.join(", "))
+        };
+        println!("{}: newer release {selected} -> {latest_version}{changes} (use 'skm skill use {}@<version>' to change the pin)", skill.name, skill.name);
+        outdated += 1;
     }
     for skill in config
         .skills
@@ -508,7 +597,7 @@ pub fn update_to_latest(
         .ok_or_else(|| format!("Skill '{}' not found in configuration", skill_name))?;
 
     if skill.is_bundle() {
-        return upgrade_bundles(&config, config_path, global, yes, dry_run);
+        return upgrade_bundles(&config, skill_name, config_path, global, yes, dry_run);
     }
     let registry = skill.source.as_deref().unwrap_or("default");
 
@@ -535,8 +624,23 @@ pub fn update_to_latest(
     use_version(skill_name, latest, config_path, global, yes, dry_run)
 }
 
+fn print_bundle_pin_guidance(config: &SkillsConfig) {
+    for skill in config.skills.iter().filter(|s| s.is_bundle()) {
+        if !matches!(
+            skill.version.as_deref(),
+            None | Some("latest") | Some("default")
+        ) {
+            println!(
+                "{}: exact bundle pin preserved; use 'skm skill use {}@<version>' to change it",
+                skill.name, skill.name
+            );
+        }
+    }
+}
+
 fn upgrade_bundles(
     config: &SkillsConfig,
+    selected_name: &str,
     config_path: &Path,
     global: bool,
     yes: bool,
@@ -546,7 +650,12 @@ fn upgrade_bundles(
         return Err("published bundles are project-only".into());
     }
     let project = config_path.parent().unwrap_or_else(|| Path::new("."));
-    let changes = bundle_changes(config, project)?;
+    let mut selected = config.clone();
+    selected
+        .skills
+        .retain(|skill| skill.is_bundle() && skill.name == selected_name);
+    print_bundle_pin_guidance(&selected);
+    let changes = bundle_changes(&selected, project)?;
     if changes.is_empty() {
         println!("Bundles are current.");
         return Ok(());
@@ -554,7 +663,7 @@ fn upgrade_bundles(
     for (name, details) in &changes {
         println!("{name}: {}", details.join(", "));
     }
-    let plan = installer::prepare(config, project, false, None)?;
+    let plan = installer::prepare_named_bundle(config, project, selected_name)?;
     plan.print(false)?;
     if dry_run {
         return Ok(());
@@ -607,6 +716,7 @@ pub fn upgrade_all(
         }
     }
     let project = config_path.parent().unwrap_or_else(|| Path::new("."));
+    print_bundle_pin_guidance(&config);
     let bundle_drift = if config.skills.iter().any(|s| s.is_bundle()) {
         bundle_changes(&config, project)?
     } else {
