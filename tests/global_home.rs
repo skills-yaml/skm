@@ -743,3 +743,96 @@ fn global_outdated_refresh_populates_relative_directory_from_inherited_registry(
     );
     assert_eq!(snapshot(&project), before);
 }
+
+#[test]
+fn global_outdated_refresh_accepts_relative_git_origin_beneath_symlinked_home_ancestor() {
+    let root = tempfile::tempdir().unwrap();
+    let physical = root.path().join("physical");
+    let logical = root.path().join("logical");
+    let project = root.path().join("project");
+    fs::create_dir(&physical).unwrap();
+    fs::create_dir(&project).unwrap();
+    symlink(&physical, &logical).unwrap();
+    let home = logical.join("home");
+    fs::create_dir(&home).unwrap();
+    success(command(&home, &project, &["config", "show", "--global"]));
+    let skm = home.join(".skm");
+    let source = skm.join("origin");
+    fs::create_dir(&source).unwrap();
+    fs::create_dir(skm.join("nested")).unwrap();
+    let git = |args: &[&str]| {
+        let output = Command::new("git")
+            .current_dir(&source)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    git(&["init", "--initial-branch=main"]);
+    git(&["config", "user.name", "SKM Test"]);
+    git(&["config", "user.email", "skm-test@example.invalid"]);
+    for version in ["v1.0.0", "v2.0.0"] {
+        fs::create_dir_all(source.join("skills/team/user").join(version)).unwrap();
+        fs::write(
+            source
+                .join("skills/team/user")
+                .join(version)
+                .join("SKILL.md"),
+            "---\nname: user\ndescription: test\n---\n",
+        )
+        .unwrap();
+    }
+    git(&["add", "."]);
+    git(&["commit", "-m", "first"]);
+    let manifest = "name: User\nagents: []\nregistries: {default: nested/../origin}\nskills:\n  - {name: team/user, version: v1.0.0, source: default}\n";
+    fs::write(skm.join("skills.yaml"), manifest).unwrap();
+    fs::write(
+        project.join("skills.yaml"),
+        "name: Project\nagents: []\nskills: []\n",
+    )
+    .unwrap();
+    let before = snapshot(&project);
+    let args = ["skill", "outdated", "--global", "--refresh"];
+    for _ in 0..2 {
+        let output = success(command(&home, &project, &args));
+        assert!(String::from_utf8_lossy(&output.stdout).contains("team/user: v1.0.0 -> v2.0.0"));
+        assert_eq!(snapshot(&project), before);
+        assert_eq!(
+            fs::read_to_string(skm.join("skills.yaml")).unwrap(),
+            manifest
+        );
+    }
+    success(command(
+        &home,
+        &project,
+        &["skill", "use", "team/user@v2.0.0", "--global", "--dry-run"],
+    ));
+    success(command(
+        &home,
+        &project,
+        &["skill", "upgrade", "team/user", "--global", "--dry-run"],
+    ));
+    assert_eq!(snapshot(&project), before);
+    assert_eq!(
+        fs::read_to_string(skm.join("skills.yaml")).unwrap(),
+        manifest
+    );
+    let cache = skm.join("cache/registries/default");
+    let origin = Command::new("git")
+        .current_dir(cache)
+        .args(["remote", "get-url", "origin"])
+        .output()
+        .unwrap();
+    assert!(origin.status.success());
+    assert_eq!(
+        String::from_utf8(origin.stdout).unwrap(),
+        format!(
+            "{}/nested/../origin\n",
+            fs::canonicalize(&skm).unwrap().display()
+        )
+    );
+}

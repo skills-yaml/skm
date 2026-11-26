@@ -24,11 +24,11 @@ Complete scoped registry refresh for global outdated inspection under AC2 and AC
 
 ## Actions
 
-Thread the selected manifest directory through registry refresh validation, local-source selection, and Git clone execution. Preserve project cache command behavior and global bundle exclusion. Replace the temporary global refresh rejection and add temporary-home cross-directory and project-bundle regressions.
+Thread the selected manifest directory through registry refresh validation, local-source selection, and Git clone execution. Preserve project cache command behavior and global bundle exclusion. Replace the temporary global refresh rejection and add temporary-home cross-directory and project-bundle regressions. Independent review found a mismatch between logical home paths and Git physical origins; normalize existing global manifest roots on Unix and cover first/repeat refresh and version previews beneath a symlinked ancestor, retaining the exact URL suffix.
 
 ## Validation
 
-Focused `task test:global-home`, `task test:cache`, and `task test:bundle` passed. Full local `task check`, `task test`, and `task versions:check` passed before review; review fixes and the combined integration candidate require renewed gates.
+Focused `task test:global-home`, `task test:cache`, and `task test:bundle` passed after the review fix. Full local `task check`, `task test`, and `task versions:check` passed after the review fix; the combined integration candidate requires renewed gates.
 
 ## Blockers and Dependencies
 

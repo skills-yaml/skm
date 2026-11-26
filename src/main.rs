@@ -748,6 +748,22 @@ impl ManifestScope {
             .parent()
             .ok_or("Manifest has no parent directory")?
             .to_path_buf();
+        // On Unix Git records local origins against the physical working
+        // directory. Normalize the root only, preserving registry URL suffixes.
+        // Missing roots are valid for previews before bootstrap.
+        #[cfg(unix)]
+        if global {
+            match std::fs::canonicalize(&root) {
+                Ok(root) => {
+                    return Ok(Self {
+                        path: root.join("skills.yaml"),
+                        root,
+                    })
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
         Ok(Self { root, path })
     }
 }
