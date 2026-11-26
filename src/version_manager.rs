@@ -561,6 +561,7 @@ mod tests {
                 version: Some("v1.0.0".to_string()),
                 source: Some("default".to_string()),
                 path: None,
+                kind: None,
             }],
             toolkit: None,
             bundles: Vec::new(),

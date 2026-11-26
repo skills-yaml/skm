@@ -1069,3 +1069,33 @@ manifest/tag/asset verification, managed local upgrade, and successful original
 cache-refresh evidence to facts.md. Marked the applied 0.9.1 reservation released
 and reconciled the three completed specs' publication records. No runtime source,
 personal manifest, or Git configuration changes accompany these final records.
+
+## 2026-11-06 - Record requested global user configuration
+
+- Type: decision
+- Source: user and specification
+- Confidence: high
+- Review: before implementation
+- Supersedes: none
+
+Content:
+
+Recorded the requested `~/.skm` home, global skill manifest, shared cache, and
+confirmed project-local default in decisions.md. Added the linked backlog
+specification and a planned SKM 0.10.0 reservation without changing runtime
+versions. Implementation, migration acceptance, integration and publication
+remain future work.
+
+## 2026-11-10 - Record bundle skill entry contract decision
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: pending development integration
+- Supersedes: none
+
+Content:
+
+Recorded the `kind: bundle` skills.yaml contract in
+`workspace/agents/memory/decisions.md`: bundles stay as single declarative
+entries, members resolve at install time, and the lockfile tracks both.

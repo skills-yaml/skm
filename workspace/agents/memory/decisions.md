@@ -521,3 +521,42 @@ Generic repository privacy checks remain enforced. SKM retains optional generic
 toolkit/bundle/profile formats and preserves arbitrary publisher metadata at
 runtime without interpreting it. No new governance configuration format or
 SKM runtime version bump is required.
+
+## 2026-11-06 - Plan a user-owned global skill manifest
+
+- Type: decision
+- Source: user and specification
+- Confidence: high
+- Review: before implementation
+- Supersedes: none
+
+Content:
+
+The user requests silent startup creation of `~/.skm`, with shared cache and a
+global `skills.yaml` recording user-selected skills and agents. The user explicitly
+confirmed that plain `skm install` remains project-local and `skm install --global`
+uses the user manifest and installs for all its selected agents. The backlog
+specification `workspace/specs/backlog/configuration/global-user-installation.md`
+defines the proposed scope, base-settings separation, migration safeguards and
+acceptance gates. This is planned behavior, not an implemented or released feature.
+The separate existing base settings and legacy cache must be considered before
+changing paths; do not infer global skill ownership from the current project.
+
+## 2026-11-10 - Registry bundles as first-class skills.yaml entries
+
+- Type: decision
+- Source: user
+- Confidence: high
+- Review: pending development integration
+- Supersedes: none
+
+Content:
+
+Registry-published bundles are declared as `kind: bundle` entries in the
+`skills.yaml` `skills` list and are never unpacked into individual member pins
+in the manifest. Resolution of bundle members (plus transitive same-registry
+dependencies) happens at install/check time via `linker::resolve_entries`. The
+lockfile (`skills.lock.yaml`) records both the bundle entry and its resolved
+members, making membership drift and version drift detectable by `skm check`.
+`skm add --kind bundle` writes the single bundle entry; re-adding is idempotent.
+Backward compatible: entries without `kind` are treated as `skill`.

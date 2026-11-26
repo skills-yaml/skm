@@ -34,6 +34,23 @@
   ],
   "releases": [
     {
+      "id": "skm-global-user-installation",
+      "component": "skm",
+      "baseline": "0.9.1",
+      "target": "0.10.0",
+      "impact": "minor",
+      "timing": "development-start",
+      "status": "applied",
+      "owner": "global-user-installation",
+      "version_source": "Cargo.toml",
+      "specs": [
+        "workspace/specs/backlog/configuration/global-user-installation.md",
+        "workspace/specs/development/workspace-toolkit/bundle-skill-entries.md",
+        "workspace/specs/development/workspace-toolkit/unify-bundle-into-skills-list.md"
+      ],
+      "evidence": "Specification-only reservation on 2026-11-06, checked at repository baseline 68568ea. The shared ledger had no other open SKM release; Cargo.toml and Cargo.lock remain 0.9.1. Remote main/development refs match that baseline; remote prod-latest/development-latest point to f6ea86a1f6894ae95da6a390368953c9f4ce6bcc, whose Cargo source reports 0.9.1, and no remote 0.10.0 version tag was found. No local peer board or additional worktree was found. The new global-manifest/path contract is a pre-1.0 minor change. On 2026-11-10 the bundle-skill-entries development spec joined this shared 0.10.0 reservation (kind: bundle in skills.yaml skills list). Apply 0.10.0 once at development start after refreshing shared reservations and remote occupancy; no runtime bump, integration, acceptance, or publication is claimed by this proposal."
+    },
+    {
       "id": "skm-next",
       "component": "skm",
       "baseline": "0.8.1",

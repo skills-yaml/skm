@@ -77,6 +77,7 @@ struct Prepared {
     original: Vec<u8>,
     updated: Vec<u8>,
     links: Vec<LinkAction>,
+    bundle_entry_added: bool,
     _registry_temp: Option<tempfile::TempDir>,
 }
 
@@ -210,6 +211,7 @@ fn prepare(project: &Path, bundle: &str, source: &str, write_cache: bool) -> Res
             version: Some(manifest.packages[member].clone()),
             source: Some(source.to_string()),
             path: None,
+            kind: None,
         });
     }
     let resolve = |skill: &SkillSpec, project_root: &Path| {
@@ -220,14 +222,29 @@ fn prepare(project: &Path, bundle: &str, source: &str, write_cache: bool) -> Res
         }
     };
     let closure = linker::resolve_skill_dependency_closure_with(&requested, project, resolve)?;
-    let mut combined = config.skills.clone();
+    // Expand existing skills for conflict checking. Bundle entries are expanded
+    // to their direct members, then the full dependency closure is resolved so
+    // transitive dependencies (e.g. acme/helper) are recognized as existing.
+    let mut existing_direct: Vec<SkillSpec> = Vec::new();
+    for existing in &config.skills {
+        if existing.is_bundle() {
+            if let Ok(members) = linker::resolve_bundle_members_pub(existing, project) {
+                existing_direct.extend(members);
+            }
+        } else {
+            existing_direct.push(existing.clone());
+        }
+    }
+    let existing_expanded =
+        linker::resolve_skill_dependency_closure_with(&existing_direct, project, resolve)
+            .unwrap_or(existing_direct);
+    let mut combined = existing_expanded.clone();
     combined.extend(closure.clone());
     linker::validate_unique_skill_targets(&combined)?;
     let mut additions = Vec::new();
     let mut unchanged = Vec::new();
     for skill in &closure {
-        match config
-            .skills
+        match existing_expanded
             .iter()
             .find(|existing| existing.name == skill.name)
         {
@@ -278,8 +295,7 @@ fn prepare(project: &Path, bundle: &str, source: &str, write_cache: bool) -> Res
                     {
                         continue;
                     }
-                    let existing = config
-                        .skills
+                    let existing = existing_expanded
                         .iter()
                         .find(|item| item.name == skill.name)
                         .ok_or_else(|| {
@@ -310,8 +326,16 @@ fn prepare(project: &Path, bundle: &str, source: &str, write_cache: bool) -> Res
             });
         }
     }
+    // Check whether the bundle entry already exists as a kind: bundle entry.
+    let bundle_entry_exists = config
+        .skills
+        .iter()
+        .any(|existing| existing.name == bundle && existing.is_bundle());
+    // If the bundle entry already exists, this is an idempotent re-add as long
+    // as no member pins conflict.
+    let bundle_addition = !bundle_entry_exists;
     let mut document: serde_yaml::Value = serde_yaml::from_slice(&original)?;
-    if !additions.is_empty() {
+    if bundle_addition {
         let entries = document
             .as_mapping_mut()
             .ok_or("skills.yaml must be a YAML mapping")?
@@ -320,16 +344,18 @@ fn prepare(project: &Path, bundle: &str, source: &str, write_cache: bool) -> Res
         let entries = entries
             .as_sequence_mut()
             .ok_or("skills must be a YAML sequence")?;
-        for skill in &closure {
-            if additions.contains(&skill.name) {
-                entries.push(serde_yaml::to_value(skill)?);
-            }
-        }
+        entries.push(serde_yaml::to_value(SkillSpec {
+            name: bundle.to_string(),
+            version: Some("latest".to_string()),
+            source: Some(source.to_string()),
+            path: None,
+            kind: Some("bundle".to_string()),
+        })?);
     }
-    let updated = if additions.is_empty() {
-        original.clone()
-    } else {
+    let updated = if bundle_addition {
         serde_yaml::to_string(&document)?.into_bytes()
+    } else {
+        original.clone()
     };
     let mut links_display = links
         .iter()
@@ -361,6 +387,7 @@ fn prepare(project: &Path, bundle: &str, source: &str, write_cache: bool) -> Res
         original,
         updated,
         links,
+        bundle_entry_added: bundle_addition,
         _registry_temp: registry_temp,
     })
 }
@@ -625,7 +652,10 @@ fn apply_with_failure(
     prepared: &Prepared,
     fail_after_link: Option<usize>,
 ) -> Result<()> {
-    if prepared.public.additions.is_empty() && prepared.links.is_empty() {
+    if !prepared.bundle_entry_added
+        && prepared.public.additions.is_empty()
+        && prepared.links.is_empty()
+    {
         return Ok(());
     }
     if fs::read(&prepared.config_path)? != prepared.original {
@@ -874,11 +904,11 @@ mod tests {
         let after = fs::read(fixture.project.path().join("skills.yaml")).unwrap();
         let config =
             SkillsConfig::load_from_file(fixture.project.path().join("skills.yaml")).unwrap();
-        assert_eq!(config.skills.len(), 2);
-        assert!(config
-            .skills
-            .iter()
-            .all(|skill| skill.source.as_deref() == Some("local")));
+        // Bundle is written as a single kind: bundle entry, not unpacked.
+        assert_eq!(config.skills.len(), 1);
+        assert_eq!(config.skills[0].name, "acme/starter");
+        assert_eq!(config.skills[0].kind.as_deref(), Some("bundle"));
+        assert_eq!(config.skills[0].source.as_deref(), Some("local"));
         assert!(linker::symlink_points_to(
             &fixture.project.path().join(".agents/skills/alpha"),
             &fixture.registry.path().join("skills/acme/alpha/v1.0.0")
@@ -887,6 +917,7 @@ mod tests {
         let second = fixture.plan().unwrap();
         assert!(second.public.additions.is_empty());
         assert!(second.links.is_empty());
+        assert!(!second.bundle_entry_added);
         apply(fixture.project.path(), &second).unwrap();
         assert_eq!(
             fs::read(fixture.project.path().join("skills.yaml")).unwrap(),
@@ -932,7 +963,8 @@ mod tests {
         )
         .unwrap();
         let config = SkillsConfig::load_from_file(&config_path).unwrap();
-        assert_eq!(config.skills.len(), 2);
+        assert_eq!(config.skills.len(), 1);
+        assert_eq!(config.skills[0].kind.as_deref(), Some("bundle"));
         assert!(fixture
             .project
             .path()
@@ -1030,13 +1062,11 @@ mod tests {
                     apply(fixture.project.path(), &first).unwrap();
                     let after = fs::read(&config_path).unwrap();
                     let config = SkillsConfig::load_from_file(&config_path).unwrap();
-                    assert_eq!(config.skills.len(), 2);
+                    // Bundle written as a single kind: bundle entry.
+                    assert_eq!(config.skills.len(), 1);
+                    assert_eq!(config.skills[0].name, format!("{namespace}/{bundle}"));
+                    assert_eq!(config.skills[0].kind.as_deref(), Some("bundle"));
                     for (name, version) in [("alpha", "1.0.0"), ("helper", "2.0.0")] {
-                        assert!(config.skills.iter().any(|skill| {
-                            skill.name == format!("{namespace}/{name}")
-                                && skill.version.as_deref() == Some(version)
-                                && skill.source.as_deref() == Some("local")
-                        }));
                         assert!(linker::symlink_points_to(
                             &fixture.project.path().join(format!(".agents/skills/{name}")),
                             &fixture.registry.path().join(format!("skills/{namespace}/{name}/v{version}")),
@@ -1045,6 +1075,7 @@ mod tests {
                     let second = fixture.publisher_plan(namespace, bundle).unwrap();
                     assert!(second.public.additions.is_empty());
                     assert!(second.links.is_empty());
+                    assert!(!second.bundle_entry_added);
                     apply(fixture.project.path(), &second).unwrap();
                     assert_eq!(fs::read(config_path).unwrap(), after);
                 }
@@ -1207,17 +1238,22 @@ mod tests {
         apply(fixture.project.path(), &prepared).unwrap();
         let config =
             SkillsConfig::load_from_file(fixture.project.path().join("skills.yaml")).unwrap();
-        for skill in &config.skills {
-            let expected = linker::resolve_skill_source_dir(skill, fixture.project.path()).unwrap();
-            assert!(linker::symlink_points_to(
-                &fixture
-                    .project
-                    .path()
-                    .join(".agents/skills")
-                    .join(skill.name.rsplit('/').next().unwrap()),
-                &expected,
-            )
-            .unwrap());
+        // The manifest has a single kind: bundle entry; resolve it to members.
+        let entries = linker::resolve_entries(&config.skills, fixture.project.path()).unwrap();
+        for entry in &entries {
+            for skill in entry.linkable_skills() {
+                let expected =
+                    linker::resolve_skill_source_dir(&skill, fixture.project.path()).unwrap();
+                assert!(linker::symlink_points_to(
+                    &fixture
+                        .project
+                        .path()
+                        .join(".agents/skills")
+                        .join(skill.name.rsplit('/').next().unwrap()),
+                    &expected,
+                )
+                .unwrap());
+            }
         }
         let second = fixture.plan().unwrap();
         assert!(second.public.additions.is_empty());
@@ -1244,17 +1280,21 @@ mod tests {
         apply(fixture.project.path(), &prepared).unwrap();
         let config =
             SkillsConfig::load_from_file(fixture.project.path().join("skills.yaml")).unwrap();
-        for skill in &config.skills {
-            let source = linker::resolve_skill_source_dir(skill, fixture.project.path()).unwrap();
-            assert!(linker::symlink_points_to(
-                &fixture
-                    .project
-                    .path()
-                    .join(".agents/skills")
-                    .join(skill.name.rsplit('/').next().unwrap()),
-                &source,
-            )
-            .unwrap());
+        let entries = linker::resolve_entries(&config.skills, fixture.project.path()).unwrap();
+        for entry in &entries {
+            for skill in entry.linkable_skills() {
+                let source =
+                    linker::resolve_skill_source_dir(&skill, fixture.project.path()).unwrap();
+                assert!(linker::symlink_points_to(
+                    &fixture
+                        .project
+                        .path()
+                        .join(".agents/skills")
+                        .join(skill.name.rsplit('/').next().unwrap()),
+                    &source,
+                )
+                .unwrap());
+            }
         }
         assert!(fixture.plan().unwrap().links.is_empty());
     }

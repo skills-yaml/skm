@@ -169,6 +169,7 @@ mod tests {
                 version: Some("latest".to_string()),
                 source: None,
                 path: Some("source/test-skill".to_string()),
+                kind: None,
             }],
             toolkit: None,
             bundles: Vec::new(),

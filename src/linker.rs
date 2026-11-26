@@ -54,6 +54,27 @@ pub struct AgentSkillTarget {
     pub agents: Vec<String>,
 }
 
+/// A resolved manifest entry. Bundle entries carry their expanded members so
+/// the lockfile can record both the bundle declaration and its resolution.
+#[derive(Debug, Clone)]
+pub enum ResolvedEntry {
+    Skill(SkillSpec),
+    Bundle {
+        spec: SkillSpec,
+        members: Vec<SkillSpec>,
+    },
+}
+
+impl ResolvedEntry {
+    /// Flatten to the concrete skill specs that need linking.
+    pub fn linkable_skills(&self) -> Vec<SkillSpec> {
+        match self {
+            ResolvedEntry::Skill(spec) => vec![spec.clone()],
+            ResolvedEntry::Bundle { members, .. } => members.clone(),
+        }
+    }
+}
+
 pub const SUPPORTED_AGENTS: &[&str] = &[
     "claude",
     "codex",
@@ -157,7 +178,201 @@ pub fn resolve_skill_dependency_closure(
     skills: &[SkillSpec],
     project_root: &Path,
 ) -> Result<Vec<SkillSpec>, Box<dyn std::error::Error>> {
-    resolve_skill_dependency_closure_with(skills, project_root, resolve_skill_source_dir)
+    let entries = resolve_entries(skills, project_root)?;
+    Ok(entries
+        .iter()
+        .flat_map(|entry| entry.linkable_skills())
+        .collect())
+}
+
+/// Resolve manifest entries, expanding `kind: bundle` entries into their
+/// published members plus transitive dependencies. Returns one ResolvedEntry
+/// per manifest entry; bundle entries carry their resolved members.
+pub fn resolve_entries(
+    skills: &[SkillSpec],
+    project_root: &Path,
+) -> Result<Vec<ResolvedEntry>, Box<dyn std::error::Error>> {
+    resolve_entries_with(skills, project_root, resolve_skill_source_dir)
+}
+
+pub(crate) fn resolve_entries_with<F>(
+    skills: &[SkillSpec],
+    project_root: &Path,
+    resolve_source: F,
+) -> Result<Vec<ResolvedEntry>, Box<dyn std::error::Error>>
+where
+    F: Fn(&SkillSpec, &Path) -> Result<PathBuf, Box<dyn std::error::Error>> + Clone,
+{
+    let mut entries = Vec::new();
+    let mut all_specs = Vec::new();
+    for skill in skills {
+        skill.validate_kind()?;
+        if skill.is_bundle() {
+            let members = resolve_bundle_members_with(skill, project_root, &resolve_source)?;
+            all_specs.extend(members.iter().cloned());
+            entries.push(ResolvedEntry::Bundle {
+                spec: skill.clone(),
+                members,
+            });
+        } else {
+            all_specs.push(skill.clone());
+            entries.push(ResolvedEntry::Skill(skill.clone()));
+        }
+    }
+    // Resolve the full dependency closure over all concrete skills (bundle
+    // members included) to validate and normalize versions.
+    let resolved = resolve_skill_dependency_closure_with(&all_specs, project_root, resolve_source)?;
+    let resolved_map: BTreeMap<String, SkillSpec> = resolved
+        .into_iter()
+        .map(|spec| (spec.name.clone(), spec))
+        .collect();
+    // Rewrite bundle member lists to include the full resolved closure
+    // (direct members + transitive dependencies), normalized and validated.
+    for entry in &mut entries {
+        if let ResolvedEntry::Bundle { members, .. } = entry {
+            let direct: BTreeSet<&str> = members.iter().map(|m| m.name.as_str()).collect();
+            let mut full_members: Vec<SkillSpec> = members
+                .iter()
+                .filter_map(|m| resolved_map.get(&m.name).cloned())
+                .collect();
+            // Add transitive dependencies that aren't direct members.
+            for (name, spec) in &resolved_map {
+                if !direct.contains(name.as_str()) {
+                    full_members.push(spec.clone());
+                }
+            }
+            full_members.sort_by(|a, b| a.name.cmp(&b.name));
+            *members = full_members;
+        }
+    }
+    Ok(entries)
+}
+
+/// Expand a `kind: bundle` entry into its published member SkillSpecs by
+/// reading the registry namespace manifest.
+pub fn resolve_bundle_members_pub(
+    bundle: &SkillSpec,
+    project_root: &Path,
+) -> Result<Vec<SkillSpec>, Box<dyn std::error::Error>> {
+    resolve_bundle_members_with(bundle, project_root, resolve_skill_source_dir)
+}
+
+fn resolve_bundle_members_with<F>(
+    bundle: &SkillSpec,
+    project_root: &Path,
+    _resolve_source: F,
+) -> Result<Vec<SkillSpec>, Box<dyn std::error::Error>>
+where
+    F: Fn(&SkillSpec, &Path) -> Result<PathBuf, Box<dyn std::error::Error>>,
+{
+    validate_skill_name(&bundle.name)?;
+    if bundle.path.is_some() {
+        return Err(format!(
+            "Bundle '{}' cannot use a local path; bundles are registry-only",
+            bundle.name
+        )
+        .into());
+    }
+    let source = bundle.source.as_deref().unwrap_or("default");
+    let (namespace, id) = bundle
+        .name
+        .split_once('/')
+        .ok_or_else(|| format!("Bundle ID must be namespace/name: {}", bundle.name))?;
+    if id.contains('/') {
+        return Err(format!("Bundle ID must be namespace/name: {}", bundle.name).into());
+    }
+    // Resolve the registry root: project-local registry paths from the manifest
+    // take priority; fall back to the cache.
+    let project_local_root = {
+        let config_path = project_root.join("skills.yaml");
+        let config: Result<crate::config::SkillsConfig, _> =
+            crate::config::SkillsConfig::load_from_file(&config_path);
+        config
+            .ok()
+            .and_then(|config| {
+                config.registries.and_then(|registries| {
+                    registries.get(source).map(|location| {
+                        let local = project_root.join(location);
+                        if local.join("skills").is_dir() {
+                            Some(local)
+                        } else {
+                            None
+                        }
+                    })
+                })
+            })
+            .flatten()
+    };
+    let registry_root = project_local_root
+        .or_else(|| resolve_registry_path(source).filter(|path| path.join("skills").is_dir()))
+        .ok_or_else(|| {
+            format!(
+                "Could not resolve registry '{source}' for bundle '{}'",
+                bundle.name
+            )
+        })?;
+    let manifest_path = registry_root
+        .join("skills")
+        .join(namespace)
+        .join("manifest.yaml");
+    if !manifest_path.is_file() {
+        return Err(format!(
+            "Registry '{source}' has no namespace manifest for '{namespace}' at {}",
+            manifest_path.display()
+        )
+        .into());
+    }
+    let manifest_bytes = fs::read(&manifest_path)?;
+    if manifest_bytes.len() > 256 * 1024 {
+        return Err("namespace manifest exceeds 256 KiB".into());
+    }
+    #[derive(serde::Deserialize)]
+    struct NamespaceManifest {
+        #[allow(dead_code)]
+        schema_version: u32,
+        namespace: String,
+        packages: BTreeMap<String, String>,
+        #[serde(default)]
+        bundles: BTreeMap<String, BundleMembers>,
+    }
+    #[derive(serde::Deserialize)]
+    struct BundleMembers {
+        packages: Vec<String>,
+    }
+    let manifest: NamespaceManifest = serde_yaml::from_slice(&manifest_bytes)?;
+    if manifest.namespace != namespace {
+        return Err(format!(
+            "namespace manifest mismatch: expected '{namespace}', found '{}'",
+            manifest.namespace
+        )
+        .into());
+    }
+    let members = manifest.bundles.get(id).ok_or_else(|| {
+        format!(
+            "Bundle '{}' is not published by registry '{source}'",
+            bundle.name
+        )
+    })?;
+    if members.packages.is_empty() {
+        return Err(format!("Bundle '{}' has no members", bundle.name).into());
+    }
+    let mut specs = Vec::new();
+    for member in &members.packages {
+        let version = manifest.packages.get(member).ok_or_else(|| {
+            format!(
+                "Bundle member '{member}' is not a published package in namespace '{namespace}'"
+            )
+        })?;
+        specs.push(SkillSpec {
+            name: format!("{namespace}/{member}"),
+            version: Some(version.clone()),
+            source: Some(source.to_string()),
+            path: None,
+            kind: None,
+        });
+    }
+    let _ = project_root;
+    Ok(specs)
 }
 
 pub(crate) fn resolve_skill_dependency_closure_with<F>(
@@ -235,6 +450,7 @@ where
             version: Some(dependency_version),
             source: normalized.source.clone(),
             path: None,
+            kind: None,
         };
         resolve_skill_dependency(
             &dependency,
@@ -315,6 +531,7 @@ fn normalize_published_skill(
         version: Some(version),
         source: requested.source.clone(),
         path: requested.path.clone(),
+        kind: None,
     })
 }
 
@@ -530,6 +747,7 @@ pub(crate) fn parse_registry_lock_target(
         version: Some(version.to_string()),
         source: Some(source.to_string()),
         path: None,
+        kind: None,
     })
 }
 
@@ -961,6 +1179,7 @@ mod tests {
             version: Some("latest".to_string()),
             source: None,
             path: Some(format!("source/{}", name)),
+            kind: None,
         }
     }
 
@@ -1017,6 +1236,7 @@ mod tests {
             version: Some("0.1.0".to_string()),
             source: Some("default".to_string()),
             path: None,
+            kind: None,
         }];
 
         let resolved = resolve_skill_dependency_closure_with(
@@ -1053,6 +1273,7 @@ mod tests {
             version: Some("1.0.0".into()),
             source: Some("default".into()),
             path: None,
+            kind: None,
         }];
         let error = resolve_skill_dependency_closure_with(
             &requested,
@@ -1074,6 +1295,7 @@ mod tests {
             version: Some("latest".to_string()),
             source: None,
             path: None,
+            kind: None,
         }];
 
         let resolved = resolve_skill_dependency_closure_with(&requested, &project, move |_, _| {
@@ -1106,6 +1328,7 @@ mod tests {
             version: Some("0.1.0".to_string()),
             source: None,
             path: None,
+            kind: None,
         }];
 
         let error = resolve_skill_dependency_closure_with(
@@ -1131,12 +1354,14 @@ mod tests {
                 version: Some("1.0.0".to_string()),
                 source: None,
                 path: None,
+                kind: None,
             },
             SkillSpec {
                 name: "workspace/shared".to_string(),
                 version: Some("2.0.0".to_string()),
                 source: None,
                 path: None,
+                kind: None,
             },
         ];
 
@@ -1168,6 +1393,7 @@ mod tests {
             version: Some("0.1.0".to_string()),
             source: None,
             path: None,
+            kind: None,
         }];
         let error = resolve_skill_dependency_closure_with(
             &requested,
@@ -1188,6 +1414,7 @@ mod tests {
             version: Some("0.1.0".to_string()),
             source: None,
             path: Some("local".to_string()),
+            kind: None,
         }];
         let error =
             resolve_skill_dependency_closure_with(&local, &project, registry_resolver(&registry))
@@ -1309,6 +1536,7 @@ mod tests {
                 version: None,
                 source: None,
                 path: None,
+                kind: None,
             })
             .collect::<Vec<_>>();
         assert!(validate_unique_skill_targets(&skills)
@@ -1518,5 +1746,106 @@ mod tests {
         assert!(!last.is_symlink());
 
         fs::remove_dir_all(project).unwrap();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    #[serial_test::serial]
+    fn resolve_entries_expands_bundle_entries_to_members() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("project");
+        let registry = root.path().join("registry");
+        fs::create_dir_all(&project).unwrap();
+        fs::create_dir_all(registry.join("skills/acme/alpha/v1.0.0")).unwrap();
+        fs::create_dir_all(registry.join("skills/acme/helper/v2.0.0")).unwrap();
+        fs::write(
+            registry.join("skills/acme/alpha/v1.0.0/SKILL.md"),
+            "---\nname: alpha\nmetadata:\n  skm-version: \"1.0.0\"\n  skm-dependencies: \"acme/helper@2.0.0\"\n---\n# Alpha\n",
+        )
+        .unwrap();
+        fs::write(
+            registry.join("skills/acme/helper/v2.0.0/SKILL.md"),
+            "---\nname: helper\nmetadata:\n  skm-version: \"2.0.0\"\n---\n# Helper\n",
+        )
+        .unwrap();
+        fs::write(
+            registry.join("skills/acme/manifest.yaml"),
+            "schema_version: 2\nnamespace: acme\npackages:\n  alpha: 1.0.0\n  helper: 2.0.0\nbundles:\n  starter:\n    packages: [alpha]\n",
+        )
+        .unwrap();
+        fs::write(
+            project.join("skills.yaml"),
+            format!(
+                "name: test\nagents: [codex]\nregistries:\n  local: {}\nskills: []\n",
+                registry.display()
+            ),
+        )
+        .unwrap();
+
+        let bundle = SkillSpec {
+            name: "acme/starter".into(),
+            version: Some("latest".into()),
+            source: Some("local".into()),
+            path: None,
+            kind: Some("bundle".into()),
+        };
+
+        // Use a custom resolver that resolves through the project-local registry.
+        let reg = registry.clone();
+        let resolve = move |skill: &SkillSpec,
+                            _project_root: &Path|
+              -> Result<PathBuf, Box<dyn std::error::Error>> {
+            resolve_registry_skill_source_dir(skill, &reg)
+        };
+        let entries = resolve_entries_with(&[bundle], &project, resolve).unwrap();
+        assert_eq!(entries.len(), 1);
+        match &entries[0] {
+            ResolvedEntry::Bundle { spec, members } => {
+                assert_eq!(spec.name, "acme/starter");
+                let member_names: Vec<&str> = members.iter().map(|m| m.name.as_str()).collect();
+                assert!(member_names.contains(&"acme/alpha"));
+                assert!(member_names.contains(&"acme/helper"));
+            }
+            _ => panic!("expected bundle entry"),
+        }
+        let all: Vec<String> = entries
+            .iter()
+            .flat_map(|e| e.linkable_skills())
+            .map(|s| s.name)
+            .collect();
+        assert!(all.contains(&"acme/alpha".to_string()));
+        assert!(all.contains(&"acme/helper".to_string()));
+    }
+
+    #[test]
+    fn resolve_entries_rejects_invalid_kind() {
+        let root = tempfile::tempdir().unwrap();
+        let bad = SkillSpec {
+            name: "acme/alpha".into(),
+            version: None,
+            source: None,
+            path: None,
+            kind: Some("widget".into()),
+        };
+        let err = resolve_entries(&[bad], root.path())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("Invalid skill kind 'widget'"));
+    }
+
+    #[test]
+    fn resolve_entries_rejects_bundle_with_local_path() {
+        let root = tempfile::tempdir().unwrap();
+        let bundle = SkillSpec {
+            name: "acme/starter".into(),
+            version: None,
+            source: Some("default".into()),
+            path: Some("./local".into()),
+            kind: Some("bundle".into()),
+        };
+        let err = resolve_entries(&[bundle], root.path())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("cannot use a local path"));
     }
 }

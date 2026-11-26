@@ -506,6 +506,7 @@ fn toggle_entry(entry: &Entry, document: &mut Value) -> std::result::Result<(), 
                 version: Some(entry.version.clone()),
                 source: Some(entry.registry.clone()),
                 path: None,
+                kind: None,
             })
             .map_err(|error| error.to_string())?,
         );

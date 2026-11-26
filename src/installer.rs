@@ -1,4 +1,4 @@
-use crate::config::SkillsConfig;
+use crate::config::{SkillSpec, SkillsConfig};
 use crate::linker;
 use serde::Serialize;
 use std::fs;
@@ -13,8 +13,18 @@ struct SkillsLock {
     kind: &'static str,
     project: String,
     agents: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    bundles: Vec<LockedBundle>,
     skills: Vec<LockedSkill>,
     outputs: Vec<LockedOutput>,
+}
+
+#[derive(Serialize)]
+struct LockedBundle {
+    name: String,
+    version: String,
+    source: String,
+    members: Vec<LockedSkill>,
 }
 
 #[derive(Serialize)]
@@ -70,7 +80,11 @@ pub fn prepare(
     manifest: Option<(Vec<u8>, Vec<u8>)>,
 ) -> Result<Prepared> {
     linker::validate_agents(&config.agents)?;
-    let resolved = linker::resolve_skill_dependency_closure(&config.skills, project)?;
+    let entries = linker::resolve_entries(&config.skills, project)?;
+    let resolved: Vec<SkillSpec> = entries
+        .iter()
+        .flat_map(|entry| entry.linkable_skills())
+        .collect();
     linker::validate_unique_skill_targets(&resolved)?;
     if !resolved.is_empty() {
         linker::require_skill_targets(&config.agents, project, global)?;
@@ -88,6 +102,26 @@ pub fn prepare(
     let mut links = Vec::new();
     let mut outputs = Vec::new();
     let mut locked_skills = Vec::new();
+    let mut locked_bundles = Vec::new();
+
+    for entry in &entries {
+        if let linker::ResolvedEntry::Bundle { spec, members } = entry {
+            locked_bundles.push(LockedBundle {
+                name: spec.name.clone(),
+                version: spec.version.clone().unwrap_or_else(|| "latest".into()),
+                source: spec.source.clone().unwrap_or_else(|| "default".into()),
+                members: members
+                    .iter()
+                    .map(|member| LockedSkill {
+                        name: member.name.clone(),
+                        version: member.version.clone().unwrap_or_else(|| "latest".into()),
+                        source: member.source.clone().unwrap_or_else(|| "default".into()),
+                        path: member.path.clone(),
+                    })
+                    .collect(),
+            });
+        }
+    }
 
     for skill in &resolved {
         let source = linker::resolve_skill_source_dir(skill, project)?;
@@ -162,6 +196,7 @@ pub fn prepare(
             kind: "skills",
             project: config.name.clone(),
             agents: config.agents.clone(),
+            bundles: locked_bundles,
             skills: locked_skills,
             outputs,
         })?;
@@ -498,6 +533,7 @@ mod tests {
                     version: Some("latest".into()),
                     source: None,
                     path: Some((*name).into()),
+                    kind: None,
                 })
                 .collect(),
             toolkit: None,

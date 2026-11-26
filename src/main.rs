@@ -884,6 +884,19 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             }
             eprintln!("Listing skills for project '{}':", config.name);
 
+            let entries = linker::resolve_entries(&config.skills, &current_dir)?;
+            // Print bundle entries first with their member count.
+            for entry in &entries {
+                if let linker::ResolvedEntry::Bundle { spec, members } = entry {
+                    println!(
+                        " - {} (bundle, {} members, version: {}, source: {})",
+                        spec.name,
+                        members.len(),
+                        spec.version.as_deref().unwrap_or("latest"),
+                        spec.source.as_deref().unwrap_or("default")
+                    );
+                }
+            }
             let resolved = linker::resolve_skill_dependency_closure(&config.skills, &current_dir)?;
             for skill in &resolved {
                 let mut status = "OK".to_string();
@@ -1292,6 +1305,14 @@ fn validate_config(config: &SkillsConfig) -> Result<(), Box<dyn std::error::Erro
 
     for skill in &config.skills {
         linker::validate_skill_name(&skill.name)?;
+        skill.validate_kind()?;
+        if skill.is_bundle() && skill.path.is_some() {
+            return Err(format!(
+                "Skill '{}' is kind bundle and cannot use a local path",
+                skill.name
+            )
+            .into());
+        }
     }
     linker::validate_unique_skill_targets(&config.skills)?;
 
@@ -1363,6 +1384,7 @@ fn add_registry_item(
             version: Some("latest".to_string()),
             source,
             path,
+            kind: None,
         },
         global,
         yes,
@@ -1894,6 +1916,7 @@ mod search_cli_tests {
             version: Some("latest".into()),
             source: Some("company".into()),
             path: None,
+            kind: None,
         };
         let resolved_request = SkillSpec {
             version: Some("1.0.0".into()),
@@ -1904,12 +1927,14 @@ mod search_cli_tests {
             version: Some("2.0.0".into()),
             source: Some("company".into()),
             path: None,
+            kind: None,
         };
         let existing = SkillSpec {
             name: "acme/other".into(),
             version: Some("3.0.0".into()),
             source: Some("company".into()),
             path: None,
+            kind: None,
         };
         let summary = skill_add_summary(
             &requested,
@@ -2140,6 +2165,7 @@ mod search_cli_tests {
             version: Some("latest".into()),
             source: None,
             path: Some("local-skill".into()),
+            kind: None,
         };
         let before = fs::read(&config_path).unwrap();
         let target = project.join(".agents/skills/alpha");
@@ -2323,6 +2349,7 @@ mod search_cli_tests {
                 version: None,
                 source: None,
                 path: Some("fixture".into()),
+                kind: None,
             }],
             toolkit: None,
             bundles: Vec::new(),
