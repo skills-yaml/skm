@@ -2,6 +2,7 @@ use crate::config::SkillsConfig;
 use crate::config_manager::{get_base_config_path, get_cache_dir, BaseConfig};
 use crate::dev::DevConfig;
 use crate::linker;
+use serde::Deserialize;
 use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
@@ -73,7 +74,7 @@ pub fn clean_symlinks(
     }
 
     let known_skills = if clean_orphaned {
-        collect_known_skill_names(project_config.as_ref(), global)?
+        collect_known_skill_names(project_config.as_ref(), &current_dir, global)?
     } else {
         HashSet::new()
     };
@@ -224,17 +225,24 @@ pub fn clean_symlinks(
 
 fn collect_known_skill_names(
     project_config: Option<&SkillsConfig>,
+    project_root: &Path,
     global: bool,
 ) -> Result<HashSet<String>, Box<dyn std::error::Error>> {
     let mut known = HashSet::new();
     if let Some(config) = project_config {
-        for skill in &config.skills {
+        let skills = if config.skills.iter().any(|skill| skill.is_bundle()) {
+            linker::resolve_skill_dependency_closure(&config.skills, project_root)?
+        } else {
+            config.skills.clone()
+        };
+        let mut names: Vec<String> = skills.into_iter().map(|skill| skill.name).collect();
+        if config.skills.iter().any(|skill| skill.is_bundle()) {
+            names.extend(installed_bundle_member_names(config, project_root)?);
+        }
+        for name in names {
             // Preserve legacy nested links as well as discoverable direct-child links.
-            known.insert(skill.name.clone());
-            if let Some(leaf) = Path::new(&skill.name)
-                .file_name()
-                .and_then(|name| name.to_str())
-            {
+            known.insert(name.clone());
+            if let Some(leaf) = Path::new(&name).file_name().and_then(|name| name.to_str()) {
                 known.insert(leaf.to_string());
             }
         }
@@ -244,6 +252,56 @@ fn collect_known_skill_names(
     known.extend(dev_config.skills.into_keys());
 
     Ok(known)
+}
+
+#[derive(Deserialize)]
+struct CleanupLock {
+    kind: String,
+    #[serde(default)]
+    bundles: Vec<CleanupBundle>,
+}
+
+#[derive(Deserialize)]
+struct CleanupBundle {
+    name: String,
+    source: String,
+    members: Vec<CleanupMember>,
+}
+
+#[derive(Deserialize)]
+struct CleanupMember {
+    name: String,
+}
+
+fn installed_bundle_member_names(
+    config: &SkillsConfig,
+    project_root: &Path,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let path = project_root.join("skills.lock.yaml");
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {}
+        Ok(_) => return Err("skills.lock.yaml must be a regular file".into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.into()),
+    }
+    let lock: CleanupLock = serde_yaml::from_slice(&fs::read(path)?)?;
+    if lock.kind != "skills" {
+        return Err("skills.lock.yaml is not a skills-only lockfile".into());
+    }
+    let mut names = Vec::new();
+    for bundle in lock.bundles {
+        if config.skills.iter().any(|skill| {
+            skill.is_bundle()
+                && skill.name == bundle.name
+                && skill.source.as_deref() == Some(bundle.source.as_str())
+        }) {
+            for member in bundle.members {
+                linker::validate_skill_name(&member.name)?;
+                names.push(member.name);
+            }
+        }
+    }
+    Ok(names)
 }
 
 /// Clean up registry cache
