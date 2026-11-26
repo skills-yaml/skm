@@ -2,15 +2,11 @@
 
 ## Status
 
-State: backlog
+State: development
 
 Primary feature: `configuration`
 
-Status rationale: Requested specification only; implementation has not started.
-The user confirmed that plain `skm install` stays project-local and `--global`
-selects the user manifest. The next allowed transition is `backlog -> development`
-after refreshing release reservations and opening the implementation work.
-Merging this proposal does not establish feature integration or acceptance.
+Status rationale: Bootstrap and legacy-settings implementation started on 2026-11-26 in an isolated peer worktree. The applied shared 0.10.0 reservation is reused. Cache migration, command scope, review, integration, and acceptance remain pending.
 
 ## Problem and Evidence
 
@@ -56,7 +52,7 @@ Non-goals: change the default installation scope; merge project and global skill
 lists; introduce a global lockfile, agent discovery rules, or new agent paths;
 enable global published bundles or repository-local toolkits; change agent
 precedence; redesign development-link registrations; add scheduled updates;
-implement the feature as part of this specification task. Governed instructions,
+expand the scope to unrelated behavior. Governed instructions,
 release workflows, and runtime dependencies need no changes for this proposal.
 
 ## User Home and Startup Contract
@@ -111,7 +107,8 @@ remain available. Existing valid manifests retain unknown publisher metadata.
 | --- | --- | --- |
 | `init` | Create/edit the current project manifest | Create/edit `~/.skm/skills.yaml`; select global agents and skills through the existing prompt flow |
 | `install` | Read the project manifest; write project links and the existing lockfile | Read only the user manifest; install to all its selected global agent targets |
-| `add` / `remove` | Update the project manifest and project links | Update the user manifest and global links |
+| `add` | Update the project manifest | Update the user manifest; install applies links |
+| `remove` | Update the project manifest and project links | Update the user manifest and global links |
 | `list` / `check` | Inspect project declarations and expected targets | Inspect user declarations and expected global targets |
 | Manifest-backed `skill use`, `outdated`, and `upgrade` | Read/update project pins as today | Read/update user pins, independent of the current directory |
 | `config get/set/unset/show/reset/validate` | Keep the existing project selection | Keep base-settings semantics, now at `~/.skm/config.yaml` |
@@ -153,7 +150,7 @@ existing populated manifest. Cancellation preserves existing contents.
 
 The user manifest is the authoritative declarative record of global skill
 selections: name, requested version, source or local path, and selected agents.
-`add --global` persists the selected skill there only with successful application;
+`add --global` persists the selected skill there without installing links;
 `remove --global` removes its declaration only after successful unlinking.
 `install --global` reconciles that declared set; it does not import the current
 project's skills, discover arbitrary pre-existing links as owned skills, or
@@ -172,7 +169,7 @@ root of global agent destinations.
 | I1 | One authoritative manifest per scope. Running global add inside another repository must not edit that repository. | CLI scope resolution; `SkillsConfig` at the selected path | Shared path selection used by main, wizard, remover, version manager, and global cleanup |
 | I2 | Bootstrap only fills missing user state. A simultaneous startup must not replace customized registries or skills. | Config manager; base settings and user manifest | Safe file creation, validation, concurrent-startup tests |
 | I3 | Every selected agent receives every resolved skill at its compiled global destination. Selecting Codex and Goose must not duplicate their shared `.agents/skills` write. | Linker; agent IDs and deduplicated target groups | Existing target resolver and installer; install/list/check tests |
-| I4 | A successful global mutation keeps declarations and managed links consistent. Failure on the second target must not leave a newly recorded skill installed only for the first agent. | Installer / mutation transaction; selected manifest plus managed links | Complete preflight, conflict detection, rollback, failure injection |
+| I4 | A successful global removal keeps declarations and managed links consistent. Install failure on the second target must not leave a partially applied installation. | Installer / mutation transaction; selected manifest plus managed links | Complete preflight, conflict detection, rollback, failure injection |
 | I5 | Scope never depends on working directory. A relative local path in the global manifest resolves against `~/.skm`, not the invoking project. | Manifest/source resolver; existing `SkillSpec.path` | Normalize new `add --path` selections against their invocation directory before storing a stable global path; preserve project path rules |
 | I6 | Cache migration does not destroy live sources or trust another registry. Existing symlinks must not become dangling, and a project's `default` cache must not supply a different global `default` registry. | Config manager / cache resolver; canonical cache and retained legacy sources | Both legacy-root discovery paths, effective-origin validation, non-destructive migration, refresh/install/check tests |
 
@@ -295,6 +292,15 @@ passes do not establish complete feature acceptance.
 | S4 | Make add/remove and version mutations consistent with the selected global manifest, and make maintenance preserve its ownership. Exclude new installation modes and agent targets. | S3 shared installer transaction and global target checks pass. | AC3 mutation/cancellation/rollback, AC5 list/version/cleanup, and AC2 cross-directory mutation portions; remover/version/cleaner fixtures first, then global command integration and affected cache/dev-registration consumers. Add focused Taskfile selectors where needed. |
 | S5 | Reconcile user docs, complete acceptance evidence, independent review, final gates and lifecycle delivery. No additional runtime features. | S1–S4 bounded gates pass. | Close AC1–AC7 with candidate-bound evidence; inspect docs/examples, `task workspace:check`, then `task versions:check`; resolve independent review before complete final `task check` and `task test`. Verify actual shared-test and main revisions through native CI. |
 
+### Current S1 partial implementation
+
+A dormant helper creates the new layout and imports legacy settings; live startup
+and existing settings and cache consumers retain their legacy behavior. AC1 and
+AC6 remain partial. Activate bootstrap only with settings routing so that legacy
+writes cannot silently diverge from the canonical copy. Remaining S1 work also
+includes cache fallback, origin validation, and coordinated cache-consumer
+migration. The CLI must propagate bootstrap errors and retain preview exemptions.
+
 ## Validation Gates and Review
 
 Use only Taskfile entrypoints and the repository's
@@ -318,8 +324,7 @@ Record the actual `development` integration before moving to test and the
 verified `main` merge before done; reconcile acceptance, docs, ledger and memory.
 Publication remains separately governed by existing release protections.
 
-For this proposal, review covers the specification and its catalog, release,
-and memory records; runtime criteria above are future implementation gates.
+Implementation and its catalog, release, and memory records require independent review; runtime criteria above remain open until supported by candidate-bound evidence.
 
 ## Risks and Constraints
 
@@ -340,13 +345,11 @@ the new layout appear complete.
 
 ## Release Reservation
 
-Reservation status is `planned`, owner `global-user-installation`, timing
-`development-start`. Do not bump `Cargo.toml` or `Cargo.lock` for this backlog
-proposal. On 2026-11-06 the shared ledger contains no open SKM reservation,
-Cargo sources report 0.9.1, and remote production/development tags resolve to
-`f6ea86a`, whose Cargo source reports 0.9.1. Remote refs expose no 0.10.0 tag;
-no local peer board or additional worktree was found. Refresh these observations
-before implementation or handoff; a draft reservation is not publication proof.
+Reservation status is `applied`, owner `global-user-installation`, timing
+`development-start`. The seed already contains the 0.10.0 Cargo source and lockfile.
+On 2026-11-26 the shared peer board confirmed baseline 0.9.1 and target 0.10.0;
+remote tag lookup found no 0.10.0 tag. Reuse this release without another bump.
+Integration, acceptance, and publication remain pending.
 
 ## Memory Impact
 
