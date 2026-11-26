@@ -212,7 +212,7 @@ fn cache_refresh_fetches_a_new_remote_commit() {
     assert!(cached.exists());
 
     fs::write(
-        config_dir.join("config.yaml"),
+        home.join(".skm/config.yaml"),
         "default_registry: demo\nregistries:\n  demo: /unexpected/origin\n",
     )
     .unwrap();

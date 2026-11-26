@@ -77,6 +77,12 @@ tasks:
     cmds:
       - cargo build --locked --release {{if .TARGET}}--target {{.TARGET}}{{end}}
 
+  test:global-home:
+    desc: Test global home bootstrap and legacy cache migration
+    cmds:
+      - cargo test --bin skm config_manager::tests -- --test-threads=1
+      - cargo test --test global_home -- --test-threads=1
+
   test:updater:
     desc: Run self-update unit and command tests
     cmds:
