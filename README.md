@@ -209,36 +209,32 @@ Add a selected skill with:
 skm add software-development/spec --registry default --kind skill
 ```
 
-`skm add` shows the planned configuration, resolved skills, and agent link
-changes, then asks for confirmation. The prompt defaults to No. Pass
-`--yes` to apply without a prompt, including from a script; a non-interactive
-add without `--yes` fails before changing the project. This applies to both
-single skills and published bundles.
+`skm add` previews the manifest entry and asks for confirmation. The prompt
+defaults to No; pass `--yes` for non-interactive use. It writes the entry only;
+run `skm install --yes` afterwards to link skills and update the lockfile.
+Existing scripts that expect `add --yes` to link must append that install command.
+Run `skm install` before `skm check` after adding an entry.
 
-Search commands include `--kind skill` or `--kind bundle` so they remain
-unambiguous if a registry publishes both with the same ID. For a unique ID,
-`skm add` chooses the item automatically.
+The item kind is detected automatically. When a skill and bundle share an ID,
+select `--kind skill` or `--kind bundle` explicitly. Published bundles cannot be
+added with `--global`. Re-adding an existing entry with the same kind and source
+is a no-op.
 
 Use `--json` for machine-readable search results, including result kinds,
 dependencies, collections, and bundle members, and `--limit <number>` to bound
-the combined result list. Search is read-only; use `skm add` to install a skill
-or every member of a published bundle. Preview or add a bundle with:
+the combined result list. Search is read-only. Preview or add a bundle with:
 
 ```sh
-skm add skills-yaml/authoring-toolkit --registry default --kind bundle --dry-run
-skm add skills-yaml/authoring-toolkit --registry default --kind bundle
-skm add skills-yaml/authoring-toolkit --registry default --kind bundle --yes
+skm add skills-yaml/authoring-toolkit --registry default --dry-run
+skm add skills-yaml/authoring-toolkit --registry default --json
+skm add skills-yaml/authoring-toolkit --registry default --yes
+skm install --yes
 ```
 
-For bundles, `--dry-run` and `--json` preview without asking or changing the
-project; `--json` emits a structured plan. These preview flags do not apply to
-single skills. Bundle add requires a project `skills.yaml` with an effective
-agent target. It writes a single `kind: bundle` entry into the `skills` list
-(see [Configuration](#configuration)), then resolves and links the bundle
-members and their exact same-registry dependencies as one rollback-protected
-project change. Repeating the same command succeeds without changing the
-project. Conflicting pins and real-file targets stop the whole operation. A
-published schema-2 bundle is required.
+`--dry-run` and `--json` preview skill or bundle entries without writing. A
+preview of an uncached remote registry requires `skm cache refresh <registry>`
+first; normal add can inspect that remote without a persistent cache. Bundle
+manifests must satisfy the published schema-2 contract.
 
 A bundle entry in `skills.yaml` stays as one declarative entry — members are
 resolved at install time, not unpacked:
@@ -343,11 +339,9 @@ skm clean symlinks|reset ...
   are described in [Toolkits](#toolkits).
 - `install`: resolves configured skills once, preflights every target,
   transactionally links each one, and writes the project lockfile last.
-- `add`: adds and links one skill, or writes a `kind: bundle` entry for a
-  published registry bundle and links its resolved members and exact
-  dependencies. Both paths show a plan and prompt unless `--yes` is set.
-  `--dry-run` and `--json` preview bundles without applying; bundle
-  application remains transactional.
+- `add`: writes a skill or published bundle entry to `skills.yaml`, prompting
+  unless `--yes` is set. `--dry-run` and `--json` preview either kind without
+  writing. Run `install` to resolve and link entries.
 - `search`: searches configured registries for skills and published bundles in
   one result list, shows a matching `skm add` command for each, and lists
   browse-only namespace collections without changing project state.

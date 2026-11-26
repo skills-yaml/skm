@@ -10,8 +10,9 @@ Status rationale: Follow-up to bundle-skill-entries.md (same branch, same
 release). The `kind: bundle` manifest contract is implemented; this spec removes
 the dedicated bundle code path (`src/bundle.rs`, separate add transaction,
 bundle-specific CLI flags) and routes everything through the unified `skills:`
-list resolved by `linker::resolve_entries`. Implementation has not started for
-this spec. Independently reviewed by agent neo on 2026-11-10; findings
+list resolved by `linker::resolve_entries`. Implementation is active in
+isolated peer worktrees; integration and acceptance verification remain pending.
+Independently reviewed by agent neo on 2026-11-10; findings
 incorporated.
 
 ## Problem and Evidence
