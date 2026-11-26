@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
@@ -47,6 +48,33 @@ fn get_registries_cache_dir() -> Option<PathBuf> {
 pub(crate) const EMPTY_GLOBAL_MANIFEST: &str = "name: Global skills\nagents: []\nskills: []\n";
 
 type ConfigResult<T> = Result<T, Box<dyn std::error::Error>>;
+
+thread_local! {
+    // Reset dispatch uses this to distinguish a confirmed write from cancellation.
+    static BASE_SETTINGS_WRITTEN: Cell<bool> = const { Cell::new(false) };
+    static PREFLIGHT_SETTINGS_RESET: Cell<bool> = const { Cell::new(false) };
+}
+
+pub(crate) struct SettingsResetGuard;
+
+impl SettingsResetGuard {
+    pub(crate) fn new() -> Self {
+        BASE_SETTINGS_WRITTEN.with(|written| written.set(false));
+        PREFLIGHT_SETTINGS_RESET.with(|preflight| preflight.set(true));
+        Self
+    }
+
+    pub(crate) fn settings_written(&self) -> bool {
+        BASE_SETTINGS_WRITTEN.with(Cell::get)
+    }
+}
+
+impl Drop for SettingsResetGuard {
+    fn drop(&mut self) {
+        BASE_SETTINGS_WRITTEN.with(|written| written.set(false));
+        PREFLIGHT_SETTINGS_RESET.with(|preflight| preflight.set(false));
+    }
+}
 
 fn directory(path: &Path, create: bool) -> ConfigResult<()> {
     if create {
@@ -123,6 +151,14 @@ fn validate_base(content: &str, path: &Path) -> ConfigResult<serde_yaml::Value> 
 
 /// Validate and atomically replace the canonical settings document.
 pub(crate) fn write_base_settings(value: &serde_yaml::Value) -> ConfigResult<()> {
+    if PREFLIGHT_SETTINGS_RESET.with(Cell::get) {
+        check_global_manifest_parent()?;
+        let manifest =
+            get_global_manifest_path().ok_or("Could not determine user home directory")?;
+        if let Some(content) = read_regular_file(&manifest)? {
+            validate_manifest(&content, &manifest)?;
+        }
+    }
     let path = get_base_config_path().ok_or("Could not determine user home directory")?;
     let content = serde_yaml::to_string(value)?;
     validate_base(&content, &path)?;
@@ -137,6 +173,9 @@ pub(crate) fn write_base_settings(value: &serde_yaml::Value) -> ConfigResult<()>
     check_base_settings_target(false)?;
     temp.persist(&path)
         .map_err(|error| format!("Cannot save {}: {}", path.display(), error.error))?;
+    if PREFLIGHT_SETTINGS_RESET.with(Cell::get) {
+        BASE_SETTINGS_WRITTEN.with(|written| written.set(true));
+    }
     Ok(())
 }
 

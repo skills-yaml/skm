@@ -22,19 +22,19 @@ Implement the claimed scope.
 
 ## Actions
 
-Created an isolated worktree through an atomic peer claim. Implemented post-reset bootstrap for successful settings recovery, excluding preview and cache-removing reset paths. Added temporary-home CLI tests for fresh and malformed settings, repetition, previews, cache removal, and project isolation. Reused the shared SKM 0.10.0 reservation.
+Created an isolated worktree through an atomic peer claim. Implemented post-reset bootstrap for successful settings recovery, excluding preview and cache-removing reset paths. Added temporary-home CLI tests for fresh and malformed settings, repetition, previews, cache removal, and project isolation. Reused the shared SKM 0.10.0 reservation. After independent review rejected cancellation writes, added a scoped reset guard that records confirmed settings writes and preflights existing manifest and cache paths before reset writes. Added declined, affirmative, mixed-scope, and unsafe-path CLI regressions.
 
 ## Validation
 
-`task test:global-home`, `task fix`, `task check`, `task test`, and `task versions:check` passed on the candidate. Independent exact-candidate review and combined-revision validation remain required.
+`task test:global-home`, `task fix`, `task check`, `task test`, and `task versions:check` passed on the revised candidate. Independent exact-candidate review and combined-revision validation remain required.
 
 ## Blockers and Dependencies
 
-None.
+A backup-enabled clean reset can retain a backup created before the preflight rejects unsafe global state. Settings and project files remain unchanged; independent review must assess this existing ordering limit.
 
 ## Next Step
 
-Commit and hand off for independent exact-candidate review.
+Commit and hand off the revised candidate for independent exact-candidate review.
 
 ## Handoff
 

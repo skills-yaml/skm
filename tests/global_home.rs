@@ -1,9 +1,10 @@
 #![cfg(unix)]
 
 use std::fs;
+use std::io::Write;
 use std::os::unix::fs::symlink;
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 fn command(home: &Path, project: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_skm"))
@@ -15,6 +16,28 @@ fn command(home: &Path, project: &Path, args: &[&str]) -> Output {
         .env("SKM_NO_UPDATE_CHECK", "1")
         .output()
         .unwrap()
+}
+
+fn command_with_input(home: &Path, project: &Path, args: &[&str], input: &str) -> Output {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_skm"))
+        .current_dir(project)
+        .args(args)
+        .env("HOME", home)
+        .env("XDG_CONFIG_HOME", home.join("xdg-config"))
+        .env("XDG_CACHE_HOME", home.join("xdg-cache"))
+        .env("SKM_NO_UPDATE_CHECK", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    child.wait_with_output().unwrap()
 }
 
 #[test]
@@ -252,6 +275,116 @@ fn invalid_base_edits_are_rejected_and_reset_recovers_malformed_settings() {
     assert!(command(home, home, &["config", "show", "--global"])
         .status
         .success());
+}
+
+#[test]
+fn declined_settings_resets_do_not_bootstrap_or_write() {
+    for args in [
+        &["config", "reset", "--global"][..],
+        &["config", "reset"],
+        &["clean", "reset", "--config"],
+    ] {
+        for malformed in [false, true] {
+            let home = tempfile::tempdir().unwrap();
+            let project = tempfile::tempdir().unwrap();
+            if malformed {
+                fs::create_dir(home.path().join(".skm")).unwrap();
+                fs::write(home.path().join(".skm/config.yaml"), "registries: [broken").unwrap();
+            }
+            let home_before = snapshot(home.path());
+            let project_before = snapshot(project.path());
+            success(command_with_input(
+                home.path(),
+                project.path(),
+                args,
+                "n\nn\n",
+            ));
+            assert_eq!(snapshot(home.path()), home_before, "{args:?}");
+            assert_eq!(snapshot(project.path()), project_before, "{args:?}");
+        }
+    }
+}
+
+#[test]
+fn confirmed_interactive_resets_bootstrap_only_when_global_settings_are_reset() {
+    for args in [
+        &["config", "reset", "--global"][..],
+        &["clean", "reset", "--config"],
+    ] {
+        let home = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        success(command_with_input(home.path(), project.path(), args, "y\n"));
+        assert!(home.path().join(".skm/skills.yaml").is_file());
+        assert!(home.path().join(".skm/cache/registries").is_dir());
+    }
+    for (input, global_reset) in [("y\nn\n", true), ("n\ny\n", false)] {
+        let home = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        success(command_with_input(
+            home.path(),
+            project.path(),
+            &["config", "reset"],
+            input,
+        ));
+        assert_eq!(home.path().join(".skm").exists(), global_reset);
+        assert_eq!(project.path().join("skills.yaml").exists(), !global_reset);
+    }
+}
+
+#[test]
+fn settings_reset_preflights_unrelated_global_paths_before_reset_writes() {
+    for args in [
+        &["config", "reset", "--global", "--yes"][..],
+        &["clean", "reset", "--config", "--yes"],
+    ] {
+        for unsafe_cache in [false, true] {
+            let home = tempfile::tempdir().unwrap();
+            let project = tempfile::tempdir().unwrap();
+            let skm = home.path().join(".skm");
+            fs::create_dir(&skm).unwrap();
+            fs::write(skm.join("config.yaml"), "registries: [broken").unwrap();
+            fs::write(project.path().join("skills.yaml"), "project bytes").unwrap();
+            if unsafe_cache {
+                fs::create_dir(home.path().join("outside")).unwrap();
+                symlink(home.path().join("outside"), skm.join("cache")).unwrap();
+            } else {
+                fs::write(skm.join("skills.yaml"), "skills: [broken").unwrap();
+            }
+            let home_before = snapshot(home.path());
+            let project_before = snapshot(project.path());
+            assert!(!command(home.path(), project.path(), args).status.success());
+            assert_eq!(snapshot(home.path()), home_before, "{args:?}");
+            assert_eq!(snapshot(project.path()), project_before, "{args:?}");
+        }
+    }
+}
+
+#[test]
+fn unsafe_reset_with_backup_preserves_settings_and_project() {
+    let home = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    let skm = home.path().join(".skm");
+    fs::create_dir(&skm).unwrap();
+    fs::write(skm.join("config.yaml"), "registries: [broken").unwrap();
+    fs::write(skm.join("skills.yaml"), "skills: [broken").unwrap();
+    fs::write(project.path().join("skills.yaml"), "project bytes").unwrap();
+    let skm_before = snapshot(&skm);
+    let project_before = snapshot(project.path());
+    assert!(!command(
+        home.path(),
+        project.path(),
+        &["clean", "reset", "--config", "--backup", "--yes"]
+    )
+    .status
+    .success());
+    assert_eq!(snapshot(&skm), skm_before);
+    assert_eq!(snapshot(project.path()), project_before);
+    assert_eq!(
+        fs::read_dir(home.path().join(".skm-backups"))
+            .unwrap()
+            .count(),
+        1
+    );
 }
 
 #[test]

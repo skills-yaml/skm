@@ -705,11 +705,17 @@ fn main() {
         updater::maybe_print_startup_notice();
     }
 
-    if let Err(e) = run(cli.command) {
+    let reset_guard = bootstrap_after_reset.then(config_manager::SettingsResetGuard::new);
+    let result = run(cli.command);
+    let settings_written = reset_guard
+        .as_ref()
+        .is_some_and(config_manager::SettingsResetGuard::settings_written);
+    drop(reset_guard);
+    if let Err(e) = result {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     }
-    if bootstrap_after_reset {
+    if settings_written {
         if let Err(e) = ensure_global_env() {
             eprintln!("Error: cannot initialize SKM user state: {e}");
             std::process::exit(1);
