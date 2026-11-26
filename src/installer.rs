@@ -233,8 +233,19 @@ pub fn prepare(
     prepare_inner(config, project, global, manifest, None)
 }
 
-pub fn prepare_named_bundle(config: &SkillsConfig, project: &Path, name: &str) -> Result<Prepared> {
-    prepare_inner(config, project, false, None, Some(name))
+pub fn prepare_named_bundle(
+    config: &SkillsConfig,
+    project: &Path,
+    name: &str,
+    manifest: Vec<u8>,
+) -> Result<Prepared> {
+    prepare_inner(
+        config,
+        project,
+        false,
+        Some((manifest.clone(), manifest)),
+        Some(name),
+    )
 }
 
 fn prepare_inner(
