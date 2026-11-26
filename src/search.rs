@@ -180,13 +180,15 @@ pub fn discover_for_add(
         .and_then(|r| r.get(registry))
         .or_else(|| base.registries.get(registry))
         .ok_or_else(|| format!("Registry '{registry}' is not configured"))?;
+    crate::linker::validate_registry_cache_origin(registry, location, project)
+        .map_err(|error| error.to_string())?;
     let local = project.join(location);
     let cache = crate::linker::resolve_registry_path(registry)
         .ok_or_else(|| format!("Invalid registry name: {registry}"))?;
     let mut temporary = None;
     let root = if local.exists() {
         local
-    } else if cache_matches(&cache, location) {
+    } else if crate::linker::registry_cache_matches(&cache, location, project) {
         cache
     } else if preview {
         return Err(format!(
@@ -638,18 +640,7 @@ pub(crate) fn is_git_url(location: &str) -> bool {
 }
 
 pub(crate) fn cache_matches(cache: &Path, location: &str) -> bool {
-    if !regular_directory(cache) || !regular_directory(&cache.join(".git")) {
-        return false;
-    }
-    let mut command = Command::new("git");
-    command
-        .arg("config")
-        .arg("--file")
-        .arg(cache.join(".git/config"))
-        .args(["--get", "remote.origin.url"]);
-    run_git(command, Duration::from_secs(2))
-        .ok()
-        .is_some_and(|bytes| String::from_utf8_lossy(&bytes).trim() == location)
+    crate::linker::registry_cache_matches(cache, location, Path::new("."))
 }
 
 pub(crate) fn run_git(mut command: Command, timeout: Duration) -> Result<Vec<u8>, String> {

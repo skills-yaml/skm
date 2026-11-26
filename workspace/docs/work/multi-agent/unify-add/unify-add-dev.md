@@ -38,9 +38,12 @@ cache refresh; normal add uses disposable registry inspection.
 ## Validation
 
 Focused bundle and registry-format modules, versions check, and aggregate check
-passed. Aggregate test passed 156 unit tests, then failed two command contract
-integration tests expecting add to link immediately. Their updates are owned by
-the parallel maintenance task. Independent review and combined gates remain pending.
+passed. An earlier aggregate test passed 156 unit tests, then failed two command
+contract integration tests expecting add to link immediately. Their updates are
+owned by the parallel maintenance task. Preliminary independent review identified
+registry origin, plain local registry, temporary-file preview, and YAML preservation
+issues; fixes have focused regression coverage. The new handoff is provisional:
+independent review, maintenance integration, and combined gates remain pending.
 
 ## Blockers and Dependencies
 
@@ -53,6 +56,6 @@ Publish an exact-revision handoff for independent review and integrate with the 
 
 ## Handoff
 
-Exact candidate committed for independent review. No integration or publication
-is asserted. Memory impact: none for this bounded lane; the spec retains pending
+Provisional candidate committed for independent review. The maintenance lane has
+not yet integrated; no shared integration or publication is asserted. Memory impact: none for this bounded lane; the spec retains pending
 memory impact until the overall unified behavior is resolved and delivered.

@@ -738,6 +738,69 @@ pub fn resolve_registry_path(name: &str) -> Option<PathBuf> {
     )
 }
 
+/// Check the effective Git fetch origin without creating temporary files or fetching.
+pub(crate) fn registry_cache_matches(cache: &Path, location: &str, project: &Path) -> bool {
+    let local = project.join(location);
+    let canonical_local = fs::canonicalize(&local).ok();
+    if canonical_local
+        .as_ref()
+        .is_some_and(|local| fs::canonicalize(cache).ok().as_ref() == Some(local))
+    {
+        return true;
+    }
+    if !cache.is_dir() || !cache.join(".git").is_dir() {
+        return false;
+    }
+    let origin = std::process::Command::new("git")
+        .arg("-C")
+        .arg(cache)
+        .args(["remote", "get-url", "origin"])
+        .output();
+    let remotes = std::process::Command::new("git")
+        .arg("-C")
+        .arg(cache)
+        .arg("remote")
+        .output();
+    let (Ok(origin), Ok(remotes)) = (origin, remotes) else {
+        return false;
+    };
+    if !origin.status.success() || !remotes.status.success() {
+        return false;
+    }
+    let names = String::from_utf8_lossy(&remotes.stdout);
+    let mut name = "skm-url-validation".to_owned();
+    while names.lines().any(|line| line == name) {
+        name.push('-');
+    }
+    let effective_location = canonical_local
+        .as_ref()
+        .and_then(|p| p.to_str())
+        .unwrap_or(location);
+    let expected = std::process::Command::new("git")
+        .arg("-C")
+        .arg(cache)
+        .arg("-c")
+        .arg(format!("remote.{name}.url={effective_location}"))
+        .args(["ls-remote", "--get-url", "--", &name])
+        .output();
+    expected.is_ok_and(|expected| expected.status.success() && expected.stdout == origin.stdout)
+}
+
+pub(crate) fn validate_registry_cache_origin(
+    name: &str,
+    location: &str,
+    project: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let cache =
+        resolve_registry_path(name).ok_or_else(|| format!("Invalid registry name: {name}"))?;
+    match fs::symlink_metadata(&cache) {
+        Ok(_) if !registry_cache_matches(&cache, location, project) => Err(format!("Cached registry '{name}' has a different or missing origin; run skm cache clear {name} before using it").into()),
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
 pub fn validate_agents(agents: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     for agent in agents {
         if !is_supported_agent(agent) {

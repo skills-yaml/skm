@@ -768,8 +768,11 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 linker::require_skill_targets(&config.agents, &current_dir, global)?;
             }
 
-            if !dry_run && !json && config.skills.iter().any(|skill| skill.path.is_none()) {
-                ensure_registries_cached(&config)?;
+            if config.skills.iter().any(|skill| skill.path.is_none()) {
+                validate_effective_registry_caches(&config, &current_dir)?;
+                if !dry_run && !json {
+                    ensure_registries_cached(&config)?;
+                }
             }
 
             if config.toolkit.is_some() {
@@ -1443,10 +1446,7 @@ where
     if json {
         println!(
             "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "entry": new_skill, "scope": if global { "global" } else { "project" },
-                "already_present": already_present
-            }))?
+            format_add_preview(&new_skill, global, already_present)?
         );
     } else if already_present {
         eprintln!("'{}' is already present in skills.yaml", new_skill.name);
@@ -1472,11 +1472,66 @@ where
     if std::fs::read(config_path)? != original {
         return Err("skills.yaml changed after add planning; retry".into());
     }
-    config.save_to_file(config_path)?;
+    let mut document: serde_yaml::Value = serde_yaml::from_slice(&original)?;
+    let entries = document
+        .as_mapping_mut()
+        .ok_or("skills.yaml must be a YAML mapping")?
+        .entry(serde_yaml::Value::String("skills".into()))
+        .or_insert_with(|| serde_yaml::Value::Sequence(Vec::new()));
+    entries
+        .as_sequence_mut()
+        .ok_or("skills must be a YAML sequence")?
+        .push(serde_yaml::to_value(&new_skill)?);
+    let updated = serde_yaml::to_string(&document)?;
+    use std::io::Write;
+    let mut staged =
+        tempfile::NamedTempFile::new_in(config_path.parent().unwrap_or(Path::new(".")))?;
+    staged
+        .as_file()
+        .set_permissions(std::fs::metadata(config_path)?.permissions())?;
+    staged.write_all(updated.as_bytes())?;
+    staged.as_file().sync_all()?;
+    if std::fs::read(config_path)? != original {
+        return Err("skills.yaml changed after add planning; retry".into());
+    }
+    staged.persist(config_path)?;
     eprintln!(
         "Added '{}' to skills.yaml; run skm install to link it.",
         new_skill.name
     );
+    Ok(())
+}
+
+fn format_add_preview(
+    entry: &SkillSpec,
+    global: bool,
+    already_present: bool,
+) -> Result<String, serde_json::Error> {
+    serde_json::to_string_pretty(&serde_json::json!({
+        "entry": entry, "scope": if global { "global" } else { "project" },
+        "already_present": already_present
+    }))
+}
+
+fn validate_effective_registry_caches(
+    config: &SkillsConfig,
+    project: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut registries = config_manager::BaseConfig::load()?.registries;
+    if let Some(overrides) = &config.registries {
+        registries.extend(overrides.clone());
+    }
+    for name in config
+        .skills
+        .iter()
+        .filter(|skill| skill.path.is_none())
+        .map(|skill| skill.source.as_deref().unwrap_or("default"))
+    {
+        let location = registries
+            .get(name)
+            .ok_or_else(|| format!("Registry '{name}' is not configured"))?;
+        linker::validate_registry_cache_origin(name, location, project)?;
+    }
     Ok(())
 }
 
@@ -1498,7 +1553,7 @@ fn ensure_registries_cached(config: &SkillsConfig) -> Result<(), Box<dyn std::er
         let path = linker::resolve_registry_path(name)
             .ok_or_else(|| format!("Could not resolve path for registry: {}", name))?;
 
-        if path.exists() {
+        if std::fs::symlink_metadata(&path).is_ok() {
             continue;
         }
 
@@ -1507,6 +1562,11 @@ fn ensure_registries_cached(config: &SkillsConfig) -> Result<(), Box<dyn std::er
             std::fs::create_dir_all(parent)?;
         }
 
+        let local = std::env::current_dir()?.join(url);
+        if local.is_dir() && !local.join(".git").is_dir() {
+            linker::symlink_dir(&std::fs::canonicalize(local)?, &path)?;
+            continue;
+        }
         eprintln!("Cloning registry '{}' from '{}'...", name, url);
         let output = std::process::Command::new("git")
             .args(["clone", url, path.to_str().unwrap()])
@@ -2001,6 +2061,8 @@ mod search_cli_tests {
         })
         .unwrap_err();
         assert_eq!(fs::read(&config_path).unwrap(), before);
+        run(add("acme/beta", true, false)).unwrap();
+        assert_eq!(fs::read(&config_path).unwrap(), before);
         run(Commands::Add {
             name: "acme/beta".into(),
             source: Some("local".into()),
@@ -2100,6 +2162,208 @@ mod search_cli_tests {
         assert_eq!(fs::read(&config_path).unwrap(), before_remote);
         assert!(!linker::resolve_registry_path("remote").unwrap().exists());
         assert!(!environment.project().join(".agents").exists());
+    }
+
+    #[test]
+    #[serial]
+    fn plain_local_registry_add_then_install_uses_same_source() {
+        let environment = Environment::new();
+        let project = environment.project();
+        let registry = project.join("registry");
+        let skill = registry.join("skills/acme/alpha/v1.0.0");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(
+            skill.join("SKILL.md"),
+            "---\nname: alpha\nmetadata:\n  skm-version: 1.0.0\n---\n# Alpha\n",
+        )
+        .unwrap();
+        std::os::unix::fs::symlink("v1.0.0", skill.parent().unwrap().join("latest")).unwrap();
+        fs::write(registry.join("skills/acme/manifest.yaml"), "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0}\nbundles: {starter: {packages: [alpha]}}\n").unwrap();
+        let registries = HashMap::from([("local".into(), "registry".into())]);
+        BaseConfig {
+            default_registry: "local".into(),
+            registries: registries.clone(),
+            check_for_updates: false,
+        }
+        .save()
+        .unwrap();
+        let config_path = project.join("skills.yaml");
+        fs::write(&config_path, "name: fixture\nregistries: {local: registry}\nagents: [codex]\nskills:\n  - name: old\n    path: old\n    publisher_hint: keep-me\n").unwrap();
+        let old = project.join("old");
+        fs::create_dir(&old).unwrap();
+        fs::write(old.join("SKILL.md"), "---\nname: old\n---\n# Old\n").unwrap();
+        add_registry_item(
+            &config_path,
+            &project,
+            "acme/starter",
+            Some("local".into()),
+            None,
+            None,
+            false,
+            false,
+            false,
+            true,
+        )
+        .unwrap();
+        let doc: serde_yaml::Value =
+            serde_yaml::from_slice(&fs::read(&config_path).unwrap()).unwrap();
+        assert_eq!(doc["skills"][0]["publisher_hint"].as_str(), Some("keep-me"));
+        assert!(!project.join(".agents/skills/alpha").exists());
+        run(Commands::Install {
+            global: false,
+            dry_run: false,
+            json: false,
+            yes: true,
+        })
+        .unwrap();
+        assert!(project.join(".agents/skills/alpha").is_symlink());
+        assert_eq!(
+            fs::canonicalize(linker::resolve_registry_path("local").unwrap()).unwrap(),
+            fs::canonicalize(registry).unwrap()
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn conflicting_cached_origins_are_rejected_and_cached_preview_needs_no_tmpdir() {
+        let environment = Environment::new();
+        let project = environment.project();
+        let a = environment.registry();
+        let b = project.join("other");
+        for root in [&a, &b] {
+            let skill = root.join("skills/acme/alpha/1.0.0");
+            fs::create_dir_all(&skill).unwrap();
+            fs::write(skill.join("SKILL.md"), "---\nname: alpha\n---\n# Alpha\n").unwrap();
+            fs::write(root.join("skills/acme/manifest.yaml"), "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0}\nbundles: {starter: {packages: [alpha]}}\n").unwrap();
+            git(root, &["init", "--quiet"]);
+            git(root, &["add", "."]);
+            git(
+                root,
+                &[
+                    "-c",
+                    "user.name=Fixture",
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "commit",
+                    "-qm",
+                    "fixture",
+                ],
+            );
+        }
+        let cache = linker::resolve_registry_path("local").unwrap();
+        fs::create_dir_all(cache.parent().unwrap()).unwrap();
+        let cloned = Command::new("git")
+            .args(["clone", "--quiet"])
+            .arg(&a)
+            .arg(&cache)
+            .status()
+            .unwrap();
+        assert!(cloned.success());
+        let config_path = project.join("skills.yaml");
+        let mut config = SkillsConfig {
+            name: "origin".into(),
+            version: None,
+            registries: Some(HashMap::from([("local".into(), "other".into())])),
+            agents: vec!["codex".into()],
+            skills: Vec::new(),
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            metadata: Default::default(),
+        };
+        BaseConfig {
+            default_registry: "local".into(),
+            registries: HashMap::from([("local".into(), a.to_string_lossy().into_owned())]),
+            check_for_updates: false,
+        }
+        .save()
+        .unwrap();
+        config.save_to_file(&config_path).unwrap();
+        let before = fs::read(&config_path).unwrap();
+        let add = || {
+            add_registry_item(
+                &config_path,
+                &project,
+                "acme/starter",
+                Some("local".into()),
+                None,
+                None,
+                false,
+                false,
+                true,
+                false,
+            )
+        };
+        assert!(add()
+            .unwrap_err()
+            .to_string()
+            .contains("different or missing origin"));
+        config
+            .registries
+            .as_mut()
+            .unwrap()
+            .insert("local".into(), format!("file://{}", b.display()));
+        config.save_to_file(&config_path).unwrap();
+        assert!(add()
+            .unwrap_err()
+            .to_string()
+            .contains("different or missing origin"));
+        let origin = format!("file://{}", a.display());
+        git(&cache, &["remote", "set-url", "origin", &origin]);
+        config
+            .registries
+            .as_mut()
+            .unwrap()
+            .insert("local".into(), origin);
+        config.save_to_file(&config_path).unwrap();
+        let preview_before = fs::read(&config_path).unwrap();
+        let tmpdir = env::var_os("TMPDIR");
+        env::set_var("TMPDIR", project.join("missing-temp-dir"));
+        let result = add();
+        if let Some(value) = tmpdir {
+            env::set_var("TMPDIR", value);
+        } else {
+            env::remove_var("TMPDIR");
+        }
+        result.unwrap();
+        assert!(!project.join("missing-temp-dir").exists());
+        assert_ne!(preview_before, before);
+        assert_eq!(fs::read(&config_path).unwrap(), preview_before);
+        assert!(!project.join(".agents").exists());
+        config.skills.push(SkillSpec {
+            name: "acme/alpha".into(),
+            version: Some("latest".into()),
+            source: Some("local".into()),
+            path: None,
+            kind: None,
+        });
+        config
+            .registries
+            .as_mut()
+            .unwrap()
+            .insert("local".into(), "other".into());
+        assert!(validate_effective_registry_caches(&config, &project)
+            .unwrap_err()
+            .to_string()
+            .contains("different or missing origin"));
+    }
+
+    #[test]
+    fn skill_json_preview_contains_planned_entry() {
+        let entry = SkillSpec {
+            name: "acme/alpha".into(),
+            version: Some("latest".into()),
+            source: Some("local".into()),
+            path: None,
+            kind: None,
+        };
+        let result = format_add_preview(&entry, false, false).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["entry"]["name"], "acme/alpha");
+        assert_eq!(json["entry"]["source"], "local");
+        assert_eq!(json["entry"]["version"], "latest");
+        assert_eq!(json["scope"], "project");
+        assert_eq!(json["already_present"], false);
     }
 
     #[test]
