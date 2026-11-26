@@ -5,6 +5,167 @@ use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
+// Root publisher metadata is opaque; installation fields retain typed parsing.
+#[derive(Debug, Deserialize)]
+struct NamespaceManifest {
+    schema_version: u32,
+    namespace: String,
+    #[serde(default)]
+    toolkit_version: Option<String>,
+    #[serde(default)]
+    source_repository: Option<String>,
+    #[serde(default)]
+    source_revision: Option<String>,
+    #[serde(default)]
+    minimum_skm_version: Option<String>,
+    #[serde(default)]
+    skm_adapter_compatibility: Option<String>,
+    packages: BTreeMap<String, String>,
+    #[serde(default)]
+    bundles: BTreeMap<String, BundleMembers>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BundleMembers {
+    packages: Vec<String>,
+}
+
+fn read_manifest(
+    root: &Path,
+    namespace: &str,
+) -> Result<NamespaceManifest, Box<dyn std::error::Error>> {
+    let manifest_path = root.join("skills").join(namespace).join("manifest.yaml");
+    for path in [root.join("skills"), root.join("skills").join(namespace)] {
+        let metadata = fs::symlink_metadata(&path)?;
+        if !metadata.is_dir() || metadata.file_type().is_symlink() {
+            return Err(format!(
+                "registry namespace must be a real directory: {}",
+                path.display()
+            )
+            .into());
+        }
+    }
+    let metadata = fs::symlink_metadata(&manifest_path)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 256 * 1024 {
+        return Err("bundle manifest must be a regular file of at most 256 KiB".into());
+    }
+    let manifest: NamespaceManifest = serde_yaml::from_slice(&fs::read(&manifest_path)?)?;
+    validate_manifest(&manifest, namespace)?;
+    Ok(manifest)
+}
+
+pub(crate) fn published_members(
+    root: &Path,
+    namespace: &str,
+    id: &str,
+    source: &str,
+) -> Result<Vec<SkillSpec>, Box<dyn std::error::Error>> {
+    let manifest = read_manifest(root, namespace)?;
+    let bundle = manifest.bundles.get(id).ok_or_else(|| {
+        format!("Bundle '{namespace}/{id}' is not published by registry '{source}'")
+    })?;
+    Ok(bundle
+        .packages
+        .iter()
+        .map(|member| SkillSpec {
+            name: format!("{namespace}/{member}"),
+            version: Some(manifest.packages[member].clone()),
+            source: Some(source.to_string()),
+            path: None,
+            kind: None,
+        })
+        .collect())
+}
+
+fn validate_manifest(
+    manifest: &NamespaceManifest,
+    namespace: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if manifest.schema_version != 2 || manifest.namespace != namespace {
+        return Err("bundle requires a schema-2 manifest matching its namespace".into());
+    }
+    if manifest.packages.is_empty() || manifest.bundles.is_empty() {
+        return Err("bundle manifest must publish packages and bundles".into());
+    }
+    for (name, version) in &manifest.packages {
+        valid_id(name)?;
+        validate_skill_name(&format!("{namespace}/{name}"))?;
+        validate_exact_version(version)?;
+    }
+    for (id, bundle) in &manifest.bundles {
+        valid_id(id)?;
+        if bundle.packages.is_empty() {
+            return Err(format!("Bundle '{id}' is empty").into());
+        }
+        let members: BTreeSet<_> = bundle.packages.iter().collect();
+        if members.len() != bundle.packages.len()
+            || bundle
+                .packages
+                .iter()
+                .any(|name| !manifest.packages.contains_key(name))
+        {
+            return Err(format!("Bundle '{id}' has duplicate or unknown members").into());
+        }
+    }
+    if let Some(version) = &manifest.toolkit_version {
+        validate_exact_version(version)?;
+    }
+    if let Some(minimum) = &manifest.minimum_skm_version {
+        validate_exact_version(minimum)?;
+        if semver_parts(minimum)? > semver_parts(env!("CARGO_PKG_VERSION"))? {
+            return Err(format!("Bundle requires SKM {minimum} or newer").into());
+        }
+    }
+    if let Some(adapter) = &manifest.skm_adapter_compatibility {
+        if adapter != "2.x" {
+            return Err(format!("unsupported SKM adapter compatibility: {adapter}").into());
+        }
+    }
+    if manifest
+        .source_repository
+        .as_ref()
+        .is_some_and(|source| source.trim().is_empty())
+    {
+        return Err("source_repository cannot be empty".into());
+    }
+    if let Some(revision) = &manifest.source_revision {
+        if revision.len() != 40
+            || !revision
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(
+                "source_revision must be a 40-character lowercase hexadecimal commit".into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn semver_parts(version: &str) -> Result<(u64, u64, u64), Box<dyn std::error::Error>> {
+    let mut parts = version.strip_prefix('v').unwrap_or(version).split('.');
+    Ok((
+        parts.next().ok_or("missing major version")?.parse()?,
+        parts.next().ok_or("missing minor version")?.parse()?,
+        parts.next().ok_or("missing patch version")?.parse()?,
+    ))
+}
+
+fn valid_id(id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    if id.is_empty()
+        || id.starts_with('-')
+        || id.ends_with('-')
+        || id.contains("--")
+        || !id
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    {
+        return Err(format!("Invalid bundle or package ID: {id}").into());
+    }
+    Ok(())
+}
+
 const VERSION_METADATA_KEY: &str = "skm-version";
 const DEPENDENCIES_METADATA_KEY: &str = "skm-dependencies";
 const MAX_SKILL_DEPENDENCY_DEPTH: usize = 128;
@@ -260,13 +421,6 @@ pub fn linkable_entries(entries: &[ResolvedEntry]) -> Vec<SkillSpec> {
 
 /// Expand a `kind: bundle` entry into its published member SkillSpecs by
 /// reading the registry namespace manifest.
-pub fn resolve_bundle_members_pub(
-    bundle: &SkillSpec,
-    project_root: &Path,
-) -> Result<Vec<SkillSpec>, Box<dyn std::error::Error>> {
-    resolve_bundle_members_with(bundle, project_root, resolve_skill_source_dir)
-}
-
 fn resolve_bundle_members_with<F>(
     bundle: &SkillSpec,
     project_root: &Path,
@@ -342,7 +496,7 @@ where
             bundle.name
         )
     })?;
-    crate::bundle::published_members(&registry_root, namespace, id, source)
+    published_members(&registry_root, namespace, id, source)
 }
 
 pub(crate) fn resolve_skill_dependency_closure_with<F>(

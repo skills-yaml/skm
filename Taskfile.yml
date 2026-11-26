@@ -95,9 +95,10 @@ tasks:
       - cargo test --bin skm toolkit::tests -- --test-threads=1
 
   test:bundle:
-    desc: Test bundle manifest, dependency, and transactional installation contracts
+    desc: Test bundle resolution and unified add contracts
     cmds:
-      - cargo test --bin skm bundle::tests -- --test-threads=1
+      - cargo test --bin skm linker::tests -- --test-threads=1
+      - cargo test --bin skm search_cli_tests -- --test-threads=1
 
   test:registry-format:
     desc: Test registry discovery and publisher-neutral configuration interfaces

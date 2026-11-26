@@ -106,10 +106,7 @@ impl SearchItem<'_> {
                 apply_command: None,
             },
             Self::Bundle(bundle) => {
-                let command = format!(
-                    "skm add {} --source {} --kind bundle",
-                    bundle.id, bundle.registry
-                );
+                let command = format!("skm add {} --source {}", bundle.id, bundle.registry);
                 SearchMatch {
                     name: &bundle.id,
                     kind: "bundle",
@@ -119,8 +116,8 @@ impl SearchItem<'_> {
                     dependencies: &[],
                     members: Some(bundle.members),
                     packages: Some(&bundle.packages),
-                    add_command: format!("{command} --dry-run"),
-                    apply_command: Some(format!("{command} --yes")),
+                    add_command: command.clone(),
+                    apply_command: Some(format!("{command} --yes && skm install --yes")),
                 }
             }
         }
@@ -166,6 +163,69 @@ pub fn discover(
     registry: Option<&str>,
 ) -> Result<Discovery, String> {
     discover_with_refresh(config, project, registry, false)
+}
+
+/// Inspect the effective registry for add, without modifying persistent caches.
+/// A preview cannot clone an uncached remote because it must not write at all.
+pub fn discover_for_add(
+    config: &SkillsConfig,
+    project: &Path,
+    registry: &str,
+    preview: bool,
+) -> Result<(Discovery, std::path::PathBuf, Option<tempfile::TempDir>), String> {
+    let base = BaseConfig::load().map_err(|error| error.to_string())?;
+    let location = config
+        .registries
+        .as_ref()
+        .and_then(|r| r.get(registry))
+        .or_else(|| base.registries.get(registry))
+        .ok_or_else(|| format!("Registry '{registry}' is not configured"))?;
+    let local = project.join(location);
+    let cache = crate::linker::resolve_registry_path(registry)
+        .ok_or_else(|| format!("Invalid registry name: {registry}"))?;
+    let mut temporary = None;
+    let root = if local.exists() {
+        local
+    } else if cache_matches(&cache, location) {
+        cache
+    } else if preview {
+        return Err(format!(
+            "Registry '{registry}' is not cached; run skm cache refresh {registry} first"
+        ));
+    } else {
+        if !is_git_url(location) {
+            return Err("Local registry path does not exist, or URL scheme is unsupported".into());
+        }
+        let dir = tempfile::tempdir()
+            .map_err(|_| "Cannot create temporary registry storage".to_string())?;
+        let root = dir.path().join("registry");
+        let mut clone = Command::new("git");
+        clone
+            .args([
+                "-c",
+                "protocol.ext.allow=never",
+                "clone",
+                "--depth",
+                "1",
+                "--",
+                location,
+            ])
+            .arg(&root);
+        run_git(clone, Duration::from_secs(30))?;
+        temporary = Some(dir);
+        root
+    };
+    let contents = scan_local(registry, &root)?;
+    Ok((
+        Discovery {
+            entries: contents.entries,
+            bundles: contents.bundles,
+            collections: contents.collections,
+            warnings: Vec::new(),
+        },
+        root,
+        temporary,
+    ))
 }
 
 pub fn discover_with_refresh(
@@ -765,6 +825,7 @@ fn format_text_results(entries: &[SearchMatch<'_>]) -> String {
         };
         let mut details = wrap_search_text(&summary, description_width);
         details.push(format!("Registry: {}", entry.registry));
+        details.push(format!("Add: {}", entry.add_command));
         if !entry.dependencies.is_empty() {
             details.extend(wrap_search_text(
                 &format!("Dependencies: {}", entry.dependencies.join(", ")),
@@ -818,7 +879,7 @@ mod tests {
     }
 
     #[test]
-    fn text_results_show_two_columns_without_add_instructions() {
+    fn text_results_show_two_columns_and_add_instructions() {
         let skill = Entry {
             name: "software/spec".into(),
             registry: "default".into(),
@@ -849,15 +910,22 @@ mod tests {
         assert_eq!(&lines[3][description_column..], "Registry: default");
         assert_eq!(
             &lines[4][description_column..],
+            "Add: skm add software/spec --source default --kind skill"
+        );
+        assert_eq!(
+            &lines[5][description_column..],
             "Dependencies: software/review@2.0.0"
         );
-        assert!(lines[6].starts_with("software/starter (bundle)"));
+        assert!(lines[7].starts_with("software/starter (bundle)"));
         assert_eq!(
-            &lines[6][description_column..],
+            &lines[7][description_column..],
             "Includes 2 skills: software/spec, software/review."
         );
-        assert_eq!(&lines[7][description_column..], "Registry: company");
-        assert!(!output.contains("skm add"));
+        assert_eq!(&lines[8][description_column..], "Registry: company");
+        assert_eq!(
+            &lines[9][description_column..],
+            "Add: skm add software/starter --source company"
+        );
         assert!(!output.contains("Preview:"));
     }
 
@@ -983,11 +1051,11 @@ mod tests {
         assert_eq!(json["matches"][2]["members"], 1);
         assert_eq!(
             json["matches"][2]["add_command"],
-            "skm add software/starter --source company --kind bundle --dry-run"
+            "skm add software/starter --source company"
         );
         assert_eq!(
             json["matches"][2]["apply_command"],
-            "skm add software/starter --source company --kind bundle --yes"
+            "skm add software/starter --source company --yes && skm install --yes"
         );
         assert_eq!(json["bundles"].as_array().unwrap().len(), 1);
         assert!(json["matches"][0]["dependencies"]
