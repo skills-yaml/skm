@@ -1544,6 +1544,92 @@ fn global_remove_rejects_conflicting_cache_even_without_links() {
 }
 
 #[test]
+fn global_remove_unconfigured_registry_requires_absent_caches() {
+    for cache_root in [
+        None,
+        Some(".skm/cache/registries"),
+        Some(".cache/skm/registries"),
+        Some("xdg-cache/skm/registries"),
+    ] {
+        let home = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let home = home.path();
+        let registry = home.join("registry");
+        let skill = registry.join("skills/acme/parent/v1.0.0");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(
+            skill.join("SKILL.md"),
+            "---\nname: parent\nmetadata:\n  skm-version: '1.0.0'\n---\n",
+        )
+        .unwrap();
+        symlink("v1.0.0", skill.parent().unwrap().join("latest")).unwrap();
+        fs::write(
+            registry.join("skills/acme/manifest.yaml"),
+            "schema_version: 2\nnamespace: acme\npackages: {parent: 1.0.0}\nbundles: {}\n",
+        )
+        .unwrap();
+        success(command(
+            home,
+            project.path(),
+            &[
+                "registry",
+                "add",
+                "acme-local",
+                registry.to_str().unwrap(),
+                "--skip-validate",
+            ],
+        ));
+        let manifest = home.join(".skm/skills.yaml");
+        fs::write(&manifest, "name: User\nagents: [codex]\nskills: []\n").unwrap();
+        success(command(
+            home,
+            project.path(),
+            &[
+                "add",
+                "acme/parent",
+                "--registry",
+                "acme-local",
+                "--global",
+                "--yes",
+            ],
+        ));
+        success(command(
+            home,
+            project.path(),
+            &["registry", "remove", "acme-local", "--yes"],
+        ));
+        if let Some(root) = cache_root {
+            let cache = home.join(root).join("acme-local");
+            fs::create_dir_all(cache.parent().unwrap()).unwrap();
+            // A dangling entry also has an origin that cannot be validated.
+            symlink(home.join("missing-registry"), cache).unwrap();
+        }
+        let before = snapshot(home);
+        for args in [
+            &["remove", "acme/parent", "--global", "--dry-run", "--yes"][..],
+            &["remove", "acme/parent", "--global", "--yes"],
+        ] {
+            let output = command(home, project.path(), args);
+            if cache_root.is_some() {
+                assert!(!output.status.success());
+                assert!(String::from_utf8_lossy(&output.stderr)
+                    .contains("cannot validate cached registry"));
+                assert_eq!(snapshot(home), before);
+            } else {
+                success(output);
+                if args.contains(&"--dry-run") {
+                    assert_eq!(snapshot(home), before);
+                } else {
+                    let value: serde_yaml::Value =
+                        serde_yaml::from_slice(&fs::read(&manifest).unwrap()).unwrap();
+                    assert!(value["skills"].as_sequence().unwrap().is_empty());
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn global_remove_unlinks_orphan_dependencies_but_retains_shared_ones() {
     for shared in [false, true] {
         let home = tempfile::tempdir().unwrap();

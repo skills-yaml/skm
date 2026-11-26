@@ -594,16 +594,10 @@ fn global_removal_has_no_owned_targets(
     let mut selected_cache_missing = false;
     for skill in &config.skills {
         if skill.path.is_none() {
-            let cache = linker::effective_registry_path(
-                skill.source.as_deref().unwrap_or("default"),
-                project,
-            )?;
+            let name = skill.source.as_deref().unwrap_or("default");
+            let cache_missing = removal_registry_cache_missing(name, config, project)?;
             if skill.name == selected.name {
-                selected_cache_missing = match fs::symlink_metadata(cache) {
-                    Ok(_) => false,
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
-                    Err(error) => return Err(error.into()),
-                };
+                selected_cache_missing = cache_missing;
             }
         }
     }
@@ -651,6 +645,56 @@ fn global_removal_has_no_owned_targets(
         }
     }
     Ok(existing.is_empty())
+}
+
+fn removal_registry_cache_missing(
+    name: &str,
+    config: &SkillsConfig,
+    project: &Path,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let canonical = linker::canonical_registry_path(name)
+        .ok_or_else(|| format!("Invalid registry name: {name}"))?;
+    let override_location = config
+        .registries
+        .as_ref()
+        .and_then(|registries| registries.get(name));
+    let location = if let Some(location) = override_location {
+        Some(location.clone())
+    } else {
+        crate::config_manager::BaseConfig::load()?
+            .registries
+            .remove(name)
+    };
+    if let Some(location) = location {
+        let cache = linker::validated_registry_path(name, &location, project)?;
+        return match fs::symlink_metadata(cache) {
+            Ok(_) => Ok(false),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
+            Err(error) => Err(error.into()),
+        };
+    }
+
+    // With no configured URL, no cache origin can be trusted. Only an alias
+    // absent from every cache root permits the uninstalled removal shortcut.
+    let home = dirs::home_dir().ok_or("Cannot resolve home")?;
+    let mut candidates = vec![canonical, home.join(".cache/skm/registries").join(name)];
+    if let Some(cache) = dirs::cache_dir() {
+        candidates.push(cache.join("skm/registries").join(name));
+    }
+    for cache in candidates {
+        match fs::symlink_metadata(&cache) {
+            Ok(_) => {
+                return Err(format!(
+                    "Registry '{name}' is not configured; cannot validate cached registry at {}",
+                    cache.display()
+                )
+                .into())
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(true)
 }
 
 fn prompt_for_removal(skill_name: &str) -> Result<bool, Box<dyn std::error::Error>> {

@@ -21,11 +21,11 @@ Implement the claimed scope.
 
 ## Actions
 
-Created an isolated worktree through an atomic peer claim. Validated registry origins before the global removal shortcut and retained independently owned targets when the selected registry cache is absent. Added temporary-home regressions for both requested cases and a no-Git preview probe.
+Created an isolated worktree through an atomic peer claim. Validated registry origins before the global removal shortcut and retained independently owned targets when the selected registry cache is absent. Added temporary-home regressions for both requested cases and a no-Git preview probe. Independent review identified an unconfigured-alias regression; allow declaration removal only when that alias has no entry in any cache root, and fail closed when an origin cannot be validated.
 
 ## Validation
 
-Focused global-home, cache, and bundle modules passed. Full check, test, and version gates run before handoff; results are reported with the exact revision.
+Focused global-home, cache, and bundle modules are rerun for the revised candidate; the unconfigured-alias regression covers canonical and both legacy roots. Full check, test, and version gates run before handoff; results are reported with the exact revision.
 
 ## Blockers and Dependencies
 
