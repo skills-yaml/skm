@@ -54,12 +54,12 @@ This duplication means:
   publishes both with the same ID (the ambiguity error stays).
 - **Keep the `--global` bundle rejection**: `skm add --global <bundle>` remains
   rejected ("published bundles can only be added to a project").
-- **Search output** changes the suggested add command from
-  `skm add <id> --source <r> --kind bundle` to `skm add <id> --source <r>`
-  (auto-detected). The JSON `apply_command` changes from
-  `skm add <id> --source <r> --kind bundle --yes` to
-  `skm add <id> --source <r> --yes && skm install --yes` since add no longer links.
-  JSON `kind: "bundle"` field stays.
+- **Search output** suggests `skm add <id> --source <r>` for an unambiguous
+  bundle ID (auto-detected). When the same registry publishes a skill and a
+  bundle with that ID, the bundle suggestion includes `--kind bundle` to
+  disambiguate it. The JSON `apply_command` uses the corresponding add command
+  followed by `--yes && skm install --yes` since add no longer links. The JSON
+  `kind: "bundle"` field stays.
 - **`skm remove <bundle-name>`** removes the `kind: bundle` entry and unlinks all
   resolved members, but does NOT unlink members that are also declared as
   standalone skill entries in the remaining config. The existing `remover.rs`
@@ -142,8 +142,9 @@ remains toolkit-only); change the lockfile schema; remove `--kind` flag entirely
 6. **version_manager.rs**: handle `kind: bundle` entries in
    `show_outdated`/`upgrade_all`/`use_version` by re-resolving via
    `resolve_entries` and comparing member versions.
-7. **search.rs**: change bundle add suggestion to `skm add <id> --source <r>`;
-   change JSON `apply_command` to include `skm install --yes`.
+7. **search.rs**: omit `--kind bundle` from unambiguous bundle add suggestions;
+   retain it for same-registry skill/bundle ID collisions. Change JSON
+   `apply_command` to include `skm install --yes`.
 8. **Delete src/bundle.rs** and remove `mod bundle;` from main.rs.
 9. **installer.rs**: verify it already handles bundles correctly (it does via
    resolve_entries); no changes expected.
@@ -212,8 +213,11 @@ remains toolkit-only); change the lockfile schema; remove `--kind` flag entirely
 5. `skm check` passes after install with bundle entries; detects membership
    drift (new bundle member) and version drift (member version change).
 6. `skm add --kind bundle` and `--kind skill` still work for disambiguation.
-7. Search results suggest `skm add <id> --source <r>` (no `--kind bundle`);
-   JSON `apply_command` includes `skm install --yes`.
+7. Bundle search results suggest `skm add <id> --source <r>` without
+   `--kind bundle` for an unambiguous ID; when the same registry publishes a
+   skill and bundle with that ID, the bundle suggestion includes `--kind bundle`.
+   JSON `apply_command` uses the corresponding add command and includes
+   `skm install --yes`.
 8. `skm add <bundle> --yes` twice is a no-op (idempotent).
 9. `skm add <skill> --dry-run` and `--json` preview the manifest change without
    writing.
