@@ -1308,13 +1308,9 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 validate_manifest_scope(&load_config_for_scope(&scope.path, global)?, true)?;
             }
             let config_path = &scope.path;
-            let original = std::fs::read(config_path).ok();
             let (skill_name, version) = SkillSpec::parse_with_version(&skill_version)?;
             let version = version.unwrap_or_else(|| "latest".to_string());
             version_manager::use_version(&skill_name, &version, config_path, global, yes, dry_run)?;
-            if !global && !dry_run && std::fs::read(config_path).ok() != original {
-                installer::sync_existing_lock(config_path, &current_dir)?;
-            }
         }
         Commands::Skill(SkillCommands::Outdated {
             global,
@@ -1344,7 +1340,6 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             if all {
                 version_manager::upgrade_all(config_path, global, pre, yes, dry_run)?;
             } else if let Some(skill_name) = skill_name {
-                let original = std::fs::read(config_path).ok();
                 version_manager::update_to_latest(
                     &skill_name,
                     config_path,
@@ -1353,9 +1348,6 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                     yes,
                     dry_run,
                 )?;
-                if !global && !dry_run && std::fs::read(config_path).ok() != original {
-                    installer::sync_existing_lock(config_path, &current_dir)?;
-                }
             }
         }
     }
