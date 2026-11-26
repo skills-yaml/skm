@@ -140,6 +140,20 @@ pub(crate) fn write_base_settings(value: &serde_yaml::Value) -> ConfigResult<()>
     Ok(())
 }
 
+/// Check global manifest ancestors without creating user state.
+pub(crate) fn check_global_manifest_parent() -> ConfigResult<()> {
+    let home = dirs::home_dir().ok_or("Could not determine user home directory")?;
+    directory(&home, false)?;
+    let parent = get_user_config_dir().ok_or("Could not determine user home directory")?;
+    if existing_directory(&parent)? {
+        let cache = parent.join("cache");
+        if existing_directory(&cache)? {
+            existing_directory(&cache.join("registries"))?;
+        }
+    }
+    Ok(())
+}
+
 /// Refuse unsafe home, parent, and settings-file types before recovery or backup.
 pub(crate) fn check_base_settings_target(create_parent: bool) -> ConfigResult<()> {
     let home = dirs::home_dir().ok_or("Could not determine user home directory")?;

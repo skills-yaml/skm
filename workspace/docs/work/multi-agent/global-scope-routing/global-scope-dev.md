@@ -34,15 +34,22 @@ manifest-backed commands, non-interactive and interactive global init, registry
 selection, relative local add paths, and previews through the selected scope.
 Kept the existing base-settings interface distinct and protected global
 previews from unsafe manifest types. Updated an older command fixture that
-assumed global install read the project manifest.
+assumed global install read the project manifest. Independent review rejected
+revision 5ee36ed577aa7c82b85fd14dcaaf91528dfcdc62 for unsafe preview
+ancestors, missing global-add scope validation and unscoped guidance. Reworked
+the candidate to validate home, manifest, cache and registry-directory parents
+without creating state, reject project-only global manifests before discovery,
+and report scope-specific commands.
 
 ## Validation
 
 Partial AC2, AC3 and AC7: isolated home and two-project command fixtures cover
 manifest isolation, conflicting registry maps and inherited settings, selected
 agents, cancellation and metadata, stable local paths, version inspection and
-byte-identical previews. Focused global-home, registry-format, bundle, toolkit,
-and cache Taskfile modules passed. Full `task check` and `task test` passed;
+byte-identical previews. Added rejected-candidate regressions for symlinked
+manifest/cache ancestors, toolkit manifests on local and registry adds, and
+global init/install guidance. Focused global-home, registry-format, bundle,
+toolkit, and cache Taskfile modules passed. Full `task check` and `task test` passed;
 review and final candidate gates remain required after subsequent fixes.
 
 ## Blockers and Dependencies

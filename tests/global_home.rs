@@ -483,3 +483,125 @@ fn global_versions_and_inspection_use_user_registry_not_project_registry() {
     assert!(String::from_utf8_lossy(&refresh.stderr).contains("from ~/.skm"));
     assert_eq!(snapshot(root.path()), before);
 }
+
+#[test]
+fn global_previews_reject_symlinked_home_state_without_reading_or_writing_it() {
+    let root = tempfile::tempdir().unwrap();
+    let home = root.path().join("home");
+    let project = root.path().join("project");
+    let external = root.path().join("external");
+    for dir in [&home, &project, &external] {
+        fs::create_dir(dir).unwrap();
+    }
+    fs::write(
+        external.join("skills.yaml"),
+        "name: External\nagents: []\nskills: []\n",
+    )
+    .unwrap();
+    symlink(&external, home.join(".skm")).unwrap();
+    let before = snapshot(root.path());
+    for args in [
+        &["install", "--global", "--json"][..],
+        &["add", "local", "--path", ".", "--global", "--json"],
+    ] {
+        let output = command(&home, &project, args);
+        assert!(!output.status.success(), "{args:?}");
+        assert!(String::from_utf8_lossy(&output.stderr).contains("Expected a real directory"));
+        assert_eq!(snapshot(root.path()), before, "{args:?}");
+    }
+}
+
+#[test]
+fn global_add_rejects_project_only_manifest_before_discovery_or_write() {
+    let root = tempfile::tempdir().unwrap();
+    let home = root.path().join("home");
+    let project = root.path().join("project");
+    fs::create_dir(&home).unwrap();
+    fs::create_dir(&project).unwrap();
+    success(command(&home, &project, &["config", "show", "--global"]));
+    fs::write(home.join(".skm/skills.yaml"), "name: User\nagents: [codex]\nskills: []\ntoolkit: {manifest: toolkit.yaml, version: '1.0.0'}\n").unwrap();
+    let before = snapshot(root.path());
+    for args in [
+        &["add", "local", "--path", ".", "--global", "--json"][..],
+        &["add", "local", "--path", ".", "--global", "--yes"],
+        &["add", "team/remote", "--global", "--json"],
+        &["add", "team/remote", "--global", "--yes"],
+    ] {
+        let output = command(&home, &project, args);
+        assert!(!output.status.success(), "{args:?}");
+        assert!(String::from_utf8_lossy(&output.stderr).contains("project-only"));
+        assert_eq!(snapshot(root.path()), before, "{args:?}");
+    }
+}
+
+#[test]
+fn global_manifest_guidance_names_the_selected_scope() {
+    let root = tempfile::tempdir().unwrap();
+    let home = root.path().join("home");
+    let project = root.path().join("project");
+    fs::create_dir(&home).unwrap();
+    fs::create_dir(&project).unwrap();
+    for args in [
+        &["install", "--global", "--json"][..],
+        &["add", "local", "--path", ".", "--global", "--json"],
+    ] {
+        let output = command(&home, &project, args);
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("skm init --global"));
+        assert!(!home.join(".skm").exists());
+    }
+    success(command(
+        &home,
+        &project,
+        &["init", "--global", "--non-interactive"],
+    ));
+    let output = success(command(
+        &home,
+        &project,
+        &["add", "local", "--path", ".", "--global", "--yes"],
+    ));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("skm install --global"));
+}
+
+#[test]
+fn global_install_preview_rejects_symlinked_cache_ancestors() {
+    let root = tempfile::tempdir().unwrap();
+    let home = root.path().join("home");
+    let project = root.path().join("project");
+    let external = root.path().join("external");
+    for dir in [&home, &project, &external] {
+        fs::create_dir(dir).unwrap();
+    }
+    let skm = home.join(".skm");
+    fs::create_dir(&skm).unwrap();
+    let registry = external.join("registries/default");
+    fs::create_dir_all(registry.join("skills/team/skill/v1.0.0")).unwrap();
+    fs::write(
+        registry.join("skills/team/skill/v1.0.0/SKILL.md"),
+        "---\nname: skill\ndescription: test\n---\n",
+    )
+    .unwrap();
+    fs::write(
+        skm.join("config.yaml"),
+        format!(
+            "default_registry: default\nregistries:\n  default: {}\n",
+            registry.display()
+        ),
+    )
+    .unwrap();
+    fs::write(skm.join("skills.yaml"), "name: User\nagents: [codex]\nskills:\n  - {name: team/skill, version: v1.0.0, source: default}\n").unwrap();
+    symlink(&external, skm.join("cache")).unwrap();
+    let before = snapshot(root.path());
+    let output = command(&home, &project, &["install", "--global", "--json"]);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Expected a real directory"));
+    assert_eq!(snapshot(root.path()), before);
+    fs::remove_file(skm.join("cache")).unwrap();
+    fs::create_dir(skm.join("cache")).unwrap();
+    symlink(external.join("registries"), skm.join("cache/registries")).unwrap();
+    let before = snapshot(root.path());
+    let output = command(&home, &project, &["install", "--global", "--json"]);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Expected a real directory"));
+    assert_eq!(snapshot(root.path()), before);
+}

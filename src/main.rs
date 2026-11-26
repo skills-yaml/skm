@@ -738,6 +738,7 @@ struct ManifestScope {
 impl ManifestScope {
     fn select(global: bool, current_dir: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         let path = if global {
+            config_manager::check_global_manifest_parent()?;
             config_manager::get_global_manifest_path()
                 .ok_or("Could not determine user home directory")?
         } else {
@@ -825,7 +826,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             yes,
         } => {
             let scope = ManifestScope::select(global, &current_dir)?;
-            let config = load_config(&scope.path)?;
+            let config = load_config_for_scope(&scope.path, global)?;
             validate_config(&config)?;
             validate_manifest_scope(&config, global)?;
 
@@ -947,7 +948,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
         } => {
             let scope = ManifestScope::select(global, &current_dir)?;
             if global {
-                validate_manifest_scope(&load_config(&scope.path)?, true)?;
+                validate_manifest_scope(&load_config_for_scope(&scope.path, global)?, true)?;
             }
             let config_path = &scope.path;
             let original = std::fs::read(config_path).ok();
@@ -970,7 +971,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::List { global } => {
             let scope = ManifestScope::select(global, &current_dir)?;
-            let config = load_config(&scope.path)?;
+            let config = load_config_for_scope(&scope.path, global)?;
             validate_config(&config)?;
             validate_manifest_scope(&config, global)?;
             if config.toolkit.is_none() && !config.skills.is_empty() {
@@ -1268,7 +1269,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
         }) => {
             let scope = ManifestScope::select(global, &current_dir)?;
             if global {
-                validate_manifest_scope(&load_config(&scope.path)?, true)?;
+                validate_manifest_scope(&load_config_for_scope(&scope.path, global)?, true)?;
             }
             let config_path = &scope.path;
             let original = std::fs::read(config_path).ok();
@@ -1287,7 +1288,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
         }) => {
             let scope = ManifestScope::select(global, &current_dir)?;
             if global {
-                validate_manifest_scope(&load_config(&scope.path)?, true)?;
+                validate_manifest_scope(&load_config_for_scope(&scope.path, global)?, true)?;
             }
             if global && refresh {
                 return Err("Global outdated refresh is not yet supported; from ~/.skm run `skm cache refresh NAME`, then retry without --refresh".into());
@@ -1304,7 +1305,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
         }) => {
             let scope = ManifestScope::select(global, &current_dir)?;
             if global {
-                validate_manifest_scope(&load_config(&scope.path)?, true)?;
+                validate_manifest_scope(&load_config_for_scope(&scope.path, global)?, true)?;
             }
             let config_path = &scope.path;
             if all {
@@ -1344,6 +1345,18 @@ fn validate_manifest_scope(
     Ok(())
 }
 
+fn load_config_for_scope(
+    path: &Path,
+    global: bool,
+) -> Result<SkillsConfig, Box<dyn std::error::Error>> {
+    if global
+        && matches!(std::fs::symlink_metadata(path), Err(ref error) if error.kind() == std::io::ErrorKind::NotFound)
+    {
+        return Err("skills.yaml file not found. Run 'skm init --global' to create one.".into());
+    }
+    load_config(path)
+}
+
 fn load_config(path: &Path) -> Result<SkillsConfig, Box<dyn std::error::Error>> {
     match std::fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_symlink() => {
@@ -1366,7 +1379,7 @@ fn check_skills(
     current_dir: &Path,
     global: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let config = load_config(config_path)?;
+    let config = load_config_for_scope(config_path, global)?;
     validate_config(&config)?;
     validate_manifest_scope(&config, global)?;
     if config.toolkit.is_none() && !config.skills.is_empty() {
@@ -1476,6 +1489,8 @@ fn add_registry_item(
     if kind == Some(AddKind::Bundle) && global {
         return Err("published bundles can only be added to a project".into());
     }
+    let config = load_config_for_scope(config_path, global)?;
+    validate_manifest_scope(&config, global)?;
     let source = if path.is_none() {
         Some(source.unwrap_or(config_manager::BaseConfig::load()?.default_registry))
     } else {
@@ -1484,7 +1499,6 @@ fn add_registry_item(
     let mut is_bundle = false;
     if path.is_none() {
         let registry = source.as_deref().unwrap_or("default");
-        let config = load_config(config_path)?;
         let (discovery, root, _temporary) =
             search::discover_for_add(&config, project_root, registry, dry_run || json)?;
         let skill_exists = discovery.entries.iter().any(|entry| entry.name == name);
@@ -1539,8 +1553,14 @@ fn add_skill_with_confirmation<F>(
 where
     F: FnOnce(&str) -> Result<bool, Box<dyn std::error::Error>>,
 {
+    let config = load_config_for_scope(config_path, global)?;
+    validate_manifest_scope(&config, global)?;
     let original = std::fs::read(config_path)?;
-    let mut config = load_config(config_path)?;
+    let mut config = load_config_for_scope(config_path, global)?;
+    if std::fs::read(config_path)? != original {
+        return Err("skills.yaml changed after add planning; retry".into());
+    }
+    validate_manifest_scope(&config, global)?;
     validate_config(&config)?;
     linker::validate_skill_name(&new_skill.name)?;
     new_skill.validate_kind()?;
@@ -1577,14 +1597,15 @@ where
         eprintln!("'{}' is already present in skills.yaml", new_skill.name);
     } else {
         eprintln!(
-            "Add {} '{}' to skills.yaml ({} scope); run skm install afterwards.",
+            "Add {} '{}' to skills.yaml ({} scope); run skm install{} afterwards.",
             if new_skill.is_bundle() {
                 "bundle"
             } else {
                 "skill"
             },
             new_skill.name,
-            if global { "global" } else { "project" }
+            if global { "global" } else { "project" },
+            if global { " --global" } else { "" }
         );
     }
     if dry_run || json || already_present {
@@ -1621,8 +1642,9 @@ where
     }
     staged.persist(config_path)?;
     eprintln!(
-        "Added '{}' to skills.yaml; run skm install to link it.",
-        new_skill.name
+        "Added '{}' to skills.yaml; run skm install{} to link it.",
+        new_skill.name,
+        if global { " --global" } else { "" }
     );
     Ok(())
 }
