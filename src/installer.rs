@@ -1,4 +1,4 @@
-use crate::config::SkillsConfig;
+use crate::config::{SkillSpec, SkillsConfig};
 use crate::linker;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -19,7 +19,7 @@ struct SkillsLock {
     outputs: Vec<LockedOutput>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct LockedBundle {
     name: String,
     version: String,
@@ -29,7 +29,7 @@ struct LockedBundle {
     members: Vec<LockedSkill>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct LockedSkill {
     name: String,
     version: String,
@@ -81,17 +81,133 @@ pub struct Prepared {
     root: PathBuf,
 }
 
+fn locked_skill_spec(skill: &LockedSkill) -> SkillSpec {
+    SkillSpec {
+        name: skill.name.clone(),
+        version: Some(skill.version.clone()),
+        source: Some(skill.source.clone()),
+        path: skill.path.clone(),
+        kind: None,
+    }
+}
+
+// Preserve the installed closure of every other entry when a single bundle is
+// upgraded. The normal installer still owns validation, links and rollback.
+fn resolve_named_bundle(
+    config: &SkillsConfig,
+    project: &Path,
+    name: &str,
+) -> Result<Vec<linker::ResolvedEntry>> {
+    let bytes = read_regular_optional(&project.join("skills.lock.yaml"))?
+        .ok_or("A named bundle upgrade requires an existing lock; run skm install first")?;
+    let lock: serde_yaml::Value = serde_yaml::from_slice(&bytes)?;
+    if lock.get("kind").and_then(|v| v.as_str()) != Some("skills") {
+        return Err("skills.lock.yaml is not a skills-only lockfile".into());
+    }
+    let old_bundles: Vec<LockedBundle> = serde_yaml::from_value(
+        lock.get("bundles")
+            .cloned()
+            .unwrap_or_else(|| serde_yaml::Value::Sequence(Vec::new())),
+    )?;
+    let old_skills: Vec<LockedSkill> = serde_yaml::from_value(
+        lock.get("skills")
+            .cloned()
+            .ok_or("skills.lock.yaml has no skills")?,
+    )?;
+    let selected = config
+        .skills
+        .iter()
+        .find(|s| s.is_bundle() && s.name == name)
+        .ok_or("Selected bundle is missing")?;
+    let old_selected = old_bundles
+        .iter()
+        .find(|b| b.name == name && Some(b.source.as_str()) == selected.source.as_deref())
+        .ok_or("Selected bundle is not installed; run skm install first")?;
+    let mut owned = std::collections::BTreeSet::new();
+    let mut preserved_bundles = Vec::new();
+    for bundle in config
+        .skills
+        .iter()
+        .filter(|s| s.is_bundle() && s.name != name)
+    {
+        let old = old_bundles
+            .iter()
+            .find(|b| b.name == bundle.name && Some(b.source.as_str()) == bundle.source.as_deref())
+            .ok_or("Another bundle is not installed; run skm install first")?;
+        for member in &old.members {
+            let matched = old_skills.iter().any(|skill| {
+                skill.name == member.name
+                    && skill.version == member.version
+                    && skill.source == member.source
+                    && skill.path == member.path
+            });
+            if !matched || member.source != old.source || member.path.is_some() {
+                return Err("Invalid preserved bundle member in skills.lock.yaml".into());
+            }
+        }
+        owned.extend(old.members.iter().map(|m| m.name.clone()));
+        preserved_bundles.push(linker::ResolvedEntry::Bundle {
+            spec: SkillSpec {
+                name: old.name.clone(),
+                version: Some(old.version.clone()),
+                source: Some(old.source.clone()),
+                path: None,
+                kind: Some("bundle".into()),
+            },
+            members: old.members.iter().map(locked_skill_spec).collect(),
+            resolved_version: old.resolved_version.clone(),
+        });
+    }
+    for standalone in config.skills.iter().filter(|s| !s.is_bundle()) {
+        let old = old_skills
+            .iter()
+            .find(|s| s.name == standalone.name)
+            .ok_or("Another skill is not installed; run skm install first")?;
+        let closure = linker::resolve_skill_dependency_closure(&[locked_skill_spec(old)], project)?;
+        owned.extend(closure.into_iter().map(|s| s.name));
+    }
+    let selected_old: std::collections::BTreeSet<_> =
+        old_selected.members.iter().map(|m| &m.name).collect();
+    let mut requests = vec![selected.clone()];
+    requests.extend(
+        old_skills
+            .iter()
+            .filter(|s| !selected_old.contains(&s.name) || owned.contains(&s.name))
+            .map(locked_skill_spec),
+    );
+    let mut entries = linker::resolve_entries(&requests, project)?;
+    entries.extend(preserved_bundles);
+    Ok(entries)
+}
+
 pub fn prepare(
     config: &SkillsConfig,
     project: &Path,
     global: bool,
     manifest: Option<(Vec<u8>, Vec<u8>)>,
 ) -> Result<Prepared> {
+    prepare_inner(config, project, global, manifest, None)
+}
+
+pub fn prepare_named_bundle(config: &SkillsConfig, project: &Path, name: &str) -> Result<Prepared> {
+    prepare_inner(config, project, false, None, Some(name))
+}
+
+fn prepare_inner(
+    config: &SkillsConfig,
+    project: &Path,
+    global: bool,
+    manifest: Option<(Vec<u8>, Vec<u8>)>,
+    selected_bundle: Option<&str>,
+) -> Result<Prepared> {
     linker::validate_agents(&config.agents)?;
     if global && config.skills.iter().any(|skill| skill.is_bundle()) {
         return Err("published bundles are project-only".into());
     }
-    let entries = linker::resolve_entries(&config.skills, project)?;
+    let entries = match selected_bundle {
+        Some(name) => resolve_named_bundle(config, project, name)?,
+        None => linker::resolve_entries(&config.skills, project)?,
+    };
     let resolved = linker::linkable_entries(&entries);
     linker::validate_unique_skill_targets(&resolved)?;
     if !resolved.is_empty() {

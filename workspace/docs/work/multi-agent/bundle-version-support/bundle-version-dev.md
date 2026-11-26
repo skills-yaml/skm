@@ -34,11 +34,11 @@ Implement exact published bundle releases under the amended bundle-skill-entries
 
 ## Actions
 
-Created an isolated worktree through an atomic peer claim. Amended Task1 scope, model, acceptance and gates before implementation. Implemented versioned bundle resolution, lock tracking, maintenance, documentation and deterministic fixtures; retained legacy schema-2 behavior.
+Created an isolated worktree through an atomic peer claim. Amended Task1 scope, model, acceptance and gates before implementation. Implemented versioned bundle resolution, lock tracking, maintenance, documentation and deterministic fixtures; retained legacy schema-2 behavior. Resolved three review findings: named upgrade isolation, exact-pin outdated comparison independent of the lock, and duplicate history key rejection.
 
 ## Validation
 
-Focused bundle and registry-format Taskfile selectors passed. Final candidate gates run before handoff; independent review and combined integration gates remain pending.
+Focused bundle and registry-format Taskfile selectors passed; review-fix regressions cover all three findings. Final candidate gates run before handoff; independent review and combined integration gates remain pending.
 
 ## Blockers and Dependencies
 

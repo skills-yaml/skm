@@ -437,3 +437,64 @@ fn pinned_switch_preserves_shared_links_and_rolls_back_on_collision() {
     assert!(fixture.project.join(".agents/skills/helper").is_symlink());
     fixture.skm(&["check"]);
 }
+
+#[test]
+fn named_upgrade_reconciles_only_requested_bundle() {
+    let fixture = Fixture::new();
+    let path = fixture.project.join("skills.yaml");
+    let mut config = fs::read_to_string(&path).unwrap();
+    config.push_str("  - {name: acme/other, kind: bundle, source: local}\n");
+    fs::write(&path, config).unwrap();
+    fixture.skm(&["install", "--yes"]);
+    let old_lock = fixture.lock();
+    let old_other = old_lock["bundles"]
+        .as_sequence()
+        .unwrap()
+        .iter()
+        .find(|b| b["name"] == "acme/other")
+        .unwrap()
+        .clone();
+    fixture.skill("beta", "1.0.0", None);
+    fixture.skill("gamma", "1.0.0", None);
+    fixture.manifest(
+        "alpha: 1.0.0, helper: 1.0.0, beta: 1.0.0, gamma: 1.0.0",
+        "starter: {packages: [beta]}, other: {packages: [gamma]}",
+    );
+    fixture.commit();
+    fixture.skm(&["cache", "refresh", "local"]);
+    fixture.skm(&["skill", "upgrade", "acme/starter", "--yes"]);
+    assert!(fixture.project.join(".agents/skills/beta").is_symlink());
+    assert!(fixture.project.join(".agents/skills/helper").is_symlink());
+    assert!(!fixture.project.join(".agents/skills/gamma").exists());
+    let lock = fixture.lock();
+    assert_eq!(
+        *lock["bundles"]
+            .as_sequence()
+            .unwrap()
+            .iter()
+            .find(|b| b["name"] == "acme/other")
+            .unwrap(),
+        old_other
+    );
+}
+
+#[test]
+fn outdated_compares_selected_pin_to_latest_even_if_lock_is_latest() {
+    let fixture = Fixture::new();
+    fixture.skill("beta", "1.0.0", None);
+    fs::write(fixture.registry.join("skills/acme/manifest.yaml"), "schema_version: 2\nnamespace: acme\npackages: {beta: 1.0.0, helper: 1.0.0}\nbundles: {starter: {packages: [beta]}, other: {packages: [helper]}}\nbundle_versions:\n  starter:\n    1.9.0: {alpha: 1.0.0}\n    1.11.0: {beta: 1.0.0}\n").unwrap();
+    fixture.commit();
+    fixture.skm(&["cache", "refresh", "local"]);
+    fixture.skm(&["install", "--yes"]);
+    let config_path = fixture.project.join("skills.yaml");
+    let mut config: serde_yaml::Value =
+        serde_yaml::from_slice(&fs::read(&config_path).unwrap()).unwrap();
+    config["skills"][0]["version"] = serde_yaml::Value::String("1.9.0".into());
+    fs::write(&config_path, serde_yaml::to_string(&config).unwrap()).unwrap();
+    let result = fixture.skm(&["skill", "outdated", "acme/starter"]);
+    let text = String::from_utf8(result.stdout).unwrap();
+    assert!(text.contains("1.9.0 -> 1.11.0"), "{text}");
+    assert!(text.contains("added acme/beta@1.0.0"), "{text}");
+    assert!(text.contains("skill use"), "{text}");
+    assert!(!text.contains("1.11.0 -> 1.9.0"), "{text}");
+}

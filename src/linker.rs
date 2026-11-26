@@ -1,5 +1,6 @@
 use crate::config::SkillSpec;
-use serde::Deserialize;
+use serde::de::{MapAccess, Visitor};
+use serde::{Deserialize, Deserializer};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
@@ -24,7 +25,49 @@ struct NamespaceManifest {
     #[serde(default)]
     bundles: BTreeMap<String, BundleMembers>,
     #[serde(default)]
-    bundle_versions: BTreeMap<String, BTreeMap<String, BTreeMap<String, String>>>,
+    bundle_versions: UniqueMap<UniqueMap<UniqueMap<String>>>,
+}
+
+// BTreeMap's ordinary deserializer accepts duplicate YAML keys. Release history
+// is an integrity boundary, so reject duplicates at every nested map level.
+#[derive(Debug)]
+struct UniqueMap<V>(BTreeMap<String, V>);
+
+impl<V> Default for UniqueMap<V> {
+    fn default() -> Self {
+        Self(BTreeMap::new())
+    }
+}
+
+impl<V> std::ops::Deref for UniqueMap<V> {
+    type Target = BTreeMap<String, V>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'de, V: Deserialize<'de>> Deserialize<'de> for UniqueMap<V> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct UniqueVisitor<V>(std::marker::PhantomData<V>);
+        impl<'de, V: Deserialize<'de>> Visitor<'de> for UniqueVisitor<V> {
+            type Value = UniqueMap<V>;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a mapping with unique keys")
+            }
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                let mut values = BTreeMap::new();
+                while let Some((key, value)) = map.next_entry::<String, V>()? {
+                    if values.insert(key.clone(), value).is_some() {
+                        return Err(serde::de::Error::custom(format!(
+                            "duplicate bundle history key: {key}"
+                        )));
+                    }
+                }
+                Ok(UniqueMap(values))
+            }
+        }
+        deserializer.deserialize_map(UniqueVisitor(std::marker::PhantomData))
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -95,7 +138,7 @@ pub(crate) fn published_members(
         Some(selected.to_string())
     };
     let members: BTreeMap<String, String> = match &resolved {
-        Some(version) => history.expect("resolved history")[version].clone(),
+        Some(version) => history.expect("resolved history")[version].0.clone(),
         None => bundle
             .packages
             .iter()
@@ -159,7 +202,7 @@ fn validate_manifest(
             return Err(format!("Bundle '{id}' has duplicate or unknown members").into());
         }
     }
-    for (id, history) in &manifest.bundle_versions {
+    for (id, history) in &manifest.bundle_versions.0 {
         valid_id(id)?;
         let bundle = manifest
             .bundles
@@ -168,12 +211,12 @@ fn validate_manifest(
         if history.is_empty() {
             return Err(format!("Bundle history '{id}' is empty").into());
         }
-        for (release, members) in history {
+        for (release, members) in &history.0 {
             validate_bundle_release(release)?;
             if members.is_empty() {
                 return Err(format!("Bundle '{id}' release {release} is empty").into());
             }
-            for (member, version) in members {
+            for (member, version) in &members.0 {
                 valid_id(member)?;
                 validate_skill_name(&format!("{namespace}/{member}"))?;
                 validate_exact_version(version)?;
@@ -188,7 +231,7 @@ fn validate_manifest(
             .iter()
             .map(|name| (name.clone(), manifest.packages[name].clone()))
             .collect();
-        if history[latest] != projection {
+        if history[latest].0 != projection {
             return Err(format!(
                 "Bundle '{id}' latest release {latest} disagrees with bundles/packages projection"
             )
@@ -2140,6 +2183,21 @@ mod tests {
         assert!(!last.is_symlink());
 
         fs::remove_dir_all(project).unwrap();
+    }
+
+    #[test]
+    fn versioned_bundle_history_rejects_duplicate_keys_at_every_depth() {
+        let prefix = "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0}\nbundles: {starter: {packages: [alpha]}}\nbundle_versions:\n";
+        for history in [
+            "  starter: {1.0.0: {alpha: 1.0.0}}\n  starter: {1.0.0: {alpha: 1.0.0}}\n",
+            "  starter:\n    1.0.0: {alpha: 1.0.0}\n    1.0.0: {alpha: 1.0.0}\n",
+            "  starter:\n    1.0.0: {alpha: 1.0.0, alpha: 1.0.0}\n",
+        ] {
+            assert!(
+                serde_yaml::from_str::<NamespaceManifest>(&format!("{prefix}{history}")).is_err(),
+                "accepted {history}"
+            );
+        }
     }
 
     #[test]
