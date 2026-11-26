@@ -22,11 +22,11 @@ Implement the claimed scope.
 
 ## Actions
 
-Created an isolated worktree through an atomic peer claim. Implemented post-reset bootstrap for successful settings recovery, excluding preview and cache-removing reset paths. Added temporary-home CLI tests for fresh and malformed settings, repetition, previews, cache removal, and project isolation. Reused the shared SKM 0.10.0 reservation. After independent review rejected cancellation writes, added a scoped reset guard that records confirmed settings writes and preflights existing manifest and cache paths before reset writes. Added declined, affirmative, mixed-scope, and unsafe-path CLI regressions.
+Created an isolated worktree through an atomic peer claim. Implemented post-reset bootstrap for successful settings recovery, excluding preview and cache-removing reset paths. Added temporary-home CLI tests for fresh and malformed settings, repetition, previews, cache removal, and project isolation. Reused the shared SKM 0.10.0 reservation. After independent review rejected cancellation writes, added a scoped reset guard that records confirmed settings writes and preflights existing manifest and cache paths before reset writes. Added declined, affirmative, mixed-scope, and unsafe-path CLI regressions. A second review identified a permission failure after settings and project mutation; recovery now prepares the cache and manifest after confirmation and before reset writes, with a mode-0500 regression.
 
 ## Validation
 
-`task test:global-home`, `task fix`, `task check`, `task test`, and `task versions:check` passed on the revised candidate. Independent exact-candidate review and combined-revision validation remain required.
+`task fix`, `task test:global-home`, `task check`, `task test`, and `task versions:check` passed on the latest candidate, including the mode-0500 fixture under an unprivileged user. Independent exact-candidate review and combined-revision validation remain pending.
 
 ## Blockers and Dependencies
 
@@ -34,7 +34,7 @@ A backup-enabled clean reset can retain a backup created before the preflight re
 
 ## Next Step
 
-Commit and hand off the revised candidate for independent exact-candidate review.
+Commit and hand off for independent exact-candidate review.
 
 ## Handoff
 

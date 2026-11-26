@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::io::Write;
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 
@@ -356,6 +356,44 @@ fn settings_reset_preflights_unrelated_global_paths_before_reset_writes() {
             assert_eq!(snapshot(home.path()), home_before, "{args:?}");
             assert_eq!(snapshot(project.path()), project_before, "{args:?}");
         }
+    }
+}
+
+#[test]
+fn unwritable_cache_blocks_reset_before_settings_and_project_changes() {
+    for args in [
+        &["config", "reset", "--global", "--yes"][..],
+        &["clean", "reset", "--config", "--yes"],
+    ] {
+        let home = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let skm = home.path().join(".skm");
+        let cache = skm.join("cache");
+        fs::create_dir_all(&cache).unwrap();
+        fs::write(skm.join("config.yaml"), "registries: [broken").unwrap();
+        fs::write(project.path().join("skills.yaml"), "project bytes").unwrap();
+        fs::set_permissions(&cache, fs::Permissions::from_mode(0o500)).unwrap();
+        // Privileged processes can bypass mode bits, so this fixture cannot
+        // establish the intended permission failure in that environment.
+        let probe = cache.join("write-probe");
+        if fs::create_dir(&probe).is_ok() {
+            fs::remove_dir(probe).unwrap();
+            fs::set_permissions(&cache, fs::Permissions::from_mode(0o700)).unwrap();
+            continue;
+        }
+        let result = command(home.path(), project.path(), args);
+        fs::set_permissions(&cache, fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(!result.status.success(), "{args:?}");
+        assert_eq!(
+            fs::read(skm.join("config.yaml")).unwrap(),
+            b"registries: [broken"
+        );
+        assert_eq!(
+            fs::read(project.path().join("skills.yaml")).unwrap(),
+            b"project bytes"
+        );
+        assert!(!skm.join("skills.yaml").exists());
+        assert!(!cache.join("registries").exists());
     }
 }
 

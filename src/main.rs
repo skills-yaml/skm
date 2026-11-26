@@ -684,9 +684,9 @@ fn main() {
                 CleanCommands::Reset { config: true, .. } | CleanCommands::Reset { all: true, .. }
             )
     );
-    // Settings resets must run before bootstrap so they can repair malformed
-    // settings. Cache resets intentionally leave the cache removed.
-    let bootstrap_after_reset = recovery
+    // Settings resets prepare the rest of the user state after confirmation,
+    // without reading malformed settings. Cache resets leave the cache removed.
+    let prepare_settings_reset = recovery
         && !read_only_startup
         && !matches!(
             &cli.command,
@@ -705,21 +705,12 @@ fn main() {
         updater::maybe_print_startup_notice();
     }
 
-    let reset_guard = bootstrap_after_reset.then(config_manager::SettingsResetGuard::new);
+    let reset_guard = prepare_settings_reset.then(config_manager::SettingsResetGuard::new);
     let result = run(cli.command);
-    let settings_written = reset_guard
-        .as_ref()
-        .is_some_and(config_manager::SettingsResetGuard::settings_written);
     drop(reset_guard);
     if let Err(e) = result {
         eprintln!("Error: {}", e);
         std::process::exit(1);
-    }
-    if settings_written {
-        if let Err(e) = ensure_global_env() {
-            eprintln!("Error: cannot initialize SKM user state: {e}");
-            std::process::exit(1);
-        }
     }
 }
 

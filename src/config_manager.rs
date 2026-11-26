@@ -50,29 +50,22 @@ pub(crate) const EMPTY_GLOBAL_MANIFEST: &str = "name: Global skills\nagents: []\
 type ConfigResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 thread_local! {
-    // Reset dispatch uses this to distinguish a confirmed write from cancellation.
-    static BASE_SETTINGS_WRITTEN: Cell<bool> = const { Cell::new(false) };
-    static PREFLIGHT_SETTINGS_RESET: Cell<bool> = const { Cell::new(false) };
+    // Enable recovery preparation only for the synchronous reset dispatch.
+    static PREPARE_SETTINGS_RESET: Cell<bool> = const { Cell::new(false) };
 }
 
 pub(crate) struct SettingsResetGuard;
 
 impl SettingsResetGuard {
     pub(crate) fn new() -> Self {
-        BASE_SETTINGS_WRITTEN.with(|written| written.set(false));
-        PREFLIGHT_SETTINGS_RESET.with(|preflight| preflight.set(true));
+        PREPARE_SETTINGS_RESET.with(|prepare| prepare.set(true));
         Self
-    }
-
-    pub(crate) fn settings_written(&self) -> bool {
-        BASE_SETTINGS_WRITTEN.with(Cell::get)
     }
 }
 
 impl Drop for SettingsResetGuard {
     fn drop(&mut self) {
-        BASE_SETTINGS_WRITTEN.with(|written| written.set(false));
-        PREFLIGHT_SETTINGS_RESET.with(|preflight| preflight.set(false));
+        PREPARE_SETTINGS_RESET.with(|prepare| prepare.set(false));
     }
 }
 
@@ -151,13 +144,8 @@ fn validate_base(content: &str, path: &Path) -> ConfigResult<serde_yaml::Value> 
 
 /// Validate and atomically replace the canonical settings document.
 pub(crate) fn write_base_settings(value: &serde_yaml::Value) -> ConfigResult<()> {
-    if PREFLIGHT_SETTINGS_RESET.with(Cell::get) {
-        check_global_manifest_parent()?;
-        let manifest =
-            get_global_manifest_path().ok_or("Could not determine user home directory")?;
-        if let Some(content) = read_regular_file(&manifest)? {
-            validate_manifest(&content, &manifest)?;
-        }
+    if PREPARE_SETTINGS_RESET.with(Cell::get) {
+        prepare_settings_reset_remainder()?;
     }
     let path = get_base_config_path().ok_or("Could not determine user home directory")?;
     let content = serde_yaml::to_string(value)?;
@@ -173,10 +161,30 @@ pub(crate) fn write_base_settings(value: &serde_yaml::Value) -> ConfigResult<()>
     check_base_settings_target(false)?;
     temp.persist(&path)
         .map_err(|error| format!("Cannot save {}: {}", path.display(), error.error))?;
-    if PREFLIGHT_SETTINGS_RESET.with(Cell::get) {
-        BASE_SETTINGS_WRITTEN.with(|written| written.set(true));
-    }
     Ok(())
+}
+
+// Prepare everything except settings after confirmation, before reset mutates
+// settings or the project. Existing malformed settings remain recoverable.
+fn prepare_settings_reset_remainder() -> ConfigResult<()> {
+    check_base_settings_target(false)?;
+    check_global_manifest_parent()?;
+    let parent = get_user_config_dir().ok_or("Could not determine user home directory")?;
+    let manifest = parent.join("skills.yaml");
+    let existing_manifest = read_regular_file(&manifest)?;
+    if let Some(content) = &existing_manifest {
+        validate_manifest(content, &manifest)?;
+    }
+    directory(&parent, true)?;
+    let cache = parent.join("cache");
+    directory(&cache, true)?;
+    directory(&cache.join("registries"), true)?;
+    if existing_manifest.is_none() {
+        publish_missing(&manifest, EMPTY_GLOBAL_MANIFEST)?;
+    }
+    let content =
+        read_regular_file(&manifest)?.ok_or("Skills manifest disappeared during bootstrap")?;
+    validate_manifest(&content, &manifest)
 }
 
 /// Check global manifest ancestors without creating user state.
