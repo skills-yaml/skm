@@ -121,6 +121,50 @@ fn validate_base(content: &str, path: &Path) -> ConfigResult<serde_yaml::Value> 
     Ok(value)
 }
 
+/// Validate and atomically replace the canonical settings document.
+pub(crate) fn write_base_settings(value: &serde_yaml::Value) -> ConfigResult<()> {
+    let path = get_base_config_path().ok_or("Could not determine user home directory")?;
+    let content = serde_yaml::to_string(value)?;
+    validate_base(&content, &path)?;
+    check_base_settings_target(true)?;
+    let parent = path.parent().ok_or("Missing settings directory")?;
+    let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+    if let Ok(metadata) = fs::symlink_metadata(&path) {
+        temp.as_file().set_permissions(metadata.permissions())?;
+    }
+    temp.write_all(content.as_bytes())?;
+    temp.as_file().sync_all()?;
+    check_base_settings_target(false)?;
+    temp.persist(&path)
+        .map_err(|error| format!("Cannot save {}: {}", path.display(), error.error))?;
+    Ok(())
+}
+
+/// Refuse unsafe home, parent, and settings-file types before recovery or backup.
+pub(crate) fn check_base_settings_target(create_parent: bool) -> ConfigResult<()> {
+    let home = dirs::home_dir().ok_or("Could not determine user home directory")?;
+    directory(&home, false)?;
+    let parent = get_user_config_dir().ok_or("Could not determine user home directory")?;
+    if create_parent {
+        directory(&parent, true)?;
+    } else if !existing_directory(&parent)? {
+        return Ok(());
+    }
+    let path = parent.join("config.yaml");
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) if !metadata.file_type().is_file() => {
+            Err(format!("Expected a regular file at {}", path.display()).into())
+        }
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("Cannot inspect {}: {error}", path.display()).into()),
+    }
+}
+
+pub(crate) fn validate_base_value(value: &serde_yaml::Value, path: &Path) -> ConfigResult<()> {
+    validate_base(&serde_yaml::to_string(value)?, path).map(|_| ())
+}
+
 fn validate_manifest(content: &str, path: &Path) -> ConfigResult<()> {
     serde_yaml::from_str::<crate::config::SkillsConfig>(content)
         .map_err(|error| format!("Invalid skills manifest in {}: {}", path.display(), error))?;
@@ -209,11 +253,7 @@ impl BaseConfig {
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         let path = get_base_config_path().ok_or("Could not determine config directory")?;
 
-        // Create config directory if it doesn't exist
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
+        check_base_settings_target(false)?;
         // Keep unknown fields belonging to other publishers when settings change.
         let mut value = match read_regular_file(&path)? {
             Some(content) => validate_base(&content, &path)?,
@@ -224,10 +264,7 @@ impl BaseConfig {
         for (key, value) in fields.as_mapping().ok_or("Settings must be a mapping")? {
             mapping.insert(key.clone(), value.clone());
         }
-        let file = fs::File::create(&path)?;
-        serde_yaml::to_writer(file, &value)?;
-
-        Ok(())
+        write_base_settings(&value)
     }
 }
 

@@ -136,3 +136,105 @@ fn simultaneous_startup_preserves_complete_files() {
         fs::read(home.path().join(".skm/skills.yaml")).unwrap()
     );
 }
+
+#[test]
+fn invalid_base_edits_are_rejected_and_reset_recovers_malformed_settings() {
+    let home = tempfile::tempdir().unwrap();
+    let home = home.path();
+    assert!(command(home, home, &["config", "show", "--global"])
+        .status
+        .success());
+    let path = home.join(".skm/config.yaml");
+    let original = fs::read(&path).unwrap();
+    for (key, value) in [
+        ("check_for_updates", "weird"),
+        ("default_registry", "123"),
+        ("registries", "[]"),
+        ("registries.default", "false"),
+    ] {
+        let result = command(
+            home,
+            home,
+            &["config", "set", key, value, "--global", "--yes"],
+        );
+        assert!(!result.status.success(), "{key}");
+        assert_eq!(fs::read(&path).unwrap(), original);
+    }
+    assert!(command(home, home, &["config", "show", "--global"])
+        .status
+        .success());
+    fs::write(&path, "registries: [broken").unwrap();
+    assert!(!command(home, home, &["config", "show", "--global"])
+        .status
+        .success());
+    assert!(
+        command(home, home, &["config", "reset", "--global", "--yes"])
+            .status
+            .success()
+    );
+    assert!(command(home, home, &["config", "show", "--global"])
+        .status
+        .success());
+}
+
+#[test]
+fn reset_keeps_defaults_instead_of_reimporting_legacy_settings() {
+    let home = tempfile::tempdir().unwrap();
+    let home = home.path();
+    let legacy = home.join("xdg-config/skm/config.yaml");
+    fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+    let custom = "default_registry: custom\nregistries:\n  custom: /custom\n";
+    fs::write(&legacy, custom).unwrap();
+    assert!(command(home, home, &["config", "show", "--global"])
+        .status
+        .success());
+    let output = command(
+        home,
+        home,
+        &["clean", "reset", "--config", "--backup", "--yes"],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(fs::read_to_string(&legacy).unwrap(), custom);
+    let config = home.join(".skm/config.yaml");
+    let defaults = fs::read(&config).unwrap();
+    let value: serde_yaml::Value = serde_yaml::from_slice(&defaults).unwrap();
+    assert_eq!(value["default_registry"].as_str(), Some("default"));
+    assert!(command(home, home, &["config", "show", "--global"])
+        .status
+        .success());
+    assert_eq!(fs::read(&config).unwrap(), defaults);
+    assert_eq!(fs::read_dir(home.join(".skm-backups")).unwrap().count(), 1);
+}
+
+#[test]
+fn reset_preview_and_unsafe_recovery_do_not_write() {
+    let home = tempfile::tempdir().unwrap();
+    let home = home.path();
+    let output = command(
+        home,
+        home,
+        &["clean", "reset", "--config", "--backup", "--dry-run"],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!home.join(".skm-backups").exists());
+    assert!(!home.join(".skm").exists());
+    let outside = home.join("outside");
+    fs::create_dir(&outside).unwrap();
+    symlink(&outside, home.join(".skm")).unwrap();
+    for args in [
+        &["config", "reset", "--global", "--yes"][..],
+        &["clean", "reset", "--config", "--backup", "--yes"],
+    ] {
+        assert!(!command(home, home, args).status.success());
+    }
+    assert!(!home.join(".skm-backups").exists());
+    assert_eq!(fs::read_dir(outside).unwrap().count(), 0);
+}

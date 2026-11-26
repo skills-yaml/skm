@@ -669,7 +669,19 @@ fn main() {
             )
             | Commands::SelfUpdate(SelfCommands::Version)
     );
-    if !read_only_startup {
+    let recovery = matches!(
+        &cli.command,
+        Commands::Config(ConfigCommands::Reset { global: true, .. })
+            | Commands::Config(ConfigCommands::Reset {
+                global: false,
+                project: false,
+                ..
+            })
+            | Commands::Clean(
+                CleanCommands::Reset { config: true, .. } | CleanCommands::Reset { all: true, .. }
+            )
+    );
+    if !read_only_startup && !recovery {
         if let Err(e) = ensure_global_env() {
             eprintln!("Error: cannot initialize SKM user state: {e}");
             std::process::exit(1);

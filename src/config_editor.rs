@@ -126,6 +126,9 @@ pub fn set_value(
         Value::Mapping(serde_yaml::Mapping::new())
     };
 
+    set_nested_value(&mut config, key, parsed_value.clone());
+    validate_config_structure(&config, false, &scope)?;
+
     if dry_run {
         println!(
             "Would set '{}' to:\n{}",
@@ -151,18 +154,7 @@ pub fn set_value(
         }
     }
 
-    // Set the value
-    set_nested_value(&mut config, key, parsed_value.clone());
-
-    // Validate structured config before writing
-    validate_config_structure(&config, false, &scope)?;
-
-    // Save config
-    let content = serde_yaml::to_string(&config)?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(&path, content)?;
+    save_config(&scope, &path, &config)?;
 
     println!(
         "Set '{}' = {}",
@@ -223,13 +215,29 @@ pub fn unset_value(
     // Remove the key
     unset_nested_value(&mut config, key);
 
-    // Save config
-    let content = serde_yaml::to_string(&config)?;
-    fs::write(&path, content)?;
+    validate_config_structure(&config, false, &scope)?;
+    save_config(&scope, &path, &config)?;
 
     println!("Unset: {}", key);
 
     Ok(())
+}
+
+fn save_config(
+    scope: &ConfigScope,
+    path: &std::path::Path,
+    config: &Value,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match scope {
+        ConfigScope::Global => crate::config_manager::write_base_settings(config),
+        ConfigScope::Project => {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::write(path, serde_yaml::to_string(config)?)?;
+            Ok(())
+        }
+    }
 }
 
 /// Show full configuration
@@ -370,11 +378,7 @@ pub fn reset_config(
             }
         };
 
-        let content = serde_yaml::to_string(&default_config)?;
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(&path, content)?;
+        save_config(scope, &path, &default_config)?;
 
         println!("Reset {} configuration to defaults", name);
     }
@@ -665,6 +669,7 @@ fn validate_config_structure(
 ) -> Result<(), Box<dyn std::error::Error>> {
     match scope {
         ConfigScope::Global => {
+            crate::config_manager::validate_base_value(config, &scope.path()?)?;
             if let Value::Mapping(map) = config {
                 if strict {
                     if !map.contains_key(Value::String("default_registry".to_string())) {

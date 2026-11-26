@@ -296,8 +296,10 @@ passes do not establish complete feature acceptance.
 
 The `global-cache-paths` peer candidate activates silent create-if-absent user
 home bootstrap, imports legacy settings without deleting them, preserves opaque
-settings on registry mutation, and routes base settings readers/writers to the
-canonical path. The new cache resolver selects canonical, historical linker,
+settings on registry mutation, validates global settings edits against the startup
+schema, and routes base settings readers/writers to the canonical path. Reset
+writes canonical defaults without reimporting legacy settings; recovery remains
+available for invalid settings and backup previews do not write. The new cache resolver selects canonical, historical linker,
 then distinct OS cache entries and validates the effective origin. It is dormant:
 existing readers and writers retain their legacy cache paths until the dependent
 cache-consumer task can activate the cutover atomically. This avoids introducing
