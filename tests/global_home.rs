@@ -255,6 +255,86 @@ fn invalid_base_edits_are_rejected_and_reset_recovers_malformed_settings() {
 }
 
 #[test]
+fn settings_resets_bootstrap_fresh_home_and_preserve_repeat_bytes() {
+    for args in [
+        &["config", "reset", "--global", "--yes"][..],
+        &["clean", "reset", "--config", "--yes"],
+    ] {
+        let home = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        fs::write(project.path().join("untouched"), "project data").unwrap();
+        success(command(home.path(), project.path(), args));
+        let skm = home.path().join(".skm");
+        let settings = fs::read(skm.join("config.yaml")).unwrap();
+        let manifest = fs::read(skm.join("skills.yaml")).unwrap();
+        serde_yaml::from_slice::<serde_yaml::Value>(&settings).unwrap();
+        assert_eq!(manifest, b"name: Global skills\nagents: []\nskills: []\n");
+        assert!(skm.join("cache/registries").is_dir());
+        let project_before = snapshot(project.path());
+        fs::write(skm.join("cache/registries/retained"), "cache data").unwrap();
+
+        success(command(home.path(), project.path(), args));
+        assert_eq!(fs::read(skm.join("config.yaml")).unwrap(), settings);
+        assert_eq!(fs::read(skm.join("skills.yaml")).unwrap(), manifest);
+        assert_eq!(
+            fs::read(skm.join("cache/registries/retained")).unwrap(),
+            b"cache data"
+        );
+        assert_eq!(snapshot(project.path()), project_before);
+    }
+}
+
+#[test]
+fn settings_resets_recover_malformed_settings_and_bootstrap_missing_layout() {
+    for args in [
+        &["config", "reset", "--global", "--yes"][..],
+        &["clean", "reset", "--config", "--yes"],
+    ] {
+        let home = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let skm = home.path().join(".skm");
+        fs::create_dir(&skm).unwrap();
+        fs::write(skm.join("config.yaml"), "registries: [broken").unwrap();
+        success(command(home.path(), project.path(), args));
+        let settings = fs::read(skm.join("config.yaml")).unwrap();
+        let parsed: serde_yaml::Value = serde_yaml::from_slice(&settings).unwrap();
+        assert_eq!(parsed["default_registry"].as_str(), Some("default"));
+        assert_eq!(
+            fs::read(skm.join("skills.yaml")).unwrap(),
+            b"name: Global skills\nagents: []\nskills: []\n"
+        );
+        assert!(skm.join("cache/registries").is_dir());
+        assert_eq!(fs::read_dir(project.path()).unwrap().count(), 0);
+    }
+}
+
+#[test]
+fn settings_reset_previews_and_cache_reset_keep_their_side_effects() {
+    let home = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    let before = snapshot(home.path());
+    for args in [
+        &["config", "reset", "--global", "--dry-run"][..],
+        &["clean", "reset", "--config", "--dry-run"],
+    ] {
+        success(command(home.path(), project.path(), args));
+        assert_eq!(snapshot(home.path()), before);
+        assert_eq!(fs::read_dir(project.path()).unwrap().count(), 0);
+    }
+    success(command(
+        home.path(),
+        project.path(),
+        &["config", "show", "--global"],
+    ));
+    success(command(
+        home.path(),
+        project.path(),
+        &["clean", "reset", "--config", "--cache", "--yes"],
+    ));
+    assert!(!home.path().join(".skm/cache").exists());
+}
+
+#[test]
 fn reset_keeps_defaults_instead_of_reimporting_legacy_settings() {
     let home = tempfile::tempdir().unwrap();
     let home = home.path();

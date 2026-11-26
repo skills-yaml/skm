@@ -684,6 +684,15 @@ fn main() {
                 CleanCommands::Reset { config: true, .. } | CleanCommands::Reset { all: true, .. }
             )
     );
+    // Settings resets must run before bootstrap so they can repair malformed
+    // settings. Cache resets intentionally leave the cache removed.
+    let bootstrap_after_reset = recovery
+        && !read_only_startup
+        && !matches!(
+            &cli.command,
+            Commands::Clean(CleanCommands::Reset { cache: true, .. })
+                | Commands::Clean(CleanCommands::Reset { all: true, .. })
+        );
     if !read_only_startup && !recovery {
         if let Err(e) = ensure_global_env() {
             eprintln!("Error: cannot initialize SKM user state: {e}");
@@ -699,6 +708,12 @@ fn main() {
     if let Err(e) = run(cli.command) {
         eprintln!("Error: {}", e);
         std::process::exit(1);
+    }
+    if bootstrap_after_reset {
+        if let Err(e) = ensure_global_env() {
+            eprintln!("Error: cannot initialize SKM user state: {e}");
+            std::process::exit(1);
+        }
     }
 }
 
