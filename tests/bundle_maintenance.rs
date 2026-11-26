@@ -639,3 +639,20 @@ fn retained_cache_symlink_escape_is_not_accepted_as_owned_bundle_link() {
     assert!(link.is_symlink());
     assert!(external.join("SKILL.md").exists());
 }
+
+#[test]
+fn outdated_refresh_preserves_project_relative_bundle_registry() {
+    let fixture = Fixture::new();
+    fs::write(fixture.registry.join("skills/acme/manifest.yaml"), "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0, helper: 1.0.0}\nbundles: {starter: {packages: [alpha]}, other: {packages: [helper]}}\nbundle_versions:\n  starter:\n    1.0.0: {alpha: 1.0.0}\n    2.0.0: {alpha: 1.0.0}\n").unwrap();
+    fixture.commit();
+    fs::remove_dir_all(fixture.home.join(".skm/cache/registries/local")).unwrap();
+    let manifest = "name: fixture\nregistries: {local: ../registry}\nagents: [codex]\nskills:\n  - {name: acme/starter, kind: bundle, version: 1.0.0, source: local}\n";
+    fs::write(fixture.project.join("skills.yaml"), manifest).unwrap();
+    let result = fixture.skm(&["skill", "outdated", "acme/starter", "--refresh"]);
+    assert!(String::from_utf8_lossy(&result.stdout).contains("1.0.0 -> 2.0.0"));
+    assert_eq!(
+        fs::read_to_string(fixture.project.join("skills.yaml")).unwrap(),
+        manifest
+    );
+    assert!(!fixture.project.join("skills.lock.yaml").exists());
+}

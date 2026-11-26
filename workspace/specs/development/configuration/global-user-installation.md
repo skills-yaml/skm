@@ -321,9 +321,9 @@ home-relative. Temporary-home fixtures exercise two project directories,
 conflicting registry overrides, base inheritance, bootstrap init, selected
 agents, cancellation, metadata, local-path persistence and non-writing plans.
 These are partial AC2, AC3 and AC7 evidence, pending exact-candidate review.
-`skill outdated --global --refresh` fails safely until the dependent
-scope-aware registry refresh task updates the version-manager interface. S3
-and S4 retain installation transaction, all-target, mutation, and cleanup work;
+`skill outdated --global --refresh` resolves registry URLs relative to the user
+manifest and preserves origin validation. S3 and S4 retain installation
+transaction, all-target, mutation, and cleanup work;
 these checks do not establish full acceptance of those areas.
 
 ## Validation Gates and Review

@@ -1290,9 +1290,6 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             if global {
                 validate_manifest_scope(&load_config_for_scope(&scope.path, global)?, true)?;
             }
-            if global && refresh {
-                return Err("Global outdated refresh is not yet supported; from ~/.skm run `skm cache refresh NAME`, then retry without --refresh".into());
-            }
             version_manager::show_outdated(&scope.path, skill_name.as_deref(), refresh, pre)?;
         }
         Commands::Skill(SkillCommands::Upgrade {

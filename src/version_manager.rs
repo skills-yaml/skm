@@ -238,6 +238,7 @@ pub fn show_outdated(
         }
     }
 
+    let project = config_path.parent().unwrap_or_else(|| Path::new("."));
     let base = if refresh {
         Some(BaseConfig::load()?)
     } else {
@@ -262,11 +263,10 @@ pub fn show_outdated(
                     .and_then(|registries| registries.get(source))
                     .or_else(|| base.as_ref().and_then(|base| base.registries.get(source)))
                     .ok_or_else(|| format!("Registry '{source}' not found in configuration"))?;
-                registry::refresh_from_url(source, url)?;
+                registry::refresh_from_url_at(source, url, project)?;
             }
         }
     }
-    let project = config_path.parent().unwrap_or_else(|| Path::new("."));
     // Alias drift compares the installed lock to current registry state.
     let mut aliases = config.clone();
     aliases.skills.retain(|s| {
@@ -374,13 +374,9 @@ pub fn show_outdated(
                 .and_then(|registries| registries.get(source))
                 .or_else(|| base.as_ref().and_then(|base| base.registries.get(source)))
                 .ok_or_else(|| format!("Registry '{source}' not found in configuration"))?;
-            registry::refresh_from_url(source, url)?;
+            registry::refresh_from_url_at(source, url, project)?;
         }
-        let versions = list_skill_versions_at(
-            &skill.name,
-            source,
-            config_path.parent().unwrap_or_else(|| Path::new(".")),
-        )?;
+        let versions = list_skill_versions_at(&skill.name, source, project)?;
         match newest_published_version(&versions, include_pre) {
             Some(latest) if compare_versions(latest, current) == Ordering::Greater => {
                 println!("{}: {} -> {} ({})", skill.name, current, latest, source);
