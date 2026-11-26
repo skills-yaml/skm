@@ -25,11 +25,11 @@ Implement S3 global install and source-exact check with transaction and preview 
 
 ## Actions
 
-Claimed the integrated S2 base. Snapshot the manifest, verify planned links and sources including no-op links, preserve unexpected paths during rollback, and validate global check parents. Added isolated-home command and rollback fixtures.
+Claimed the integrated S2 base. Snapshot the manifest, verify planned links and sources including no-op links, preserve unexpected paths during rollback, and validate global check parents. Added isolated-home command and rollback fixtures. Independent review found that Windows directory symlinks require directory removal; the shared transaction now uses platform-aware symlink removal with a portable replacement and rollback regression.
 
 ## Validation
 
-Focused registry-format, global-home, cache, bundle and toolkit modules passed after correcting a project lock synchronization regression. Full task check, task test and task versions:check passed; final review and integration gates remain required.
+Focused registry-format, global-home, cache, bundle and toolkit modules passed after correcting a project lock synchronization regression. Focused registry-format, global-home, cache, bundle, toolkit and versions checks pass with the review fix. Full task check and task test also pass with the review fix; independent review and integration validation remain required. The portable regression requires native Windows execution, which the standard test workflow does not currently provide.
 
 ## Blockers and Dependencies
 
@@ -37,7 +37,7 @@ None.
 
 ## Next Step
 
-Commit and request independent exact-revision review; renew verification after review changes.
+Commit and request independent review of the revised candidate.
 
 ## Handoff
 

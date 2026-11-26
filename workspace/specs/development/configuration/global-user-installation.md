@@ -337,6 +337,9 @@ dependency closure, conflicting names, empty/invalid selections, real targets,
 wrong-source links, preview, reinstall, and project isolation. Failure-injection
 fixtures cover rollback and stale manifests, sources and destinations. Existing
 cache-transition tests exercise retained legacy sources and reinstall.
+Directory-symlink replacement and rollback use a platform-aware unlink, with a
+portable installer regression. Native Windows execution remains unverified and
+requires evidence before complete cross-platform acceptance.
 These are bounded AC4–AC7 evidence pending independent exact-candidate review;
 S4 mutation and cleanup and S5 combined acceptance remain open.
 

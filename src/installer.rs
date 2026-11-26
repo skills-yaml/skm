@@ -589,7 +589,7 @@ impl Prepared {
                     )
                     .into());
                 }
-                fs::remove_file(&removal.path)?;
+                remove_symlink(&removal.path)?;
                 removed.push(removal);
             }
             for (index, link) in self.links.iter().enumerate() {
@@ -600,7 +600,7 @@ impl Prepared {
                 ensure_parents(&link.path, &self.root, &mut created_directories)?;
                 self.validate_link(link)?;
                 if link.previous.is_some() {
-                    fs::remove_file(&link.path)?;
+                    remove_symlink(&link.path)?;
                 }
                 completed.push(link);
                 linker::symlink_dir(&link.source, &link.path)?;
@@ -698,7 +698,7 @@ impl Prepared {
                         if metadata.file_type().is_symlink()
                             && fs::read_link(&link.path).ok().as_ref() == Some(&link.source) =>
                     {
-                        if let Err(restore) = fs::remove_file(&link.path) {
+                        if let Err(restore) = remove_symlink(&link.path) {
                             rollback_errors.push(format!(
                                 "could not remove link {}: {restore}",
                                 link.path.display()
@@ -784,6 +784,24 @@ impl Prepared {
     }
 }
 
+fn remove_symlink(path: &Path) -> io::Result<()> {
+    let kind = fs::symlink_metadata(path)?.file_type();
+    if !kind.is_symlink() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Refusing to remove non-symlink: {}", path.display()),
+        ));
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::FileTypeExt;
+        if kind.is_symlink_dir() {
+            return fs::remove_dir(path);
+        }
+    }
+    fs::remove_file(path)
+}
+
 fn ensure_parents(path: &Path, root: &Path, created: &mut Vec<PathBuf>) -> Result<()> {
     let mut missing = Vec::new();
     let mut current = path.parent();
@@ -799,6 +817,54 @@ fn ensure_parents(path: &Path, root: &Path, created: &mut Vec<PathBuf>) -> Resul
         created.push(parent);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests_portable {
+    use super::*;
+
+    #[test]
+    fn directory_symlink_replacement_and_rollback_are_portable() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path();
+        let source = project.join("source");
+        let old = project.join("old");
+        fs::create_dir(&source).unwrap();
+        fs::create_dir(&old).unwrap();
+        fs::write(source.join("SKILL.md"), b"---\nname: sample\n---\n").unwrap();
+        let config = SkillsConfig {
+            name: "fixture".into(),
+            version: None,
+            registries: None,
+            agents: vec!["codex".into(), "cursor".into()],
+            skills: vec![SkillSpec {
+                name: "sample".into(),
+                version: None,
+                source: None,
+                path: Some("source".into()),
+                kind: None,
+            }],
+            toolkit: None,
+            bundles: Vec::new(),
+            profiles: Vec::new(),
+            metadata: Default::default(),
+        };
+        let target = project.join(".agents/skills/sample");
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        linker::symlink_dir(&old, &target).unwrap();
+        let plan = prepare(&config, project, false, None).unwrap();
+        assert!(plan.apply_with_failure(Some(1)).is_err());
+        assert_eq!(fs::read_link(&target).unwrap(), old);
+        assert!(source.is_dir());
+        plan.apply().unwrap();
+        assert!(linker::symlink_points_to(&target, &source).unwrap());
+        assert!(
+            linker::symlink_points_to(&project.join(".cursor/skills/sample"), &source).unwrap()
+        );
+        assert!(old.is_dir());
+        assert!(remove_symlink(&source).is_err());
+        assert!(source.join("SKILL.md").is_file());
+    }
 }
 
 #[cfg(all(test, unix))]
