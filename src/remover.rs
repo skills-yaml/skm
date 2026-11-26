@@ -1,5 +1,8 @@
-use crate::config::SkillsConfig;
+use crate::config::{SkillSpec, SkillsConfig};
 use crate::linker;
+use serde::Deserialize;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
 use std::io::Write;
 use std::path::Path;
 
@@ -60,34 +63,31 @@ where
         return Ok(()); // Idempotent - not an error
     };
 
-    // Resolve and validate every target before confirmation or writes.
-    let targets = if skill.is_bundle() {
-        let before = linker::resolve_skill_dependency_closure(&config.skills, project_root)?;
-        let remaining: Vec<_> = config
-            .skills
-            .iter()
-            .filter(|s| s.name != skill_name)
-            .cloned()
-            .collect();
-        let retained: std::collections::BTreeSet<_> =
-            linker::resolve_skill_dependency_closure(&remaining, project_root)?
-                .into_iter()
-                .map(|s| s.name)
-                .collect();
-        let mut targets = Vec::new();
-        for member in before.iter().filter(|s| !retained.contains(&s.name)) {
-            targets.extend(linker::plan_skill_unlink(
-                member,
+    // The installed lock describes links even after registry membership drifts.
+    let (targets, lock_update) = if !global && config.skills.iter().any(SkillSpec::is_bundle) {
+        match read_install_lock(project_root)? {
+            Some(lock) => {
+                let (targets, removed_names) =
+                    plan_locked_removal(&config, &skill, &lock, project_root, force, verbose)?;
+                (targets, Some((lock, removed_names)))
+            }
+            None => (
+                plan_unlocked_removal(&config, &skill, project_root, global, force, verbose)?,
+                None,
+            ),
+        }
+    } else {
+        (
+            linker::plan_skill_unlink(
+                &skill,
                 project_root,
                 &config.agents,
                 global,
                 force,
                 verbose,
-            )?);
-        }
-        targets
-    } else {
-        linker::plan_skill_unlink(&skill, project_root, &config.agents, global, force, verbose)?
+            )?,
+            None,
+        )
     };
 
     if dry_run {
@@ -144,9 +144,253 @@ where
             )
             .into());
         }
+        if let Some((lock, removed_names)) = lock_update {
+            update_installed_lock(project_root, &lock, &skill, &removed_names)?;
+        }
     }
 
     Ok(())
+}
+
+#[derive(Deserialize)]
+struct InstallLock {
+    kind: String,
+    agents: Vec<String>,
+    #[serde(skip)]
+    original: Vec<u8>,
+    #[serde(default)]
+    bundles: Vec<LockedBundle>,
+    skills: Vec<LockedSkill>,
+}
+
+#[derive(Deserialize)]
+struct LockedBundle {
+    name: String,
+    source: String,
+    members: Vec<LockedSkill>,
+}
+
+#[derive(Clone, Deserialize)]
+struct LockedSkill {
+    name: String,
+    version: String,
+    source: String,
+    path: Option<String>,
+}
+
+impl LockedSkill {
+    fn spec(&self) -> SkillSpec {
+        SkillSpec {
+            name: self.name.clone(),
+            version: Some(self.version.clone()),
+            source: Some(self.source.clone()),
+            path: self.path.clone(),
+            kind: None,
+        }
+    }
+}
+
+fn read_install_lock(project: &Path) -> Result<Option<InstallLock>, Box<dyn std::error::Error>> {
+    let path = project.join("skills.lock.yaml");
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {}
+        Ok(_) => return Err("skills.lock.yaml must be a regular file".into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    }
+    let original = fs::read(path)?;
+    let mut lock: InstallLock = serde_yaml::from_slice(&original)?;
+    lock.original = original;
+    if lock.kind != "skills" {
+        return Err("skills.lock.yaml is not a skills-only lockfile".into());
+    }
+    Ok(Some(lock))
+}
+
+fn plan_locked_removal(
+    config: &SkillsConfig,
+    selected: &SkillSpec,
+    lock: &InstallLock,
+    project: &Path,
+    force: bool,
+    verbose: bool,
+) -> Result<(Vec<linker::UnlinkTarget>, BTreeSet<String>), Box<dyn std::error::Error>> {
+    let locked_skills: BTreeMap<_, _> = lock
+        .skills
+        .iter()
+        .map(|skill| (skill.name.as_str(), skill))
+        .collect();
+    let get_bundle = |spec: &SkillSpec| -> Result<&LockedBundle, Box<dyn std::error::Error>> {
+        lock.bundles
+            .iter()
+            .find(|bundle| {
+                bundle.name == spec.name && Some(bundle.source.as_str()) == spec.source.as_deref()
+            })
+            .ok_or_else(|| {
+                format!(
+                    "Bundle '{}' is not recorded in skills.lock.yaml; run skm install",
+                    spec.name
+                )
+                .into()
+            })
+    };
+    let candidates: Vec<SkillSpec> = if selected.is_bundle() {
+        let bundle = get_bundle(selected)?;
+        let mut result = Vec::new();
+        for member in &bundle.members {
+            if member.path.is_some() || member.source != bundle.source {
+                return Err("Invalid bundle member in skills.lock.yaml".into());
+            }
+            result.push(member.spec());
+        }
+        result
+    } else {
+        vec![locked_skills
+            .get(selected.name.as_str())
+            .ok_or("Skill missing from skills.lock.yaml; run skm install")?
+            .spec()]
+    };
+    let mut retained = BTreeSet::new();
+    for remaining in config
+        .skills
+        .iter()
+        .filter(|skill| skill.name != selected.name)
+    {
+        if remaining.is_bundle() {
+            for member in &get_bundle(remaining)?.members {
+                retained.insert(member.name.clone());
+            }
+        } else {
+            let locked = locked_skills
+                .get(remaining.name.as_str())
+                .ok_or("Skill missing from skills.lock.yaml; run skm install")?;
+            // Resolve the installed pin, not the currently published bundle or alias.
+            let closure = linker::resolve_skill_dependency_closure(&[locked.spec()], project)?;
+            retained.extend(closure.into_iter().map(|skill| skill.name));
+        }
+    }
+    let mut targets = Vec::new();
+    let mut removed_names = BTreeSet::new();
+    for candidate in candidates
+        .iter()
+        .filter(|skill| !retained.contains(&skill.name))
+    {
+        removed_names.insert(candidate.name.clone());
+        targets.extend(linker::plan_locked_skill_unlink(
+            candidate,
+            project,
+            &lock.agents,
+            force,
+            verbose,
+        )?);
+    }
+    Ok((targets, removed_names))
+}
+
+fn update_installed_lock(
+    project: &Path,
+    lock: &InstallLock,
+    selected: &SkillSpec,
+    removed: &BTreeSet<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = project.join("skills.lock.yaml");
+    if fs::read(&path)? != lock.original {
+        return Err("skills.lock.yaml changed during removal; run skm install".into());
+    }
+    let mut value: serde_yaml::Value = serde_yaml::from_slice(&lock.original)?;
+    if selected.is_bundle() {
+        if let Some(bundles) = value.get_mut("bundles").and_then(|v| v.as_sequence_mut()) {
+            bundles.retain(|bundle| {
+                bundle.get("name").and_then(|v| v.as_str()) != Some(selected.name.as_str())
+            });
+            if bundles.is_empty() {
+                value
+                    .as_mapping_mut()
+                    .ok_or("Invalid skills.lock.yaml")?
+                    .remove(serde_yaml::Value::String("bundles".into()));
+            }
+        }
+    }
+    for field in ["skills", "outputs"] {
+        let entries = value
+            .get_mut(field)
+            .and_then(|v| v.as_sequence_mut())
+            .ok_or("Invalid skills.lock.yaml entries")?;
+        let key = if field == "skills" { "name" } else { "skill" };
+        entries.retain(|entry| {
+            entry
+                .get(key)
+                .and_then(|v| v.as_str())
+                .is_none_or(|name| !removed.contains(name))
+        });
+    }
+    let transaction = tempfile::Builder::new()
+        .prefix(".skm-remove-")
+        .tempdir_in(project)?;
+    let staged = transaction.path().join("lock.new");
+    fs::write(&staged, serde_yaml::to_string(&value)?)?;
+    fs::set_permissions(&staged, fs::metadata(&path)?.permissions())?;
+    if fs::read(&path)? != lock.original {
+        return Err("skills.lock.yaml changed during removal; run skm install".into());
+    }
+    let backup = transaction.path().join("lock.old");
+    fs::rename(&path, &backup)?;
+    if let Err(error) = fs::rename(&staged, &path) {
+        if let Err(restore) = fs::rename(&backup, &path) {
+            let recovery = transaction.keep();
+            return Err(format!(
+                "Could not update lock: {error}; rollback failed: {restore}; backup retained at {}",
+                recovery.display()
+            )
+            .into());
+        }
+        return Err(error.into());
+    }
+    Ok(())
+}
+
+fn plan_unlocked_removal(
+    config: &SkillsConfig,
+    selected: &SkillSpec,
+    project: &Path,
+    global: bool,
+    force: bool,
+    verbose: bool,
+) -> Result<Vec<linker::UnlinkTarget>, Box<dyn std::error::Error>> {
+    let before = linker::resolve_skill_dependency_closure(&config.skills, project)?;
+    let remaining: Vec<_> = config
+        .skills
+        .iter()
+        .filter(|skill| skill.name != selected.name)
+        .cloned()
+        .collect();
+    let retained: BTreeSet<_> = linker::resolve_skill_dependency_closure(&remaining, project)?
+        .into_iter()
+        .map(|skill| skill.name)
+        .collect();
+    let candidates: Vec<_> = if selected.is_bundle() {
+        before
+            .iter()
+            .filter(|skill| !retained.contains(&skill.name))
+            .collect()
+    } else {
+        before
+            .iter()
+            .filter(|skill| skill.name == selected.name && !retained.contains(&skill.name))
+            .collect()
+    };
+    let mut targets = Vec::new();
+    for candidate in candidates {
+        targets.extend(linker::plan_skill_unlink(
+            candidate,
+            project,
+            &config.agents,
+            global,
+            force,
+            verbose,
+        )?);
+    }
+    Ok(targets)
 }
 
 fn prompt_for_removal(skill_name: &str) -> Result<bool, Box<dyn std::error::Error>> {

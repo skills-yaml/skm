@@ -863,6 +863,10 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             verbose,
         } => {
             let original = std::fs::read(&config_path).ok();
+            let had_bundle = original
+                .as_deref()
+                .and_then(|bytes| serde_yaml::from_slice::<SkillsConfig>(bytes).ok())
+                .is_some_and(|config| config.skills.iter().any(|skill| skill.is_bundle()));
             remover::remove_skill(
                 &skill_name,
                 &current_dir,
@@ -872,7 +876,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 dry_run,
                 verbose,
             )?;
-            if !global && !dry_run && std::fs::read(&config_path).ok() != original {
+            if !global && !dry_run && !had_bundle && std::fs::read(&config_path).ok() != original {
                 installer::sync_existing_lock(&config_path, &current_dir)?;
             }
         }
@@ -898,6 +902,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             let resolved = linker::resolve_skill_dependency_closure(&config.skills, &current_dir)?;
+            linker::validate_unique_skill_targets(&resolved)?;
             for skill in &resolved {
                 let mut status = "OK".to_string();
                 let mut linked_targets = Vec::new();
@@ -952,6 +957,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let mut all_ok = true;
 
             let resolved = linker::resolve_skill_dependency_closure(&config.skills, &current_dir)?;
+            linker::validate_unique_skill_targets(&resolved)?;
             for skill in &resolved {
                 // Verify source path
                 let source_dir = linker::resolve_skill_source_dir(skill, &current_dir)?;
@@ -1314,7 +1320,7 @@ fn validate_config(config: &SkillsConfig) -> Result<(), Box<dyn std::error::Erro
             .into());
         }
     }
-    linker::validate_unique_skill_targets(&config.skills)?;
+    linker::validate_configured_skill_targets(&config.skills)?;
 
     Ok(())
 }
@@ -1434,7 +1440,7 @@ where
     let skill_name = new_skill.name.clone();
     config.skills.push(new_skill.clone());
     linker::require_skill_targets(&config.agents, project_root, global)?;
-    linker::validate_unique_skill_targets(&config.skills)?;
+    linker::validate_configured_skill_targets(&config.skills)?;
     if config.skills.iter().any(|skill| skill.path.is_none()) {
         ensure_registries_cached(&config)?;
     }

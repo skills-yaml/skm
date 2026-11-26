@@ -792,6 +792,18 @@ pub fn validate_unique_skill_targets(
     Ok(())
 }
 
+/// Validate directly linkable configured entries; bundles have no own output.
+pub fn validate_configured_skill_targets(
+    skills: &[SkillSpec],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let concrete: Vec<_> = skills
+        .iter()
+        .filter(|skill| !skill.is_bundle())
+        .cloned()
+        .collect();
+    validate_unique_skill_targets(&concrete)
+}
+
 pub fn require_skill_targets(
     agents: &[String],
     project_root: &Path,
@@ -947,8 +959,66 @@ pub fn plan_skill_unlink(
     force: bool,
     verbose: bool,
 ) -> Result<Vec<UnlinkTarget>, Box<dyn std::error::Error>> {
-    validate_agents(agents)?;
     let expected_source = resolve_skill_source_dir(skill, project_root)?;
+    plan_skill_unlink_expected(
+        skill,
+        project_root,
+        agents,
+        global,
+        force,
+        verbose,
+        &expected_source,
+    )
+}
+
+/// Plan against the installed pin even if its registry version disappeared.
+pub(crate) fn plan_locked_skill_unlink(
+    skill: &SkillSpec,
+    project_root: &Path,
+    agents: &[String],
+    force: bool,
+    verbose: bool,
+) -> Result<Vec<UnlinkTarget>, Box<dyn std::error::Error>> {
+    let expected = if let Some(path) = &skill.path {
+        project_root.join(path)
+    } else {
+        let source = skill
+            .source
+            .as_deref()
+            .ok_or("Locked registry skill has no source")?;
+        let version = skill
+            .version
+            .as_deref()
+            .ok_or("Locked registry skill has no version")?;
+        validate_exact_version(version)?;
+        resolve_registry_path(source)
+            .ok_or("Invalid locked registry source")?
+            .join("skills")
+            .join(validated_skill_path(&skill.name)?)
+            .join(format!("v{}", version.trim_start_matches('v')))
+    };
+    plan_skill_unlink_expected(
+        skill,
+        project_root,
+        agents,
+        false,
+        force,
+        verbose,
+        &expected,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn plan_skill_unlink_expected(
+    skill: &SkillSpec,
+    project_root: &Path,
+    agents: &[String],
+    global: bool,
+    force: bool,
+    verbose: bool,
+    expected_source: &Path,
+) -> Result<Vec<UnlinkTarget>, Box<dyn std::error::Error>> {
+    validate_agents(agents)?;
     let mut targets = Vec::new();
 
     for target in resolve_agent_skill_targets(agents, project_root, global)? {
@@ -959,7 +1029,7 @@ pub fn plan_skill_unlink(
 
         match fs::symlink_metadata(&skill_path) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
-                if !force && !symlink_matches_expected(&skill_path, &expected_source)? {
+                if !force && !symlink_matches_expected(&skill_path, expected_source)? {
                     return Err(format!(
                         "Refusing to remove unexpected symlink for agent '{}': {} does not point to {}. Use --force to override this safety check.",
                         agent,

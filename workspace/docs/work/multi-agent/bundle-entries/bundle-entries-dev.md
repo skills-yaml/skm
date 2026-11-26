@@ -27,11 +27,11 @@ Implement the claimed scope.
 
 ## Actions
 
-Claimed a detached worktree and shared SKM 0.10.0 reservation. Corrected bundle-specific dependency closures and compatible overlaps, reused publisher schema validation, added load-time validation, lock drift reporting, bundle upgrade and removal, and rollback-protected obsolete link cleanup. Added lifecycle, drift, overlap, validation, and rollback regressions.
+Claimed a detached worktree and shared SKM 0.10.0 reservation. Corrected bundle-specific dependency closures and compatible overlaps, reused publisher schema validation, added load-time validation, lock drift reporting, bundle upgrade and removal, and rollback-protected obsolete link cleanup. Added lifecycle, drift, overlap, validation, and rollback regressions. Addressed review findings by removing installed members from the recorded lock snapshot, retaining shared ownership, preserving the snapshot during removal, and validating concrete output names instead of bundle IDs.
 
 ## Validation
 
-`task check` passed; `task test` passed 163 Rust unit, 17 Rust integration, and 36 Python tests. Final exact-candidate gates and independent review are still required.
+The focused bundle module passes 17 tests after review fixes. Full gates must be rerun after combining the current peer integration revision; independent review must cover the new candidate.
 
 ## Blockers and Dependencies
 
@@ -39,7 +39,7 @@ Schema-2 manifests do not provide bundle versions or history. The current candid
 
 ## Next Step
 
-Complete tests, commit, hand off for independent review, and reconcile the selector contract.
+Complete tests, commit, and hand off for fresh independent review.
 
 ## Handoff
 

@@ -174,7 +174,7 @@ fn prepare(project: &Path, bundle: &str, source: &str, write_cache: bool) -> Res
     let config: SkillsConfig = serde_yaml::from_slice(&original)?;
     linker::validate_agents(&config.agents)?;
     linker::require_skill_targets(&config.agents, project, false)?;
-    linker::validate_unique_skill_targets(&config.skills)?;
+    linker::validate_configured_skill_targets(&config.skills)?;
 
     let (root, registry_temp) = registry_root(project, &config, source, write_cache)?;
     let cache = linker::resolve_registry_path(source).ok_or("Invalid registry name")?;
@@ -1523,5 +1523,119 @@ mod tests {
         assert!(project.join(".agents/skills/beta").is_symlink());
         assert!(project.join(".agents/skills/helper").is_symlink());
         crate::installer::verify_lock(&config, project).unwrap();
+    }
+    #[cfg(unix)]
+    #[test]
+    #[serial]
+    fn removal_uses_installed_members_after_registry_drift() {
+        let fixture = Fixture::new();
+        let home = tempfile::tempdir().unwrap();
+        let _guard = HomeGuard::set(home.path());
+        let project = fixture.project.path();
+        let config_path = project.join("skills.yaml");
+        let prepared = prepare(project, "acme/starter", "local", true).unwrap();
+        apply(project, &prepared).unwrap();
+        let config = SkillsConfig::load_from_file(&config_path).unwrap();
+        crate::installer::prepare(&config, project, false, None)
+            .unwrap()
+            .apply()
+            .unwrap();
+        fixture.skill("alpha", "1.1.0", None);
+        fixture.skill("beta", "1.0.0", None);
+        fixture.manifest("schema_version: 2\nnamespace: acme\npackages: {alpha: 1.1.0, beta: 1.0.0}\nbundles: {starter: {packages: [beta]}}\n");
+        fs::remove_dir_all(fixture.registry.path().join("skills/acme/alpha/v1.0.0")).unwrap();
+        crate::remover::remove_skill("acme/starter", project, false, true, false, false, false)
+            .unwrap();
+        assert!(fs::symlink_metadata(project.join(".agents/skills/alpha")).is_err());
+        assert!(fs::symlink_metadata(project.join(".agents/skills/helper")).is_err());
+        let lock: serde_yaml::Value =
+            serde_yaml::from_slice(&fs::read(project.join("skills.lock.yaml")).unwrap()).unwrap();
+        assert!(lock.get("bundles").is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[serial]
+    fn removing_standalone_entry_preserves_bundle_membership() {
+        let fixture = Fixture::new();
+        let home = tempfile::tempdir().unwrap();
+        let _guard = HomeGuard::set(home.path());
+        let project = fixture.project.path();
+        let config_path = project.join("skills.yaml");
+        let prepared = prepare(project, "acme/starter", "local", true).unwrap();
+        apply(project, &prepared).unwrap();
+        let mut config = SkillsConfig::load_from_file(&config_path).unwrap();
+        config.skills.push(SkillSpec {
+            name: "acme/alpha".into(),
+            version: Some("1.0.0".into()),
+            source: Some("local".into()),
+            path: None,
+            kind: None,
+        });
+        config.save_to_file(&config_path).unwrap();
+        crate::installer::prepare(&config, project, false, None)
+            .unwrap()
+            .apply()
+            .unwrap();
+        fixture.manifest("schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0, helper: 2.0.0}\nbundles: {starter: {packages: [helper]}}\n");
+        crate::remover::remove_skill("acme/alpha", project, false, true, false, false, false)
+            .unwrap();
+        assert!(project.join(".agents/skills/alpha").is_symlink());
+        assert!(project.join(".agents/skills/helper").is_symlink());
+        let lock: serde_yaml::Value =
+            serde_yaml::from_slice(&fs::read(project.join("skills.lock.yaml")).unwrap()).unwrap();
+        assert_eq!(
+            lock["bundles"][0]["members"].as_sequence().unwrap().len(),
+            2
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[serial]
+    fn bundle_ids_do_not_claim_output_names() {
+        let fixture = Fixture::new();
+        let home = tempfile::tempdir().unwrap();
+        let _guard = HomeGuard::set(home.path());
+        let other = fixture.registry.path().join("skills/other");
+        fs::create_dir_all(other.join("beta/v1.0.0")).unwrap();
+        fs::write(
+            other.join("beta/v1.0.0/SKILL.md"),
+            "---\nname: beta\nmetadata: {skm-version: '1.0.0'}\n---\n# beta\n",
+        )
+        .unwrap();
+        fs::write(other.join("manifest.yaml"), "schema_version: 2\nnamespace: other\npackages: {beta: 1.0.0}\nbundles: {starter: {packages: [beta]}}\n").unwrap();
+        fixture.write_config("skills:\n  - {name: acme/starter, kind: bundle, source: local}\n  - {name: other/starter, kind: bundle, source: local}\n");
+        cached_local_registry(
+            "local",
+            &fs::canonicalize(fixture.registry.path()).unwrap(),
+            fixture.registry.path().to_str().unwrap(),
+        )
+        .unwrap();
+        let config =
+            SkillsConfig::load_from_file(fixture.project.path().join("skills.yaml")).unwrap();
+        crate::validate_config(&config).unwrap();
+        crate::installer::prepare(&config, fixture.project.path(), false, None)
+            .unwrap()
+            .apply()
+            .unwrap();
+        assert!(fixture
+            .project
+            .path()
+            .join(".agents/skills/alpha")
+            .is_symlink());
+        assert!(fixture
+            .project
+            .path()
+            .join(".agents/skills/beta")
+            .is_symlink());
+        fs::create_dir_all(other.join("alpha/v1.0.0")).unwrap();
+        fs::write(
+            other.join("alpha/v1.0.0/SKILL.md"),
+            "---\nname: alpha\nmetadata: {skm-version: '1.0.0'}\n---\n# alpha\n",
+        )
+        .unwrap();
+        fs::write(other.join("manifest.yaml"), "schema_version: 2\nnamespace: other\npackages: {alpha: 1.0.0}\nbundles: {starter: {packages: [alpha]}}\n").unwrap();
+        assert!(crate::installer::prepare(&config, fixture.project.path(), false, None).is_err());
     }
 }
