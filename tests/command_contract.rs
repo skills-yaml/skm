@@ -443,3 +443,96 @@ fn cache_clear_rejects_symlinked_parent_without_touching_external_files() {
         "keep"
     );
 }
+
+#[test]
+fn search_suggestions_disambiguate_colliding_bundle_and_remain_executable() {
+    let fixture = Fixture::new();
+    let registry = fixture.root.path().join("registry");
+    fs::create_dir(&registry).unwrap();
+    registry_with_skill(&registry, "alpha");
+    fs::write(
+        registry.join("skills/acme/manifest.yaml"),
+        "schema_version: 2\nnamespace: acme\npackages: {alpha: 1.0.0}\nbundles: {alpha: {packages: [alpha]}, starter: {packages: [alpha]}}\n",
+    )
+    .unwrap();
+    git(&registry, &["add", "."]);
+    git(
+        &registry,
+        &[
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-qm",
+            "bundles",
+        ],
+    );
+    fixture.base_config("local", &registry);
+    let config = fixture.project.join("skills.yaml");
+    fs::write(&config, "name: fixture\nagents: [codex]\nskills: []\n").unwrap();
+
+    let output = fixture.skm(&[
+        "search",
+        "alpha",
+        "--registry",
+        "local",
+        "--limit",
+        "1",
+        "--json",
+    ]);
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["total"], 2);
+    let bundle = &json["matches"][0];
+    assert_eq!(bundle["kind"], "bundle");
+    assert_eq!(
+        bundle["add_command"],
+        "skm add acme/alpha --source local --kind bundle"
+    );
+    let apply = bundle["apply_command"].as_str().unwrap();
+    assert_eq!(
+        apply,
+        "skm add acme/alpha --source local --kind bundle --yes && skm install --yes"
+    );
+    for command in apply.split(" && ") {
+        let args: Vec<_> = command.split_whitespace().skip(1).collect();
+        fixture.skm(&args);
+    }
+    let saved: serde_yaml::Value = serde_yaml::from_slice(&fs::read(&config).unwrap()).unwrap();
+    assert_eq!(saved["skills"][0]["kind"], "bundle");
+    assert!(fixture.project.join(".agents/skills/alpha").is_symlink());
+
+    let text = fixture.skm(&["search", "alpha", "--registry", "local"]);
+    let text = String::from_utf8(text.stdout).unwrap();
+    assert!(text.contains("skm add acme/alpha --source local --kind bundle"));
+    assert!(text.contains("skm add acme/alpha --source local --kind skill"));
+    let output = fixture.skm(&["search", "alpha", "--registry", "local", "--json"]);
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let skill = json["matches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["kind"] == "skill")
+        .unwrap();
+    let skill_command = skill["add_command"].as_str().unwrap();
+    assert_eq!(
+        skill_command,
+        "skm add acme/alpha --source local --kind skill"
+    );
+    fs::write(&config, "name: fixture\nagents: [codex]\nskills: []\n").unwrap();
+    let mut args: Vec<_> = skill_command.split_whitespace().skip(1).collect();
+    args.push("--yes");
+    fixture.skm(&args);
+    let saved: serde_yaml::Value = serde_yaml::from_slice(&fs::read(&config).unwrap()).unwrap();
+    assert!(saved["skills"][0].get("kind").is_none());
+    let output = fixture.skm(&["search", "starter", "--registry", "local", "--json"]);
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        json["matches"][0]["add_command"],
+        "skm add acme/starter --source local"
+    );
+    assert_eq!(
+        json["matches"][0]["apply_command"],
+        "skm add acme/starter --source local --yes && skm install --yes"
+    );
+}
