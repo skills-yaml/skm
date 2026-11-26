@@ -1,9 +1,10 @@
 #![cfg(unix)]
 
 use std::fs;
+use std::io::{Read, Write};
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 struct Fixture {
     root: tempfile::TempDir,
@@ -118,6 +119,51 @@ fn git(root: &Path, args: &[&str]) {
         "git {args:?}: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+#[test]
+fn remove_rejects_manifest_edits_while_waiting_for_confirmation() {
+    let fixture = Fixture::new();
+    fixture.skm(&["install", "--yes"]);
+    let manifest = fixture.project.join("skills.yaml");
+    let lock = fixture.project.join("skills.lock.yaml");
+    let lock_before = fs::read(&lock).unwrap();
+    let alpha = fixture.project.join(".agents/skills/alpha");
+    let helper = fixture.project.join(".agents/skills/helper");
+    let alpha_before = fs::read_link(&alpha).unwrap();
+    let helper_before = fs::read_link(&helper).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_skm"))
+        .args(["remove", "acme/starter"])
+        .current_dir(&fixture.project)
+        .env("HOME", &fixture.home)
+        .env("XDG_CONFIG_HOME", fixture.home.join(".config"))
+        .env("XDG_CACHE_HOME", fixture.home.join(".cache"))
+        .env("SKM_NO_UPDATE_CHECK", "1")
+        .stdin(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stderr = child.stderr.take().unwrap();
+    let mut prompt = Vec::new();
+    while !prompt.ends_with(b"[y/N] ") {
+        let mut byte = [0];
+        assert_eq!(
+            stderr.read(&mut byte).unwrap(),
+            1,
+            "removal ended before confirmation"
+        );
+        prompt.push(byte[0]);
+    }
+    let mut edited = fs::read_to_string(&manifest).unwrap();
+    edited.push_str("  - {name: acme/alpha, version: 1.0.0, source: local}\n");
+    fs::write(&manifest, &edited).unwrap();
+    child.stdin.take().unwrap().write_all(b"y\n").unwrap();
+    let status = child.wait().unwrap();
+    assert!(!status.success());
+    assert_eq!(fs::read_to_string(&manifest).unwrap(), edited);
+    assert_eq!(fs::read(&lock).unwrap(), lock_before);
+    assert_eq!(fs::read_link(alpha).unwrap(), alpha_before);
+    assert_eq!(fs::read_link(helper).unwrap(), helper_before);
 }
 
 #[test]

@@ -142,6 +142,10 @@ where
         );
     }
 
+    if fs::read(&config_path)? != original {
+        return Err("Manifest changed during removal; retry".into());
+    }
+
     // Update configuration first, then attempt every preflighted target. If an
     // unlink fails, the configuration change remains and the partial outcome
     // is reported as required by the command contract.
@@ -496,6 +500,11 @@ fn plan_unlocked_removal(
     force: bool,
     verbose: bool,
 ) -> Result<Vec<linker::UnlinkTarget>, Box<dyn std::error::Error>> {
+    // With no installed targets at all, no declaration can own a link. Avoid
+    // resolving sources (or requiring a cache) for the add-before-install state.
+    if global && global_targets_are_empty(config, project)? {
+        return Ok(Vec::new());
+    }
     let before = linker::resolve_skill_dependency_closure(&config.skills, project)?;
     let remaining: Vec<_> = config
         .skills
@@ -507,7 +516,7 @@ fn plan_unlocked_removal(
         .into_iter()
         .map(|skill| skill.name)
         .collect();
-    let candidates: Vec<_> = if selected.is_bundle() {
+    let candidates: Vec<_> = if global || selected.is_bundle() {
         before
             .iter()
             .filter(|skill| !retained.contains(&skill.name))
@@ -530,6 +539,27 @@ fn plan_unlocked_removal(
         )?);
     }
     Ok(targets)
+}
+
+fn global_targets_are_empty(
+    config: &SkillsConfig,
+    project: &Path,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let home = dirs::home_dir().ok_or("Cannot resolve home")?;
+    for target in linker::resolve_agent_skill_targets(&config.agents, project, true)? {
+        // Validate all parent components, including the target directory itself.
+        crate::installer::validate_parent(&home, &target.path.join("placeholder"))?;
+        match fs::read_dir(&target.path) {
+            Ok(mut entries) => {
+                if entries.next().transpose()?.is_some() {
+                    return Ok(false);
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(true)
 }
 
 fn prompt_for_removal(skill_name: &str) -> Result<bool, Box<dyn std::error::Error>> {

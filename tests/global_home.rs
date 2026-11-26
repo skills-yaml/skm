@@ -1386,6 +1386,148 @@ fn global_install_applies_registry_dependencies_to_every_selected_target() {
 }
 
 #[test]
+fn global_remove_uninstalled_registry_declaration_without_cache() {
+    let home = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    let home = home.path();
+    success(command(
+        home,
+        project.path(),
+        &["config", "show", "--global"],
+    ));
+    let registry = home.join(".skm/registry");
+    let skill = registry.join("skills/acme/parent/v1.0.0");
+    fs::create_dir_all(&skill).unwrap();
+    fs::write(
+        skill.join("SKILL.md"),
+        "---\nname: parent\nmetadata:\n  skm-version: '1.0.0'\n---\n",
+    )
+    .unwrap();
+    symlink("v1.0.0", skill.parent().unwrap().join("latest")).unwrap();
+    fs::write(
+        registry.join("skills/acme/manifest.yaml"),
+        "schema_version: 2\nnamespace: acme\npackages: {parent: 1.0.0}\nbundles: {}\n",
+    )
+    .unwrap();
+    let manifest = home.join(".skm/skills.yaml");
+    fs::write(&manifest, "name: User\nagents: [codex]\nregistries: {default: registry}\nskills: []\nextension: retained\n").unwrap();
+    success(command(
+        home,
+        project.path(),
+        &["add", "acme/parent", "--global", "--yes"],
+    ));
+    assert!(!home.join(".skm/cache/registries/default").exists());
+    // With existing targets and no dependency metadata, ownership is ambiguous.
+    let other = home.join(".agents/skills/other");
+    fs::create_dir_all(other.parent().unwrap()).unwrap();
+    symlink(project.path(), &other).unwrap();
+    let ambiguous = snapshot(home);
+    assert!(!command(
+        home,
+        project.path(),
+        &["remove", "acme/parent", "--global", "--yes"]
+    )
+    .status
+    .success());
+    assert_eq!(snapshot(home), ambiguous);
+    fs::remove_file(other).unwrap();
+    let before = snapshot(home);
+    success(command(
+        home,
+        project.path(),
+        &["remove", "acme/parent", "--global", "--dry-run", "--yes"],
+    ));
+    assert_eq!(snapshot(home), before);
+    success(command(
+        home,
+        project.path(),
+        &["remove", "acme/parent", "--global", "--yes"],
+    ));
+    let value: serde_yaml::Value = serde_yaml::from_slice(&fs::read(manifest).unwrap()).unwrap();
+    assert!(value["skills"].as_sequence().unwrap().is_empty());
+    assert_eq!(value["extension"].as_str(), Some("retained"));
+    assert!(!home.join(".skm/cache/registries/default").exists());
+}
+
+#[test]
+fn global_remove_unlinks_orphan_dependencies_but_retains_shared_ones() {
+    for shared in [false, true] {
+        let home = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let home = home.path();
+        let registry = home.join(".skm/registry");
+        for (name, dependency) in [
+            ("parent", "  skm-dependencies: 'acme/helper@1.0.0'\n"),
+            ("other", "  skm-dependencies: 'acme/helper@1.0.0'\n"),
+            ("helper", ""),
+        ] {
+            let source = registry.join(format!("skills/acme/{name}/v1.0.0"));
+            fs::create_dir_all(&source).unwrap();
+            fs::write(
+                source.join("SKILL.md"),
+                format!("---\nname: {name}\nmetadata:\n  skm-version: '1.0.0'\n{dependency}---\n"),
+            )
+            .unwrap();
+        }
+        let extra = if shared {
+            "  - {name: acme/other, version: '1.0.0'}\n"
+        } else {
+            ""
+        };
+        let manifest = home.join(".skm/skills.yaml");
+        fs::write(&manifest, format!("name: User\nagents: [codex, cursor]\nregistries: {{default: registry}}\nskills:\n  - {{name: acme/parent, version: '1.0.0'}}\n{extra}extension: retained\n")).unwrap();
+        success(command(
+            home,
+            project.path(),
+            &["install", "--global", "--yes"],
+        ));
+        let before = snapshot(home);
+        success(command(
+            home,
+            project.path(),
+            &["remove", "acme/parent", "--global", "--dry-run", "--yes"],
+        ));
+        assert_eq!(snapshot(home), before);
+        if !shared {
+            let target = home.join(".cursor/skills/helper");
+            let expected = fs::read_link(&target).unwrap();
+            fs::remove_file(&target).unwrap();
+            symlink(project.path(), &target).unwrap();
+            let unsafe_before = snapshot(home);
+            assert!(!command(
+                home,
+                project.path(),
+                &["remove", "acme/parent", "--global", "--yes"]
+            )
+            .status
+            .success());
+            assert_eq!(snapshot(home), unsafe_before);
+            fs::remove_file(&target).unwrap();
+            symlink(expected, &target).unwrap();
+        }
+        success(command(
+            home,
+            project.path(),
+            &["remove", "acme/parent", "--global", "--yes"],
+        ));
+        for agent in [".agents/skills", ".cursor/skills"] {
+            assert!(!home.join(agent).join("parent").exists());
+            assert_eq!(home.join(agent).join("helper").is_symlink(), shared);
+            if shared {
+                assert!(home.join(agent).join("other").is_symlink());
+            }
+        }
+        let value: serde_yaml::Value =
+            serde_yaml::from_slice(&fs::read(manifest).unwrap()).unwrap();
+        assert_eq!(
+            value["skills"].as_sequence().unwrap().len(),
+            usize::from(shared)
+        );
+        assert_eq!(value["extension"].as_str(), Some("retained"));
+    }
+}
+
+#[test]
 fn global_remove_and_orphan_cleanup_follow_user_manifest_across_directories() {
     let home = tempfile::tempdir().unwrap();
     let first = tempfile::tempdir().unwrap();
