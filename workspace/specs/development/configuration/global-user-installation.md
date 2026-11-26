@@ -6,7 +6,7 @@ State: development
 
 Primary feature: `configuration`
 
-Status rationale: S1–S4 and the bootstrap, cleanup-root and reset repairs are independently reviewed and integrated in local peer revision `04cd30e`, including the reviewed global removal correction. Final combined-candidate review and acceptance remain pending. No merge into the remote `development` target has occurred; the applied shared 0.10.0 reservation is reused.
+Status rationale: S1–S4 and the bootstrap, cleanup-root and reset repairs are independently reviewed and integrated in local peer revision `ec7f2b8`, including the reviewed cold-cache removal correction and hermetic bundle test fixtures. Final combined-candidate review and acceptance remain pending. No merge into the remote `development` target has occurred; the applied shared 0.10.0 reservation is reused.
 
 ## Problem and Evidence
 
@@ -296,7 +296,7 @@ passes do not establish complete feature acceptance.
 
 The following independently reviewed source revisions were integrated after
 native peer gates passed. The latest local combined revision is
-`04cd30ea6aa40b3dd8d4a343a44e6e624254e6c3`.
+`ec7f2b87a59af570afbd65f1be6f2ffe1ee254d7`.
 These are local peer integrations, not a merge into the configured remote
 `development` test target. The WIP records retain the individual review fixes.
 
@@ -320,7 +320,7 @@ and `5403ad0` respectively. Earlier integrated records identify `57ee1bf` and
 previous board approval entries. Slice approvals do not substitute for review
 of this S5 documentation or acceptance of the final combined revision.
 
-### Combined acceptance evidence through local revision `04cd30e`
+### Combined acceptance evidence through local revision `ec7f2b8`
 
 The following maps criteria to existing fixtures on the combined source. It is
 candidate evidence, not a claim that the final acceptance or all platforms have
@@ -343,11 +343,18 @@ with a cold cache or leave orphan dependencies behind. Reviewed source
 preserves shared dependencies, and revalidates manifest paths during staging
 and publication. The same repair rechecks project bundle manifest, lock and
 link snapshots and target parents after confirmation; the bundle maintenance
-interactive regressions cover substitutions and concurrent edits. If the cache
-is absent and other global targets are occupied, unresolved ownership causes a
-non-mutating refusal. The candidate passed `task test:global-home`,
+interactive regressions cover substitutions and concurrent edits. A later reviewed cold-cache repair, `0bf5c5b137a62f8d244decf0343062ea18547a90` integrated at `ec7f2b8`, allows unrelated declared global links to remain while removing an uninstalled declaration. An unconfigured alias can be removed when its canonical and both legacy cache entries are absent. Conflicting or dangling cache entries and unknown development-owned targets fail closed without writes. The candidate passed `task test:global-home`,
 `task test:bundle`, `task check`, `task test` and `task versions:check`; the
-local integration ran its native gates.
+local integration ran its native gates. The cold-cache fixtures cover those
+ownership and origin cases, including a no-Git preview.
+
+PR #93's hosted Validate run `45865609720` on `c3f090f7345360ed7c2067d6166bbd7cd345347c` passed `task check` but failed all three bundle upgrade cancellation tests during fixture installation: the inherited default SSH registry clone was denied public-key access. The build step was skipped. Reviewed fixture-only source
+`06afaf7ea54dedbde4834da7a88ed37303013f44`, integrated locally at `da2f00d`,
+sets a local registry and isolates Git subprocess configuration. Its focused
+bundle suite and a full test with a fresh home, disabled system Git config and
+disabled SSH passed. Native `task check` and `task test` passed on local
+integration `ec7f2b8`. A new CI run on the updated PR head remains pending; the
+earlier failure is not evidence for the new combined revision.
 
 Whole-spec review exposed two earlier concrete failures. A cleanup regression reproduced
 a false different-or-missing-origin error when a home ancestor was symlinked;
@@ -418,7 +425,7 @@ Reservation status is `applied`, owner `global-user-installation`, timing
 `development-start`. The seed already contains the 0.10.0 Cargo source and lockfile.
 On 2026-11-26 the shared peer board confirmed baseline 0.9.1 and target 0.10.0;
 remote tag lookup found no 0.10.0 tag. Reuse this release without another bump.
-Remote `development` integration, final combined acceptance, main merge, and publication remain pending. PR #93’s earlier CI run does not validate this combined head; the remote branch remains at its earlier head.
+Remote `development` integration, final combined acceptance, main merge, and publication remain pending. PR #93’s earlier hosted failure does not validate this combined head; an updated PR head and its CI remain pending.
 
 ## Memory Impact
 
