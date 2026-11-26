@@ -684,6 +684,15 @@ fn main() {
                 CleanCommands::Reset { config: true, .. } | CleanCommands::Reset { all: true, .. }
             )
     );
+    // Settings resets prepare the rest of the user state after confirmation,
+    // without reading malformed settings. Cache resets leave the cache removed.
+    let prepare_settings_reset = recovery
+        && !read_only_startup
+        && !matches!(
+            &cli.command,
+            Commands::Clean(CleanCommands::Reset { cache: true, .. })
+                | Commands::Clean(CleanCommands::Reset { all: true, .. })
+        );
     if !read_only_startup && !recovery {
         if let Err(e) = ensure_global_env() {
             eprintln!("Error: cannot initialize SKM user state: {e}");
@@ -696,7 +705,10 @@ fn main() {
         updater::maybe_print_startup_notice();
     }
 
-    if let Err(e) = run(cli.command) {
+    let reset_guard = prepare_settings_reset.then(config_manager::SettingsResetGuard::new);
+    let result = run(cli.command);
+    drop(reset_guard);
+    if let Err(e) = result {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     }

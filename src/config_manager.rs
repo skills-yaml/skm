@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
@@ -47,6 +48,26 @@ fn get_registries_cache_dir() -> Option<PathBuf> {
 pub(crate) const EMPTY_GLOBAL_MANIFEST: &str = "name: Global skills\nagents: []\nskills: []\n";
 
 type ConfigResult<T> = Result<T, Box<dyn std::error::Error>>;
+
+thread_local! {
+    // Enable recovery preparation only for the synchronous reset dispatch.
+    static PREPARE_SETTINGS_RESET: Cell<bool> = const { Cell::new(false) };
+}
+
+pub(crate) struct SettingsResetGuard;
+
+impl SettingsResetGuard {
+    pub(crate) fn new() -> Self {
+        PREPARE_SETTINGS_RESET.with(|prepare| prepare.set(true));
+        Self
+    }
+}
+
+impl Drop for SettingsResetGuard {
+    fn drop(&mut self) {
+        PREPARE_SETTINGS_RESET.with(|prepare| prepare.set(false));
+    }
+}
 
 fn directory(path: &Path, create: bool) -> ConfigResult<()> {
     if create {
@@ -123,6 +144,9 @@ fn validate_base(content: &str, path: &Path) -> ConfigResult<serde_yaml::Value> 
 
 /// Validate and atomically replace the canonical settings document.
 pub(crate) fn write_base_settings(value: &serde_yaml::Value) -> ConfigResult<()> {
+    if PREPARE_SETTINGS_RESET.with(Cell::get) {
+        prepare_settings_reset_remainder()?;
+    }
     let path = get_base_config_path().ok_or("Could not determine user home directory")?;
     let content = serde_yaml::to_string(value)?;
     validate_base(&content, &path)?;
@@ -138,6 +162,29 @@ pub(crate) fn write_base_settings(value: &serde_yaml::Value) -> ConfigResult<()>
     temp.persist(&path)
         .map_err(|error| format!("Cannot save {}: {}", path.display(), error.error))?;
     Ok(())
+}
+
+// Prepare everything except settings after confirmation, before reset mutates
+// settings or the project. Existing malformed settings remain recoverable.
+fn prepare_settings_reset_remainder() -> ConfigResult<()> {
+    check_base_settings_target(false)?;
+    check_global_manifest_parent()?;
+    let parent = get_user_config_dir().ok_or("Could not determine user home directory")?;
+    let manifest = parent.join("skills.yaml");
+    let existing_manifest = read_regular_file(&manifest)?;
+    if let Some(content) = &existing_manifest {
+        validate_manifest(content, &manifest)?;
+    }
+    directory(&parent, true)?;
+    let cache = parent.join("cache");
+    directory(&cache, true)?;
+    directory(&cache.join("registries"), true)?;
+    if existing_manifest.is_none() {
+        publish_missing(&manifest, EMPTY_GLOBAL_MANIFEST)?;
+    }
+    let content =
+        read_regular_file(&manifest)?.ok_or("Skills manifest disappeared during bootstrap")?;
+    validate_manifest(&content, &manifest)
 }
 
 /// Check global manifest ancestors without creating user state.
