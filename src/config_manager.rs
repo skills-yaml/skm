@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 
 /// Default registry URL
 pub const DEFAULT_REGISTRY_URL: &str = "git@github.com:skills-yaml/registry.git";
@@ -11,9 +12,25 @@ pub fn get_config_dir() -> Option<PathBuf> {
     dirs::config_dir().map(|d| d.join("skm"))
 }
 
+/// Canonical settings and manifest directory for the global-home migration.
+pub fn get_user_config_dir() -> Option<PathBuf> {
+    dirs::home_dir().map(|d| d.join(".skm"))
+}
+
+#[allow(dead_code)]
+pub fn get_user_base_config_path() -> Option<PathBuf> {
+    get_user_config_dir().map(|d| d.join("config.yaml"))
+}
+
 /// Get the global base config path
 pub fn get_base_config_path() -> Option<PathBuf> {
     get_config_dir().map(|d| d.join("config.yaml"))
+}
+
+/// Get the user-owned global skills manifest path.
+#[allow(dead_code)]
+pub fn get_global_manifest_path() -> Option<PathBuf> {
+    get_user_config_dir().map(|d| d.join("skills.yaml"))
 }
 
 /// Get the cache directory path
@@ -21,10 +38,113 @@ pub fn get_cache_dir() -> Option<PathBuf> {
     dirs::cache_dir().map(|d| d.join("skm"))
 }
 
+/// Canonical cache location for the global-home migration. Existing consumers
+/// switch together with legacy cache discovery in the next implementation step.
+#[allow(dead_code)]
+pub fn get_user_cache_dir() -> Option<PathBuf> {
+    get_user_config_dir().map(|d| d.join("cache"))
+}
+
 /// Get the registries cache directory
 #[allow(dead_code)]
 fn get_registries_cache_dir() -> Option<PathBuf> {
     get_cache_dir().map(|d| d.join("registries"))
+}
+
+const EMPTY_GLOBAL_MANIFEST: &str = "name: Global skills\nagents: []\nskills: []\n";
+
+type ConfigResult<T> = Result<T, Box<dyn std::error::Error>>;
+
+fn directory(path: &Path, create: bool) -> ConfigResult<()> {
+    if create {
+        match fs::create_dir(path) {
+            Ok(()) => (),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => (),
+            Err(error) => {
+                return Err(format!("Cannot create directory {}: {}", path.display(), error).into())
+            }
+        }
+    }
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|error| format!("Cannot access directory {}: {}", path.display(), error))?;
+    if !metadata.file_type().is_dir() {
+        return Err(format!("Expected a real directory at {}", path.display()).into());
+    }
+    Ok(())
+}
+
+fn existing_directory(path: &Path) -> ConfigResult<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => {
+            directory(path, false)?;
+            Ok(true)
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(format!("Cannot inspect directory {}: {}", path.display(), error).into()),
+    }
+}
+
+fn read_regular_file(path: &Path) -> ConfigResult<Option<String>> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("Cannot inspect {}: {}", path.display(), error).into()),
+    };
+    if !metadata.file_type().is_file() {
+        return Err(format!("Expected a regular file at {}", path.display()).into());
+    }
+    fs::read_to_string(path)
+        .map(Some)
+        .map_err(|error| format!("Cannot read {}: {}", path.display(), error).into())
+}
+
+fn validate_base(content: &str, path: &Path) -> ConfigResult<serde_yaml::Value> {
+    let value: serde_yaml::Value = serde_yaml::from_str(content)
+        .map_err(|error| format!("Invalid settings in {}: {}", path.display(), error))?;
+    let map = value
+        .as_mapping()
+        .ok_or_else(|| format!("Settings in {} must be a mapping", path.display()))?;
+    for (key, valid) in [
+        (
+            "default_registry",
+            map.get("default_registry").is_none_or(|v| v.is_string()),
+        ),
+        (
+            "check_for_updates",
+            map.get("check_for_updates").is_none_or(|v| v.is_bool()),
+        ),
+        (
+            "registries",
+            map.get("registries").is_none_or(|v| {
+                v.as_mapping()
+                    .is_some_and(|m| m.iter().all(|(k, v)| k.is_string() && v.is_string()))
+            }),
+        ),
+    ] {
+        if !valid {
+            return Err(format!("Invalid {} in {}", key, path.display()).into());
+        }
+    }
+    Ok(value)
+}
+
+fn validate_manifest(content: &str, path: &Path) -> ConfigResult<()> {
+    serde_yaml::from_str::<crate::config::SkillsConfig>(content)
+        .map_err(|error| format!("Invalid skills manifest in {}: {}", path.display(), error))?;
+    Ok(())
+}
+
+// Publish a complete file without ever replacing a concurrent creator's file.
+fn publish_missing(path: &Path, content: &str) -> ConfigResult<()> {
+    let parent = path.parent().ok_or("Missing file parent")?;
+    let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+    temp.write_all(content.as_bytes())?;
+    temp.as_file().sync_all()?;
+    match temp.persist_noclobber(path) {
+        Ok(_) => Ok(()),
+        Err(error) if error.error.kind() == io::ErrorKind::AlreadyExists => Ok(()),
+        Err(error) => Err(format!("Cannot create {}: {}", path.display(), error.error).into()),
+    }
 }
 
 /// Base configuration for SKM (stored in user's config directory)
@@ -112,17 +232,12 @@ impl BaseConfig {
 }
 
 /// Initialize the base configuration in user's home
-pub fn init_base_config() -> Result<(), Box<dyn std::error::Error>> {
-    let config = BaseConfig::new();
-    config.save()?;
-    eprintln!(
-        "Created base configuration at: {:?}",
-        get_base_config_path()
-    );
-    Ok(())
+#[allow(dead_code)]
+pub fn init_base_config() -> ConfigResult<()> {
+    ensure_global_env()
 }
 
-/// Ensure base config exists, create if it doesn't
+/// Ensure base config exists, create if it doesn't.
 pub fn ensure_base_config() -> Result<BaseConfig, Box<dyn std::error::Error>> {
     let path = get_base_config_path().ok_or("Could not determine config directory")?;
 
@@ -195,14 +310,63 @@ pub fn update_cache(registry_name: Option<&str>) -> Result<(), Box<dyn std::erro
 
 /// Ensure base configuration exists, create with defaults if missing
 /// This is separate from first_time_setup() which also updates cache
-pub fn ensure_global_env() -> Result<(), Box<dyn std::error::Error>> {
-    let path = get_base_config_path().ok_or("Could not determine config directory")?;
+pub fn ensure_global_env() -> ConfigResult<()> {
+    let home = dirs::home_dir().ok_or("Could not determine user home directory")?;
+    directory(&home, false)?;
+    let config_dir = get_user_config_dir().ok_or("Could not determine user home directory")?;
+    directory(&config_dir, true)?;
+    let config_path = config_dir.join("config.yaml");
+    let manifest_path = config_dir.join("skills.yaml");
+    let cache_path = config_dir.join("cache");
 
-    if !path.exists() {
-        eprintln!("Initializing global SKM configuration...");
-        init_base_config()?;
+    // Validate existing state before creating anything else or importing legacy data.
+    let current = read_regular_file(&config_path)?;
+    if let Some(content) = &current {
+        validate_base(content, &config_path)?;
     }
+    let manifest = read_regular_file(&manifest_path)?;
+    if let Some(content) = &manifest {
+        validate_manifest(content, &manifest_path)?;
+    }
+    existing_directory(&cache_path)?;
 
+    if current.is_none() {
+        let legacy = dirs::config_dir().map(|d| d.join("skm").join("config.yaml"));
+        let imported = match legacy {
+            Some(path) if path != config_path => {
+                let parent = path.parent().ok_or("Missing legacy settings directory")?;
+                if existing_directory(parent)? {
+                    match read_regular_file(&path)? {
+                        Some(content) => {
+                            validate_base(&content, &path)?;
+                            Some(content)
+                        }
+                        None => None,
+                    }
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        let content = match imported {
+            Some(content) => content,
+            None => serde_yaml::to_string(&BaseConfig::new())?,
+        };
+        publish_missing(&config_path, &content)?;
+    }
+    if manifest.is_none() {
+        publish_missing(&manifest_path, EMPTY_GLOBAL_MANIFEST)?;
+    }
+    directory(&cache_path, true)?;
+
+    // A concurrent creator may have won; validate the actual published files.
+    let content =
+        read_regular_file(&config_path)?.ok_or("Settings disappeared during bootstrap")?;
+    validate_base(&content, &config_path)?;
+    let content =
+        read_regular_file(&manifest_path)?.ok_or("Skills manifest disappeared during bootstrap")?;
+    validate_manifest(&content, &manifest_path)?;
     Ok(())
 }
 
@@ -292,7 +456,7 @@ mod tests {
         std::env::remove_var("SKM_CHECK_UPDATE");
 
         // Ensure we're starting fresh
-        let config_path = get_base_config_path().unwrap();
+        let config_path = get_user_base_config_path().unwrap();
         let parent = config_path.parent().unwrap();
         if parent.exists() {
             fs::remove_dir_all(parent).ok();
@@ -321,7 +485,7 @@ mod tests {
 
         // Create initial config
         ensure_global_env().unwrap();
-        let config_path = get_base_config_path().unwrap();
+        let config_path = get_user_base_config_path().unwrap();
         let original_content = fs::read_to_string(&config_path).unwrap();
 
         // Run again
@@ -341,7 +505,7 @@ mod tests {
         std::env::remove_var("SKM_CHECK_UPDATE");
 
         // Remove any existing config first
-        let config_path = get_base_config_path().unwrap();
+        let config_path = get_user_base_config_path().unwrap();
         let parent = config_path.parent().unwrap();
         if parent.exists() {
             fs::remove_dir_all(parent).ok();
@@ -373,5 +537,110 @@ mod tests {
             loaded_config.registries.get("custom").unwrap(),
             "git@github.com:custom/registry.git"
         );
+    }
+    #[test]
+    #[serial]
+    fn bootstrap_creates_empty_manifest_and_cache_and_preserves_bytes() {
+        let _home = create_temp_config_dir();
+        ensure_global_env().unwrap();
+        let manifest = get_global_manifest_path().unwrap();
+        assert_eq!(
+            fs::read_to_string(&manifest).unwrap(),
+            EMPTY_GLOBAL_MANIFEST
+        );
+        let parsed = crate::config::SkillsConfig::load_from_file(&manifest).unwrap();
+        assert!(parsed.agents.is_empty() && parsed.skills.is_empty());
+        assert!(get_user_cache_dir().unwrap().is_dir());
+        let custom = "name: Personal\nagents: [codex]\nskills: []\npublisher: retained\n";
+        fs::write(&manifest, custom).unwrap();
+        let settings = fs::read(get_user_base_config_path().unwrap()).unwrap();
+        ensure_global_env().unwrap();
+        assert_eq!(fs::read_to_string(manifest).unwrap(), custom);
+        assert_eq!(
+            fs::read(get_user_base_config_path().unwrap()).unwrap(),
+            settings
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn bootstrap_imports_legacy_bytes_and_preserves_unknown_fields() {
+        let _home = create_temp_config_dir();
+        let legacy = dirs::config_dir().unwrap().join("skm").join("config.yaml");
+        fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        let content = "default_registry: custom\nregistries:\n  custom: custom-url\nopaque:\n  nested: retained\n";
+        fs::write(&legacy, content).unwrap();
+        ensure_global_env().unwrap();
+        let path = get_user_base_config_path().unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), content);
+        assert_eq!(fs::read_to_string(legacy).unwrap(), content);
+    }
+
+    #[test]
+    #[serial]
+    fn bootstrap_new_settings_win_over_invalid_legacy() {
+        let _home = create_temp_config_dir();
+        ensure_global_env().unwrap();
+        let legacy = dirs::config_dir().unwrap().join("skm").join("config.yaml");
+        fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        fs::write(legacy, "invalid: [").unwrap();
+        ensure_global_env().unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn bootstrap_rejects_invalid_yaml_and_unexpected_types_without_overwrite() {
+        let _home = create_temp_config_dir();
+        let legacy = dirs::config_dir().unwrap().join("skm").join("config.yaml");
+        fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        fs::write(&legacy, "invalid: [").unwrap();
+        assert!(ensure_global_env().is_err());
+        assert!(!get_user_base_config_path().unwrap().exists());
+        fs::write(&legacy, "registries: []\n").unwrap();
+        assert!(ensure_global_env().is_err());
+        fs::remove_file(legacy).unwrap();
+        let manifest = get_global_manifest_path().unwrap();
+        fs::write(&manifest, "name: [\n").unwrap();
+        assert!(ensure_global_env().is_err());
+        assert_eq!(fs::read_to_string(&manifest).unwrap(), "name: [\n");
+        fs::remove_file(&manifest).unwrap();
+        fs::create_dir(&manifest).unwrap();
+        assert!(ensure_global_env().is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn bootstrap_concurrent_creators_publish_complete_documents() {
+        let _home = create_temp_config_dir();
+        let threads: Vec<_> = (0..12)
+            .map(|_| std::thread::spawn(|| ensure_global_env().map_err(|e| e.to_string())))
+            .collect();
+        for thread in threads {
+            thread.join().unwrap().unwrap();
+        }
+        ensure_global_env().unwrap();
+        assert_eq!(
+            fs::read_to_string(get_global_manifest_path().unwrap()).unwrap(),
+            EMPTY_GLOBAL_MANIFEST
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[serial]
+    fn bootstrap_rejects_symlink_paths() {
+        use std::os::unix::fs::symlink;
+        let home = create_temp_config_dir();
+        let target = home._temp_dir.path().join("target");
+        fs::create_dir(&target).unwrap();
+        symlink(&target, get_user_config_dir().unwrap()).unwrap();
+        assert!(ensure_global_env().is_err());
+        fs::remove_file(get_user_config_dir().unwrap()).unwrap();
+        fs::create_dir(get_user_config_dir().unwrap()).unwrap();
+        let external = home._temp_dir.path().join("external");
+        fs::write(&external, EMPTY_GLOBAL_MANIFEST).unwrap();
+        symlink(&external, get_global_manifest_path().unwrap()).unwrap();
+        assert!(ensure_global_env().is_err());
+        assert_eq!(fs::read_to_string(external).unwrap(), EMPTY_GLOBAL_MANIFEST);
     }
 }
