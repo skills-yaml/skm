@@ -73,7 +73,7 @@ pub fn clean_symlinks(
     }
 
     let known_skills = if clean_orphaned {
-        collect_known_skill_names(project_config.as_ref(), global)?
+        collect_known_skill_names(project_config.as_ref(), &current_dir, global)?
     } else {
         HashSet::new()
     };
@@ -224,11 +224,17 @@ pub fn clean_symlinks(
 
 fn collect_known_skill_names(
     project_config: Option<&SkillsConfig>,
+    project_root: &Path,
     global: bool,
 ) -> Result<HashSet<String>, Box<dyn std::error::Error>> {
     let mut known = HashSet::new();
     if let Some(config) = project_config {
-        for skill in &config.skills {
+        let skills = if config.skills.iter().any(|skill| skill.is_bundle()) {
+            linker::resolve_skill_dependency_closure(&config.skills, project_root)?
+        } else {
+            config.skills.clone()
+        };
+        for skill in &skills {
             // Preserve legacy nested links as well as discoverable direct-child links.
             known.insert(skill.name.clone());
             if let Some(leaf) = Path::new(&skill.name)

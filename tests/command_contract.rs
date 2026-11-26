@@ -139,6 +139,7 @@ fn ordinary_install_previews_links_and_lock_then_repeats_without_changes() {
     )
     .unwrap();
     fixture.skm(&["add", "beta", "--path", "beta", "--yes"]);
+    fixture.skm(&["install", "--yes"]);
     fixture.skm(&["check"]);
     let expanded = fs::read(fixture.project.join("skills.lock.yaml")).unwrap();
     assert_ne!(expanded, lock);
@@ -187,6 +188,7 @@ fn project_registry_override_and_selected_default_drive_new_additions() {
     fixture.skm(&["add", "acme/right", "--kind", "skill", "--yes"]);
     let manifest = fs::read_to_string(fixture.project.join("skills.yaml")).unwrap();
     assert!(manifest.contains("source: custom"));
+    fixture.skm(&["install", "--yes"]);
     assert!(fixture.project.join(".agents/skills/right").is_symlink());
 }
 
